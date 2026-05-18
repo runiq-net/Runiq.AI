@@ -1,12 +1,11 @@
-﻿using System.Diagnostics;
+﻿using Runiq.Agents.Tools;
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Runiq.Agents.Models;
-using Runiq.Agents.Tools;
 
 namespace Runiq.Agents.Providers.OpenAI;
 
@@ -125,6 +124,7 @@ internal static class OpenAIResponsesClient
 
         var firstContentLogged = false;
         var hasAnyRuntimeEvent = false;
+        string? responseId = null;
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -146,6 +146,8 @@ internal static class OpenAIResponsesClient
             }
 
             var data = line["data:".Length..].Trim();
+
+            responseId ??= TryReadResponseId(data);
 
             if (string.Equals(data, "[DONE]", StringComparison.OrdinalIgnoreCase))
             {
@@ -201,10 +203,35 @@ internal static class OpenAIResponsesClient
                 Console.WriteLine(
                     $"[responses-tool-result] name={functionCall.ToolName}, callId={functionCall.ToolCallId}, output={toolResult.OutputJson}");
 
+                var outputJson = toolResult.OutputJson ?? "{}";
+
                 yield return AgentExecutionEvent.ToolCallCompleted(
                     functionCall.ToolCallId,
                     functionCall.ToolName,
-                    toolResult.OutputJson ?? "{}");
+                    outputJson);
+
+                if (string.IsNullOrWhiteSpace(responseId))
+                {
+                    yield return AgentExecutionEvent.ToolCallFailed(
+                        functionCall.ToolCallId,
+                        functionCall.ToolName,
+                        "OpenAIResponseIdMissing",
+                        "OpenAI response id could not be read before submitting tool output.");
+
+                    continue;
+                }
+
+                await foreach (var followUpEvent in StreamToolOutputAsync(
+                                   agent,
+                                   requestUrl,
+                                   previousResponseId: responseId,
+                                   toolCallId: functionCall.ToolCallId,
+                                   outputJson: outputJson,
+                                   cancellationToken))
+                {
+                    hasAnyRuntimeEvent = true;
+                    yield return followUpEvent;
+                }
 
                 continue;
             }
@@ -248,6 +275,117 @@ internal static class OpenAIResponsesClient
         request.Content = JsonContent.Create(payload, options: JsonOptions);
 
         return request;
+    }
+
+    private static HttpRequestMessage CreateToolOutputRequest(
+    Agent agent,
+    Uri requestUrl,
+    string previousResponseId,
+    string toolCallId,
+    string outputJson)
+    {
+        return CreateRequest(
+            agent,
+            requestUrl,
+            new OpenAIResponseRequest(
+                Model: agent.ModelName,
+                Instructions: agent.Instructions,
+                Input: new object[]
+                {
+                new OpenAIFunctionCallOutputInput(
+                    Type: "function_call_output",
+                    CallId: toolCallId,
+                    Output: outputJson)
+                },
+                Stream: true,
+                Reasoning: new OpenAIReasoningOptions(Effort: agent.ReasoningEffort),
+                Text: new OpenAITextOptions(Verbosity: agent.Verbosity),
+                PreviousResponseId: previousResponseId));
+    }
+
+
+    private static async IAsyncEnumerable<AgentExecutionEvent> StreamToolOutputAsync(
+    Agent agent,
+    Uri requestUrl,
+    string previousResponseId,
+    string toolCallId,
+    string outputJson,
+    [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        using var request = CreateToolOutputRequest(
+            agent,
+            requestUrl,
+            previousResponseId,
+            toolCallId,
+            outputJson);
+
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+
+        using var response = await HttpClient.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            yield return AgentExecutionEvent.Failed(
+                    $"OpenAIToolOutputRequestFailed: Tool output request failed with status code " +
+                    $"{(int)response.StatusCode}. {errorBody}");
+
+            yield break;
+        }
+
+        await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var reader = new StreamReader(responseStream);
+
+        var hasAnyContent = false;
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var line = await reader.ReadLineAsync(cancellationToken);
+
+            if (line is null)
+            {
+                break;
+            }
+
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var data = line["data:".Length..].Trim();
+
+            if (string.Equals(data, "[DONE]", StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+
+            var content = TryReadStreamTextDelta(data);
+
+            if (string.IsNullOrEmpty(content))
+            {
+                continue;
+            }
+
+            hasAnyContent = true;
+
+            yield return AgentExecutionEvent.AssistantDelta(content);
+        }
+
+        if (!hasAnyContent)
+        {
+            yield return AgentExecutionEvent.Failed(
+                "OpenAIToolOutputEmptyStream: OpenAI tool output " +
+                "stream completed without producing content.");
+        }
     }
 
     private static Uri BuildResponsesUrl(Uri endpoint)
@@ -410,6 +548,38 @@ internal static class OpenAIResponsesClient
         }
     }
 
+    private static string? TryReadResponseId(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+
+            if (root.TryGetProperty("response", out var responseElement) &&
+                responseElement.ValueKind == JsonValueKind.Object &&
+                responseElement.TryGetProperty("id", out var responseIdElement))
+            {
+                return responseIdElement.GetString();
+            }
+
+            if (root.TryGetProperty("id", out var idElement))
+            {
+                var id = idElement.GetString();
+
+                return string.IsNullOrWhiteSpace(id) ||
+                       !id.StartsWith("resp_", StringComparison.Ordinal)
+                    ? null
+                    : id;
+            }
+
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     private static IReadOnlyList<OpenAIToolDefinition>? CreateToolDefinitions(Agent agent)
     {
         if (agent.Tools.Count == 0)
@@ -532,14 +702,22 @@ internal static class OpenAIResponsesClient
         string ToolName,
         string ArgumentsJson);
 
+    private sealed record OpenAIFunctionCallOutputInput(
+    string Type,
+    [property: JsonPropertyName("call_id")]
+    string CallId,
+    string Output);
+
     private sealed record OpenAIResponseRequest(
         string Model,
         string Instructions,
-        string Input,
+        object Input,
         bool Stream,
         OpenAIReasoningOptions? Reasoning,
         OpenAITextOptions? Text,
-        IReadOnlyList<OpenAIToolDefinition>? Tools = null);
+        IReadOnlyList<OpenAIToolDefinition>? Tools = null,
+        [property: JsonPropertyName("previous_response_id")]
+        string? PreviousResponseId = null);
 
     private sealed record OpenAIReasoningOptions(
         string Effort);
