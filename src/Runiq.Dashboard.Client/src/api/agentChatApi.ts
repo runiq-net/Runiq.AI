@@ -1,3 +1,5 @@
+import type { AgentChatStreamEvent } from '../types/agentChat';
+
 type SendAgentMessageRequest = {
   basePath: string;
   agentId: string;
@@ -51,7 +53,7 @@ export async function sendAgentMessage({
 
 export async function streamAgentMessage(
   { basePath, agentId, message }: SendAgentMessageRequest,
-  onChunk: (chunk: string) => void,
+  onEvent: (event: AgentChatStreamEvent) => void,
 ): Promise<void> {
   const response = await fetch(
     `${trimTrailingSlash(basePath)}/api/agents/${encodeURIComponent(agentId)}/chat/stream`,
@@ -92,74 +94,70 @@ export async function streamAgentMessage(
     buffer = events.pop() ?? '';
 
     for (const event of events) {
-      const chunk = parseServerSentEvent(event);
+      const streamEvent = parseServerSentEvent(event);
 
-      if (chunk) {
-        onChunk(chunk);
+      if (streamEvent) {
+        onEvent(streamEvent);
       }
     }
   }
 
   buffer += decoder.decode();
 
-  const finalChunk = parseServerSentEvent(buffer);
+  const finalEvent = parseServerSentEvent(buffer);
 
-  if (finalChunk) {
-    onChunk(finalChunk);
+  if (finalEvent) {
+    onEvent(finalEvent);
   }
 }
-function parseServerSentEvent(event: string): string {
+
+
+function parseServerSentEvent(event: string): AgentChatStreamEvent | null {
   const dataLines = event
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.startsWith('data:'));
 
   if (dataLines.length === 0) {
-    return '';
+    return null;
   }
 
-  return dataLines
-    .map((line) => line.replace(/^data:\s?/, ''))
-    .filter((data) => data && data !== '[DONE]')
-    .map(extractChunkText)
-    .join('');
+  for (const line of dataLines) {
+    const data = line.replace(/^data:\s?/, '').trim();
+
+    if (!data || data === '[DONE]') {
+      continue;
+    }
+
+    const streamEvent = parseStreamEventPayload(data);
+
+    if (streamEvent) {
+      return streamEvent;
+    }
+  }
+
+  return null;
 }
 
-function extractChunkText(data: string): string {
+function parseStreamEventPayload(data: string): AgentChatStreamEvent | null {
   try {
-    const parsed = JSON.parse(data) as unknown;
+    const parsed = JSON.parse(data) as Partial<AgentChatStreamEvent>;
 
-    if (typeof parsed === 'string') {
-      return parsed;
+    if (!parsed.type) {
+      return null;
     }
 
-    if (!parsed || typeof parsed !== 'object') {
-      return '';
-    }
-
-    const chunk = parsed as {
-      delta?: string;
-      content?: string;
-      message?: string;
-      response?: string;
-      text?: string;
-      item?: {
-        content?: Array<{
-          text?: string;
-        }>;
-      };
-    };
-
-    return (
-      chunk.delta ??
-      chunk.content ??
-      chunk.message ??
-      chunk.response ??
-      chunk.text ??
-      chunk.item?.content?.map((content) => content.text ?? '').join('') ??
-      ''
-    );
+    return {
+      type: parsed.type,
+      content: parsed.content ?? null,
+      toolCallId: parsed.toolCallId ?? null,
+      toolName: parsed.toolName ?? null,
+      argumentsJson: parsed.argumentsJson ?? null,
+      outputJson: parsed.outputJson ?? null,
+      errorCode: parsed.errorCode ?? null,
+      errorMessage: parsed.errorMessage ?? null,
+    } as AgentChatStreamEvent;
   } catch {
-    return data;
+    return null;
   }
 }

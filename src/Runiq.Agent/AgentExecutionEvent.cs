@@ -6,51 +6,74 @@
 public sealed record AgentExecutionEvent(
     AgentExecutionEventKind Kind,
     string? Content,
-    string? ToolCallId = null)
+    string? ToolCallId = null,
+    string? ToolName = null,
+    string? ArgumentsJson = null,
+    string? OutputJson = null,
+    string? ErrorCode = null,
+    string? ErrorMessage = null)
 {
     public static AgentExecutionEvent AssistantDelta(string content)
     {
         return new AgentExecutionEvent(
-            AgentExecutionEventKind.AssistantDelta,
-            content);
+            Kind: AgentExecutionEventKind.AssistantDelta,
+            Content: content);
     }
 
-    public static AgentExecutionEvent ToolCallStarted(string toolCallId, string content)
+    public static AgentExecutionEvent ToolCallStarted(
+        string toolCallId,
+        string toolName,
+        string argumentsJson)
     {
         return new AgentExecutionEvent(
-            AgentExecutionEventKind.ToolCallStarted,
-            content,
-            toolCallId);
+            Kind: AgentExecutionEventKind.ToolCallStarted,
+            Content: toolName,
+            ToolCallId: toolCallId,
+            ToolName: toolName,
+            ArgumentsJson: argumentsJson);
     }
 
-    public static AgentExecutionEvent ToolCallCompleted(string toolCallId, string content)
+    public static AgentExecutionEvent ToolCallCompleted(
+        string toolCallId,
+        string toolName,
+        string outputJson)
     {
         return new AgentExecutionEvent(
-            AgentExecutionEventKind.ToolCallCompleted,
-            content,
-            toolCallId);
+            Kind: AgentExecutionEventKind.ToolCallCompleted,
+            Content: outputJson,
+            ToolCallId: toolCallId,
+            ToolName: toolName,
+            OutputJson: outputJson);
     }
 
-    public static AgentExecutionEvent ToolCallFailed(string toolCallId, string content)
+    public static AgentExecutionEvent ToolCallFailed(
+        string toolCallId,
+        string toolName,
+        string errorMessage,
+        string? errorCode = null)
     {
         return new AgentExecutionEvent(
-            AgentExecutionEventKind.ToolCallFailed,
-            content,
-            toolCallId);
+            Kind: AgentExecutionEventKind.ToolCallFailed,
+            Content: errorMessage,
+            ToolCallId: toolCallId,
+            ToolName: toolName,
+            ErrorCode: errorCode,
+            ErrorMessage: errorMessage);
     }
 
     public static AgentExecutionEvent Completed()
     {
         return new AgentExecutionEvent(
-            AgentExecutionEventKind.Completed,
-            null);
+            Kind: AgentExecutionEventKind.Completed,
+            Content: null);
     }
 
     public static AgentExecutionEvent Failed(string content)
     {
         return new AgentExecutionEvent(
-            AgentExecutionEventKind.Failed,
-            content);
+            Kind: AgentExecutionEventKind.Failed,
+            Content: content,
+            ErrorMessage: content);
     }
 }
 

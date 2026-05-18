@@ -6,7 +6,11 @@ import { AgentInspectorPanel } from '../components/AgentChat/AgentInspectorPanel
 import { ChatComposer } from '../components/AgentChat/ChatComposer';
 import { ChatThread } from '../components/AgentChat/ChatThread';
 import { getDashboardBasePath } from '../dashboardConfig';
-import type { AgentChatMessage, AgentChatMethod } from '../types/agentChat';
+import type {
+  AgentChatMessage,
+  AgentChatMethod,
+  AgentChatStreamEvent,
+} from '../types/agentChat';
 
 type AgentChatPageProps = {
   agentId: string;
@@ -21,6 +25,86 @@ function createMessage(role: AgentChatMessage['role'], content: string): AgentCh
     role,
     content,
   };
+}
+
+function applyStreamEvent(
+  message: AgentChatMessage,
+  event: AgentChatStreamEvent,
+): AgentChatMessage {
+  if (event.type === 'assistant_delta') {
+    return {
+      ...message,
+      content: message.content + (event.content ?? ''),
+    };
+  }
+
+  if (event.type === 'tool_call_started') {
+    const toolCallId = event.toolCallId ?? createFallbackToolCallId();
+    const toolName = event.toolName ?? event.content ?? 'tool';
+
+    return {
+      ...message,
+      toolCalls: [
+        ...(message.toolCalls ?? []),
+        {
+          id: toolCallId,
+          name: toolName,
+          status: 'running',
+          argumentsJson: event.argumentsJson ?? undefined,
+        },
+      ],
+    };
+  }
+
+  if (event.type === 'tool_call_completed') {
+    return {
+      ...message,
+      toolCalls: (message.toolCalls ?? []).map((toolCall) =>
+        toolCall.id === event.toolCallId
+          ? {
+            ...toolCall,
+            status: 'completed',
+            outputJson: event.outputJson ?? event.content ?? undefined,
+          }
+          : toolCall,
+      ),
+    };
+  }
+
+  if (event.type === 'tool_call_failed') {
+    return {
+      ...message,
+      toolCalls: (message.toolCalls ?? []).map((toolCall) =>
+        toolCall.id === event.toolCallId
+          ? {
+            ...toolCall,
+            status: 'failed',
+            errorCode: event.errorCode ?? undefined,
+            errorMessage: event.errorMessage ?? event.content ?? undefined,
+          }
+          : toolCall,
+      ),
+    };
+  }
+
+  if (event.type === 'failed') {
+    return {
+      ...message,
+      role: 'error',
+      content:
+        event.errorMessage ??
+        event.content ??
+        'Agent execution failed.',
+    };
+  }
+
+  return message;
+}
+
+function createFallbackToolCallId(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `tool-${Date.now()}-${Math.random()}`;
 }
 
 export function AgentChatPage({ agentId }: AgentChatPageProps) {
@@ -110,18 +194,11 @@ export function AgentChatPage({ agentId }: AgentChatPageProps) {
           agentId,
           message,
         },
-        (chunk) => {
-          if (!chunk) {
-            return;
-          }
-
+        (event) => {
           setMessages((current) =>
             current.map((item) =>
               item.id === assistantMessage.id
-                ? {
-                    ...item,
-                    content: item.content + chunk,
-                  }
+                ? applyStreamEvent(item, event)
                 : item,
             ),
           );

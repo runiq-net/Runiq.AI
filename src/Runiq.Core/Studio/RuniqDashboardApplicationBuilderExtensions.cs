@@ -9,6 +9,7 @@ using Runiq.Core.Dashboard;
 using Runiq.Core.Metadata;
 using System.Text.Json;
 
+
 namespace Runiq.Core;
 
 /// <summary>
@@ -16,6 +17,7 @@ namespace Runiq.Core;
 /// </summary>
 public static class RuniqDashboardApplicationBuilderExtensions
 {
+
     private static readonly JsonSerializerOptions StreamJsonOptions = new(JsonSerializerDefaults.Web);
     /// <summary>
     /// Runiq Dashboard'u varsayılan ayarlarla yayınlar.
