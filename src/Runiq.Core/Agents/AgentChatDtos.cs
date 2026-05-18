@@ -23,7 +23,12 @@ public sealed record AgentChatResponse(
 public sealed record AgentChatStreamEvent(
     [property: JsonPropertyName("type")] string Type,
     [property: JsonPropertyName("content")] string? Content,
-    [property: JsonPropertyName("toolCallId")] string? ToolCallId = null);
+    [property: JsonPropertyName("toolCallId")] string? ToolCallId = null,
+    [property: JsonPropertyName("toolName")] string? ToolName = null,
+    [property: JsonPropertyName("argumentsJson")] string? ArgumentsJson = null,
+    [property: JsonPropertyName("outputJson")] string? OutputJson = null,
+    [property: JsonPropertyName("errorCode")] string? ErrorCode = null,
+    [property: JsonPropertyName("errorMessage")] string? ErrorMessage = null);
 
 /// <summary>
 /// Agent execution olaylarını Dashboard'un beklediği stream DTO formatına çevirir.
@@ -38,38 +43,44 @@ internal static class AgentChatStreamEventMapper
         {
             AgentExecutionEventKind.AssistantDelta => new AgentChatStreamEvent(
                 Type: "assistant_delta",
-                Content: executionEvent.Content,
-                ToolCallId: executionEvent.ToolCallId),
+                Content: executionEvent.Content),
 
             AgentExecutionEventKind.ToolCallStarted => new AgentChatStreamEvent(
                 Type: "tool_call_started",
                 Content: executionEvent.Content,
-                ToolCallId: executionEvent.ToolCallId),
+                ToolCallId: executionEvent.ToolCallId,
+                ToolName: executionEvent.ToolName,
+                ArgumentsJson: executionEvent.ArgumentsJson),
 
             AgentExecutionEventKind.ToolCallCompleted => new AgentChatStreamEvent(
                 Type: "tool_call_completed",
                 Content: executionEvent.Content,
-                ToolCallId: executionEvent.ToolCallId),
+                ToolCallId: executionEvent.ToolCallId,
+                ToolName: executionEvent.ToolName,
+                OutputJson: executionEvent.OutputJson),
 
             AgentExecutionEventKind.ToolCallFailed => new AgentChatStreamEvent(
                 Type: "tool_call_failed",
                 Content: executionEvent.Content,
-                ToolCallId: executionEvent.ToolCallId),
+                ToolCallId: executionEvent.ToolCallId,
+                ToolName: executionEvent.ToolName,
+                ErrorCode: executionEvent.ErrorCode,
+                ErrorMessage: executionEvent.ErrorMessage),
 
             AgentExecutionEventKind.Completed => new AgentChatStreamEvent(
                 Type: "completed",
-                Content: executionEvent.Content,
-                ToolCallId: executionEvent.ToolCallId),
+                Content: null),
 
             AgentExecutionEventKind.Failed => new AgentChatStreamEvent(
                 Type: "failed",
                 Content: executionEvent.Content,
-                ToolCallId: executionEvent.ToolCallId),
+                ErrorCode: executionEvent.ErrorCode,
+                ErrorMessage: executionEvent.ErrorMessage),
 
             _ => new AgentChatStreamEvent(
                 Type: "failed",
                 Content: $"Unsupported agent execution event kind: {executionEvent.Kind}.",
-                ToolCallId: executionEvent.ToolCallId)
+                ErrorMessage: $"Unsupported agent execution event kind: {executionEvent.Kind}.")
         };
     }
 }

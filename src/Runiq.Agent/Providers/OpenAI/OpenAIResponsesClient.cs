@@ -168,12 +168,14 @@ internal static class OpenAIResponsesClient
 
                 yield return AgentExecutionEvent.ToolCallStarted(
                     functionCall.ToolCallId,
-                    functionCall.ToolName);
+                    functionCall.ToolName,
+                    functionCall.ArgumentsJson);
 
                 if (toolInvoker is null)
                 {
                     yield return AgentExecutionEvent.ToolCallFailed(
                         functionCall.ToolCallId,
+                        functionCall.ToolName,
                         "Tool invoker is not available.");
 
                     continue;
@@ -189,7 +191,9 @@ internal static class OpenAIResponsesClient
                 {
                     yield return AgentExecutionEvent.ToolCallFailed(
                         functionCall.ToolCallId,
-                        $"{toolResult.ErrorCode}: {toolResult.ErrorMessage}");
+                        functionCall.ToolName,
+                        toolResult.ErrorMessage ?? "Tool execution failed.",
+                        toolResult.ErrorCode);
 
                     continue;
                 }
@@ -199,6 +203,7 @@ internal static class OpenAIResponsesClient
 
                 yield return AgentExecutionEvent.ToolCallCompleted(
                     functionCall.ToolCallId,
+                    functionCall.ToolName,
                     toolResult.OutputJson ?? "{}");
 
                 continue;
