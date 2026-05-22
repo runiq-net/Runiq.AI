@@ -6,8 +6,8 @@
     <Project Path="src/Runiq.Agent/Runiq.Agents.csproj" />
     <Project Path="src/Runiq.Core/Runiq.Core.csproj" />
   </Folder>
-  <Folder Name="/src/Runiq.Agent/" />
   <Folder Name="/tests/">
     <Project Path="tests/Runiq.Agents.Tests/Runiq.Agents.Tests.csproj" />
+    <Project Path="tests/Runiq.Core.Tests/Runiq.Core.Tests.csproj" />
   </Folder>
 </Solution>
