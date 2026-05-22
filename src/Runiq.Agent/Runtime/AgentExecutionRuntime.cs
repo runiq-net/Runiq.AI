@@ -2,6 +2,7 @@
 using Runiq.Agents.Providers;
 using Runiq.Agents.Providers.OpenAI;
 using Runiq.Agents.Tools;
+using System.Text;
 
 namespace Runiq.Agents.Runtime;
 
@@ -13,6 +14,7 @@ public sealed class AgentExecutionRuntime
     private readonly IEnumerable<Agent> agents;
     private readonly OpenAIResponsesClient openAIResponsesClient;
     private readonly OpenAICompatibleClient openAICompatibleClient;
+    private readonly AgentToolInvoker toolInvoker;
 
     /// <summary>
     /// Yeni bir agent execution runtime örneği oluşturur.
@@ -23,11 +25,13 @@ public sealed class AgentExecutionRuntime
     public AgentExecutionRuntime(
         IEnumerable<Agent> agents,
         OpenAIResponsesClient openAIResponsesClient,
-        OpenAICompatibleClient openAICompatibleClient)
+        OpenAICompatibleClient openAICompatibleClient,
+        AgentToolInvoker toolInvoker)
     {
         this.agents = agents;
         this.openAIResponsesClient = openAIResponsesClient;
         this.openAICompatibleClient = openAICompatibleClient;
+        this.toolInvoker = toolInvoker;
     }
 
     /// <summary>
@@ -74,27 +78,43 @@ public sealed class AgentExecutionRuntime
             return validationFailure;
         }
 
-        var endpoint = ProviderDefaults.ResolveUrl(agent);
-        var providerDefault = ProviderDefaults.Get(agent.ProviderName);
+        var messageBuilder = new StringBuilder();
 
-        return providerDefault.Protocol switch
+        await foreach (var executionEvent in ExecuteStreamAsync(
+                           agent,
+                           input,
+                           toolInvoker,
+                           cancellationToken))
         {
-            ProviderProtocol.OpenAICompatible => await ExecuteOpenAICompatibleAsync(
-                agent,
-                endpoint,
-                input,
-                cancellationToken),
+            switch (executionEvent.Kind)
+            {
+                case AgentExecutionEventKind.AssistantDelta:
+                    messageBuilder.Append(executionEvent.Content);
+                    break; 
 
-            ProviderProtocol.Ollama => await ExecuteOllamaAsync(
-                agent,
-                endpoint,
-                input,
-                cancellationToken),
+                case AgentExecutionEventKind.Failed:
+                    return AgentExecutionResult.Failure(
+                        errorCode: executionEvent.ErrorCode ?? "AgentExecutionFailed",
+                        errorMessage: executionEvent.ErrorMessage ?? "Agent execution failed.");
 
-            _ => AgentExecutionResult.Failure(
-                errorCode: "UnsupportedProviderProtocol",
-                errorMessage: $"Provider protocol '{providerDefault.Protocol}' is not supported.")
-        };
+                case AgentExecutionEventKind.Completed:
+                    var message = messageBuilder.ToString();
+
+                    return string.IsNullOrWhiteSpace(message)
+                        ? AgentExecutionResult.Failure(
+                            errorCode: "AgentExecutionEmptyMessage",
+                            errorMessage: "Agent execution completed without producing a message.")
+                        : AgentExecutionResult.Success(message);
+            }
+        }
+
+        var fallbackMessage = messageBuilder.ToString();
+
+        return string.IsNullOrWhiteSpace(fallbackMessage)
+            ? AgentExecutionResult.Failure(
+                errorCode: "AgentExecutionEmptyMessage",
+                errorMessage: "Agent execution completed without producing a message.")
+            : AgentExecutionResult.Success(fallbackMessage);
     }
 
     /// <summary>
@@ -204,28 +224,6 @@ public sealed class AgentExecutionRuntime
 
                 yield break;
         }
-    }
-
-    private Task<AgentExecutionResult> ExecuteOpenAICompatibleAsync(
-        Agent agent,
-        Uri endpoint,
-        string input,
-        CancellationToken cancellationToken)
-    {
-        if (IsNativeOpenAIProvider(agent))
-        {
-            return openAIResponsesClient.ExecuteAsync(
-                agent: agent,
-                endpoint: endpoint,
-                input: input,
-                cancellationToken: cancellationToken);
-        }
-
-        return openAICompatibleClient.ExecuteAsync(
-            agent: agent,
-            endpoint: endpoint,
-            input: input,
-            cancellationToken: cancellationToken);
     }
 
     private async IAsyncEnumerable<AgentExecutionEvent> ExecuteOpenAICompatibleStreamAsync(
