@@ -1,9 +1,11 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using Runiq.Agents;
+using Runiq.Agents.Providers.OpenAI;
+using Runiq.Agents.Runtime;
 using Runiq.Agents.Validation;
+using Runiq.Core.Agents;
 using Runiq.Core.Configuration;
 using Runiq.Core.Metadata;
-using Runiq.Agents;
-using Runiq.Core.Agents;
 
 namespace Runiq.Core;
 
@@ -20,6 +22,12 @@ public static class RuniqServerServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddSingleton<IRuntimeMetadataService, RuntimeMetadataService>();
+
+        services.AddHttpClient<OpenAIResponsesClient>();
+        services.AddHttpClient<OpenAICompatibleClient>();
+
+        services.AddScoped<AgentExecutionRuntime>();
+        services.AddScoped<AgentChatApiHandler>();
 
         return services;
     }

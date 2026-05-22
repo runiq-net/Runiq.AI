@@ -50,9 +50,9 @@ function ChatMethodSelector({
       />
 
       <ChatMethodRadio
-        label="Generate"
-        value="generate"
-        checked={value === 'generate'}
+        label="Result"
+        value="result"
+        checked={value === 'result'}
         onChange={onChange}
       />
     </div>

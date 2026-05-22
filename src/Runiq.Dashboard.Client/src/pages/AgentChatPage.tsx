@@ -169,7 +169,7 @@ export function AgentChatPage({ agentId }: AgentChatPageProps) {
     setExecuting(true);
 
     try {
-      if (chatMethod === 'generate') {
+      if (chatMethod === 'result') {
         const assistantResponse = await sendAgentMessage({
           basePath,
           agentId,
@@ -238,7 +238,7 @@ export function AgentChatPage({ agentId }: AgentChatPageProps) {
       <section className="flex min-w-0 flex-1 flex-col gap-2.5">
         <ChatThread
           messages={messages}
-          isWaiting={isExecuting && chatMethod === 'generate'}
+          isWaiting={isExecuting && chatMethod === 'result'}
         />
 
         <ChatComposer disabled={isExecuting} onSubmit={handleSubmit} />

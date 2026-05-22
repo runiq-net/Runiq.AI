@@ -1,34 +1,6 @@
-﻿using System.Text.Json.Serialization;
-using Runiq.Agents;
+﻿using Runiq.Agents;
 
 namespace Runiq.Core.Agents;
-
-/// <summary>
-/// Studio üzerinden agent'a gönderilen chat isteğini temsil eder.
-/// </summary>
-public sealed record AgentChatRequest(string Message);
-
-/// <summary>
-/// Studio üzerinden çalıştırılan agent chat cevabını temsil eder.
-/// </summary>
-public sealed record AgentChatResponse(
-    bool IsSuccess,
-    string? Message,
-    string? ErrorCode,
-    string? ErrorMessage);
-
-/// <summary>
-/// Dashboard canlı chat ekranına gönderilen SSE olayını temsil eder.
-/// </summary>
-public sealed record AgentChatStreamEvent(
-    [property: JsonPropertyName("type")] string Type,
-    [property: JsonPropertyName("content")] string? Content,
-    [property: JsonPropertyName("toolCallId")] string? ToolCallId = null,
-    [property: JsonPropertyName("toolName")] string? ToolName = null,
-    [property: JsonPropertyName("argumentsJson")] string? ArgumentsJson = null,
-    [property: JsonPropertyName("outputJson")] string? OutputJson = null,
-    [property: JsonPropertyName("errorCode")] string? ErrorCode = null,
-    [property: JsonPropertyName("errorMessage")] string? ErrorMessage = null);
 
 /// <summary>
 /// Agent execution olaylarını Dashboard'un beklediği stream DTO formatına çevirir.

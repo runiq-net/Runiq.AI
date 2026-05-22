@@ -7,17 +7,18 @@ type SendAgentMessageRequest = {
 };
 
 type AgentChatResponse = {
-  response?: string;
-  message?: string;
-  content?: string;
+  isSuccess?: boolean;
+  message?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
 };
 
 function trimTrailingSlash(value: string): string {
   return value.endsWith('/') ? value.slice(0, -1) : value;
 }
 
-function resolveResponseText(response: AgentChatResponse): string {
-  return response.response ?? response.message ?? response.content ?? '';
+function buildAgentChatUrl(basePath: string, agentId: string): string {
+  return `${trimTrailingSlash(basePath)}/api/agents/${encodeURIComponent(agentId)}/chat`;
 }
 
 export async function sendAgentMessage({
@@ -25,47 +26,49 @@ export async function sendAgentMessage({
   agentId,
   message,
 }: SendAgentMessageRequest): Promise<string> {
-  const response = await fetch(
-    `${trimTrailingSlash(basePath)}/api/agents/${encodeURIComponent(agentId)}/chat`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ message }),
+  const response = await fetch(buildAgentChatUrl(basePath, agentId), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
     },
-  );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || `Agent chat request failed. Status: ${response.status}`);
-  }
+    body: JSON.stringify({
+      message,
+      responseMode: 'result',
+    }),
+  });
 
   const payload = (await response.json()) as AgentChatResponse;
-  const responseText = resolveResponseText(payload);
 
-  if (!responseText) {
+  if (!response.ok || payload.isSuccess === false) {
+    throw new Error(
+      payload.errorMessage ||
+        payload.errorCode ||
+        `Agent chat request failed. Status: ${response.status}`,
+    );
+  }
+
+  if (!payload.message) {
     throw new Error('Agent response was empty.');
   }
 
-  return responseText;
+  return payload.message;
 }
 
 export async function streamAgentMessage(
   { basePath, agentId, message }: SendAgentMessageRequest,
   onEvent: (event: AgentChatStreamEvent) => void,
 ): Promise<void> {
-  const response = await fetch(
-    `${trimTrailingSlash(basePath)}/api/agents/${encodeURIComponent(agentId)}/chat/stream`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'text/event-stream',
-      },
-      body: JSON.stringify({ message }),
+  const response = await fetch(buildAgentChatUrl(basePath, agentId), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
     },
-  );
+    body: JSON.stringify({
+      message,
+      responseMode: 'stream',
+    }),
+  });
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -110,7 +113,6 @@ export async function streamAgentMessage(
     onEvent(finalEvent);
   }
 }
-
 
 function parseServerSentEvent(event: string): AgentChatStreamEvent | null {
   const dataLines = event

@@ -68,12 +68,15 @@ public sealed record AgentExecutionEvent(
             Content: null);
     }
 
-    public static AgentExecutionEvent Failed(string content)
+    public static AgentExecutionEvent Failed(
+        string errorMessage,
+        string? errorCode = null)
     {
         return new AgentExecutionEvent(
             Kind: AgentExecutionEventKind.Failed,
-            Content: content,
-            ErrorMessage: content);
+            Content: errorMessage,
+            ErrorCode: errorCode,
+            ErrorMessage: errorMessage);
     }
 }
 

@@ -29,7 +29,16 @@ builder.Services.AddRuniqServer(opt =>
         use the available weather tool and answer clearly.
         """,
         model: "openai/gpt-5",
-        apiKey: builder.Configuration["OpenAI:ApiKey"]));
+        apiKey: builder.Configuration["OpenAI:ApiKey"])
+        .AddTool<WeatherTool>());
+
+    opt.AddAgent(new Agent(
+    id: "broken-compatible-agent",
+    name: "Broken Compatible Agent",
+    instructions: "You are a test assistant.",
+    model: "openrouter/openai/gpt-4o-mini",
+    apiKey: "wrong-key"));
+
     //    opt.AddAgent(new Agent(
     //        id: "assistant",
     //        name: "Assistant",

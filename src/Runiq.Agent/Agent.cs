@@ -1,9 +1,9 @@
 ﻿using System.Runtime.CompilerServices;
 using Runiq.Agents.Configuration;
 using Runiq.Agents.Models;
-using Runiq.Agents.Providers;
-using Runiq.Agents.Providers.OpenAI;
 using Runiq.Agents.Tools;
+
+
 
 namespace Runiq.Agents;
 
@@ -12,13 +12,12 @@ namespace Runiq.Agents;
 /// </summary>
 public class Agent
 {
-
-    private readonly List<AgentToolRegistration> _tools = [];
+    private readonly List<AgentToolRegistration> tools = [];
 
     /// <summary>
     /// Agent'a code-first olarak eklenmiş tool kayıtlarını döner.
     /// </summary>
-    public IReadOnlyList<AgentToolRegistration> Tools => _tools;
+    public IReadOnlyList<AgentToolRegistration> Tools => tools;
 
     public string Id { get; }
 
@@ -42,7 +41,6 @@ public class Agent
 
     public ModelReference ModelReference { get; }
 
-
     public Agent(
         string id,
         string name,
@@ -50,8 +48,8 @@ public class Agent
         string model,
         string? apiKey = null,
         ProviderOptions? provider = null,
-            string reasoningEffort = "minimal",
-    string verbosity = "low")
+        string reasoningEffort = "minimal",
+        string verbosity = "low")
     {
         Id = ValidateRequired(id, nameof(id));
         Name = ValidateRequired(name, nameof(name));
@@ -64,214 +62,53 @@ public class Agent
         Verbosity = ValidateVerbosity(verbosity);
     }
 
-
     /// <summary>
     /// Agent cevabını tek seferlik tamamlanmış çıktı olarak üretir.
     /// </summary>
-    public async Task<AgentExecutionResult> ExecuteAsync(
+    public Task<AgentExecutionResult> ExecuteAsync(
         string input,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(input))
-        {
-            return AgentExecutionResult.Failure(
-                errorCode: "InputRequired",
-                errorMessage: "Agent input cannot be empty.");
-        }
-
-        var validationFailure = ValidateProviderRuntime();
-
-        if (validationFailure is not null)
-        {
-            return validationFailure;
-        }
-
-        var endpoint = ProviderDefaults.ResolveUrl(this);
-        var providerDefault = ProviderDefaults.Get(ProviderName);
-
-        return providerDefault.Protocol switch
-        {
-            ProviderProtocol.OpenAICompatible => await ExecuteOpenAICompatibleAsync(
-                endpoint,
-                input,
-                cancellationToken),
-
-            ProviderProtocol.Ollama => await ExecuteOllamaAsync(
-                endpoint,
-                input,
-                cancellationToken),
-
-            _ => AgentExecutionResult.Failure(
-                errorCode: "UnsupportedProviderProtocol",
-                errorMessage: $"Provider protocol '{providerDefault.Protocol}' is not supported.")
-        };
+        return Task.FromResult(AgentExecutionResult.Failure(
+            errorCode: "DirectAgentExecutionNotSupported",
+            errorMessage:
+            "Direct Agent.ExecuteAsync is no longer responsible for provider execution. " +
+            "Use AgentExecutionRuntime.ExecuteAsync through dependency injection."));
     }
 
     /// <summary>
     /// Agent cevabını parça parça üretir.
-    /// Studio tarafındaki canlı cevap akışı için kullanılır.
     /// </summary>
     public async IAsyncEnumerable<AgentExecutionEvent> ExecuteStreamAsync(
+        Agent agent,
         string input,
         AgentToolInvoker? toolInvoker = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(input))
-        {
-            yield break;
-        }
+        await Task.CompletedTask;
 
-        var validationFailure = ValidateProviderRuntime();
-
-        if (validationFailure is not null)
-        {
-            yield return AgentExecutionEvent.Failed(validationFailure.ErrorMessage ?? "Agent stream request failed.");
-            yield break;
-        }
-
-        var endpoint = ProviderDefaults.ResolveUrl(this);
-        var providerDefault = ProviderDefaults.Get(ProviderName);
-
-        switch (providerDefault.Protocol)
-        {
-            case ProviderProtocol.OpenAICompatible:
-                await foreach (var executionEvent in ExecuteOpenAICompatibleStreamAsync(
-                               endpoint,
-                               input,
-                               toolInvoker,
-                               cancellationToken))
-                {
-                    yield return executionEvent;
-                }
-
-                yield break;
-
-            case ProviderProtocol.Ollama:
-                await foreach (var chunk in ExecuteOllamaStreamAsync(
-                                   endpoint,
-                                   input,
-                                   cancellationToken))
-                {
-                    if (!string.IsNullOrEmpty(chunk))
-                    {
-                        yield return AgentExecutionEvent.AssistantDelta(chunk);
-                    }
-                }
-
-                yield return AgentExecutionEvent.Completed();
-                yield break;
-
-            default:
-                yield return AgentExecutionEvent.Failed($"Provider protocol '{providerDefault.Protocol}' is not supported.");
-                yield break;
-        }
+        yield return AgentExecutionEvent.Failed(
+            "Direct Agent.ExecuteStreamAsync is no longer responsible for provider execution. " +
+            "Use AgentExecutionRuntime.ExecuteStreamAsync through dependency injection.",
+            "DirectAgentExecutionNotSupported");
     }
 
-    private Task<AgentExecutionResult> ExecuteOpenAICompatibleAsync(
-        Uri endpoint,
-        string input,
-        CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Agent'a yeni bir tool kaydı ekler.
+    /// </summary>
+    /// <param name="tool">Eklenecek tool kaydıdır.</param>
+    internal void AddToolRegistration(AgentToolRegistration tool)
     {
-        if (IsNativeOpenAIProvider())
+        ArgumentNullException.ThrowIfNull(tool);
+
+        if (tools.Any(existing =>
+                existing.Name.Equals(tool.Name, StringComparison.OrdinalIgnoreCase)))
         {
-            return OpenAIResponsesClient.ExecuteAsync(
-                agent: this,
-                endpoint: endpoint,
-                input: input,
-                cancellationToken: cancellationToken);
+            throw new InvalidOperationException(
+                $"Agent '{Id}' already has a tool named '{tool.Name}'.");
         }
 
-        return OpenAICompatibleClient.ExecuteAsync(
-            agent: this,
-            endpoint: endpoint,
-            input: input,
-            cancellationToken: cancellationToken);
-    }
-
-    private async IAsyncEnumerable<AgentExecutionEvent> ExecuteOpenAICompatibleStreamAsync(
-        Uri endpoint,
-        string input,
-          AgentToolInvoker? toolInvoker = null,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        if (IsNativeOpenAIProvider())
-        {
-            await foreach (var executionEvent in OpenAIResponsesClient.StreamAsync(
-                               agent: this,
-                               endpoint: endpoint,
-                               input: input,
-                               toolInvoker: toolInvoker,
-                               cancellationToken: cancellationToken))
-            {
-                yield return executionEvent;
-            }
-
-            yield break;
-        }
-
-        await foreach (var chunk in OpenAICompatibleClient.StreamAsync(
-                           agent: this,
-                           endpoint: endpoint,
-                           input: input,
-                           cancellationToken: cancellationToken))
-        {
-            if (!string.IsNullOrEmpty(chunk))
-            {
-                yield return AgentExecutionEvent.AssistantDelta(chunk);
-            }
-        }
-
-        yield return AgentExecutionEvent.Completed();
-    }
-
-
-    private Task<AgentExecutionResult> ExecuteOllamaAsync(
-        Uri endpoint,
-        string input,
-        CancellationToken cancellationToken = default)
-    {
-        var message =
-            $"Agent '{Name}' will call Ollama endpoint '{endpoint}' with model '{ModelName}'. Input: {input}";
-
-        return Task.FromResult(AgentExecutionResult.Success(message));
-    }
-
-    private async IAsyncEnumerable<string> ExecuteOllamaStreamAsync(
-        Uri endpoint,
-        string input,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        var result = await ExecuteOllamaAsync(endpoint, input, cancellationToken);
-
-        if (result.IsSuccess && !string.IsNullOrWhiteSpace(result.Message))
-        {
-            yield return result.Message;
-        }
-    }
-
-    private AgentExecutionResult? ValidateProviderRuntime()
-    {
-        var providerDefault = ProviderDefaults.Get(ProviderName);
-        var hasCustomUrl = !string.IsNullOrWhiteSpace(Provider?.Url);
-
-        if (providerDefault.RequiresApiKey &&
-            !hasCustomUrl &&
-            string.IsNullOrWhiteSpace(ApiKey))
-        {
-            return AgentExecutionResult.Failure(
-                errorCode: "ApiKeyMissing",
-                errorMessage: $"Agent '{Id}' uses default provider endpoint for '{ProviderName}' but ApiKey is missing.");
-        }
-
-        return null;
-    }
-
-    private bool IsNativeOpenAIProvider()
-    {
-        return string.Equals(
-            ProviderName,
-            "openai",
-            StringComparison.OrdinalIgnoreCase);
+        tools.Add(tool);
     }
 
     private static string ValidateRequired(string value, string parameterName)
@@ -314,23 +151,4 @@ public class Agent
                 nameof(Verbosity))
         };
     }
-
-    /// <summary>
-    /// Agent'a yeni bir tool kaydı ekler.
-    /// </summary>
-    /// <param name="tool">Eklenecek tool kaydıdır.</param>
-    internal void AddToolRegistration(AgentToolRegistration tool)
-    {
-        ArgumentNullException.ThrowIfNull(tool);
-
-        if (_tools.Any(existing =>
-                existing.Name.Equals(tool.Name, StringComparison.OrdinalIgnoreCase)))
-        {
-            throw new InvalidOperationException(
-                $"Agent '{Id}' already has a tool named '{tool.Name}'.");
-        }
-
-        _tools.Add(tool);
-    }
-
 }

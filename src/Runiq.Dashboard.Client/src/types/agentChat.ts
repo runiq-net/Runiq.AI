@@ -1,4 +1,4 @@
-export type AgentChatMethod = 'generate' | 'stream';
+export type AgentChatMethod = 'result' | 'stream';
 
 export type AgentChatMessageRole = 'user' | 'assistant' | 'error';
 

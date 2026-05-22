@@ -12,9 +12,11 @@ namespace Runiq.Agents.Providers.OpenAI;
 /// <summary>
 /// OpenAI Responses API üzerinden agent cevabı üreten native OpenAI istemcisidir.
 /// </summary>
-internal static class OpenAIResponsesClient
+public sealed class OpenAIResponsesClient
 {
-    private static readonly HttpClient HttpClient = new();
+
+    private readonly HttpClient httpClient;
+
     private static readonly NullabilityInfoContext NullabilityContext = new();
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -22,7 +24,12 @@ internal static class OpenAIResponsesClient
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    public static async Task<AgentExecutionResult> ExecuteAsync(
+    public OpenAIResponsesClient(HttpClient httpClient)
+    {
+        this.httpClient = httpClient;
+    }
+
+    public async Task<AgentExecutionResult> ExecuteAsync(
         Agent agent,
         Uri endpoint,
         string input,
@@ -45,7 +52,7 @@ internal static class OpenAIResponsesClient
                 Text: new OpenAITextOptions(Verbosity: agent.Verbosity)
                 ));
 
-        using var response = await HttpClient.SendAsync(request, cancellationToken);
+        using var response = await httpClient.SendAsync(request, cancellationToken);
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
@@ -68,7 +75,7 @@ internal static class OpenAIResponsesClient
     /// <summary>
     /// OpenAI Responses API stream çıktısını parça parça üretir.
     /// </summary>
-    public static async IAsyncEnumerable<AgentExecutionEvent> StreamAsync(
+    public async IAsyncEnumerable<AgentExecutionEvent> StreamAsync(
         Agent agent,
         Uri endpoint,
         string input,
@@ -82,11 +89,6 @@ internal static class OpenAIResponsesClient
         var requestUrl = BuildResponsesUrl(endpoint);
         var toolDefinitions = CreateToolDefinitions(agent);
 
-        if (toolDefinitions is { Count: > 0 })
-        {
-            Console.WriteLine(
-                $"[responses-tools] {JsonSerializer.Serialize(toolDefinitions, JsonOptions)}");
-        }
 
         using var request = CreateRequest(
             agent,
@@ -102,13 +104,11 @@ internal static class OpenAIResponsesClient
 
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
 
-        using var response = await HttpClient.SendAsync(
+        using var response = await httpClient.SendAsync(
             request,
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken);
 
-        Console.WriteLine(
-            $"[responses-stream] headers received in {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:N0} ms. status={(int)response.StatusCode}");
 
         if (!response.IsSuccessStatusCode)
         {
@@ -149,15 +149,10 @@ internal static class OpenAIResponsesClient
 
             responseId ??= TryReadResponseId(data);
 
-            if (string.Equals(data, "[DONE]", StringComparison.OrdinalIgnoreCase))
-            {
-                Console.WriteLine(
-                    $"[responses-stream] done in {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:N0} ms");
-
+            if (string.Equals(data, "[DONE]", StringComparison.OrdinalIgnoreCase))       
                 break;
-            }
+        
 
-            Console.WriteLine($"[responses-stream-raw] {data}");
 
             var functionCall = TryReadCompletedFunctionCall(data);
 
@@ -165,9 +160,7 @@ internal static class OpenAIResponsesClient
             {
                 hasAnyRuntimeEvent = true;
 
-                Console.WriteLine(
-                    $"[responses-tool-call] name={functionCall.ToolName}, callId={functionCall.ToolCallId}, arguments={functionCall.ArgumentsJson}");
-
+         
                 yield return AgentExecutionEvent.ToolCallStarted(
                     functionCall.ToolCallId,
                     functionCall.ToolName,
@@ -200,9 +193,7 @@ internal static class OpenAIResponsesClient
                     continue;
                 }
 
-                Console.WriteLine(
-                    $"[responses-tool-result] name={functionCall.ToolName}, callId={functionCall.ToolCallId}, output={toolResult.OutputJson}");
-
+        
                 var outputJson = toolResult.OutputJson ?? "{}";
 
                 yield return AgentExecutionEvent.ToolCallCompleted(
@@ -238,18 +229,12 @@ internal static class OpenAIResponsesClient
 
             var content = TryReadStreamTextDelta(data);
 
-            if (string.IsNullOrEmpty(content))
-            {
+            if (string.IsNullOrEmpty(content))            
                 continue;
-            }
+      
 
-            if (!firstContentLogged)
-            {
+            if (!firstContentLogged)   
                 firstContentLogged = true;
-
-                Console.WriteLine(
-                    $"[responses-stream] first content received in {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:N0} ms");
-            }
 
             hasAnyRuntimeEvent = true;
             yield return AgentExecutionEvent.AssistantDelta(content);
@@ -304,7 +289,7 @@ internal static class OpenAIResponsesClient
     }
 
 
-    private static async IAsyncEnumerable<AgentExecutionEvent> StreamToolOutputAsync(
+    private async IAsyncEnumerable<AgentExecutionEvent> StreamToolOutputAsync(
     Agent agent,
     Uri requestUrl,
     string previousResponseId,
@@ -321,7 +306,7 @@ internal static class OpenAIResponsesClient
 
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
 
-        using var response = await HttpClient.SendAsync(
+        using var response = await httpClient.SendAsync(
             request,
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken);

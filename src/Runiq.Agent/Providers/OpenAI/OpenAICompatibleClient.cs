@@ -11,9 +11,15 @@ namespace Runiq.Agents.Providers.OpenAI
     /// <summary>
     /// OpenAI-compatible chat completion endpointleriyle konuşan HTTP client sorumluluğunu taşır.
     /// </summary>
-    internal static class OpenAICompatibleClient
+    public sealed class OpenAICompatibleClient
     {
-        private static readonly HttpClient HttpClient = new();
+
+        private readonly HttpClient httpClient;
+
+        public OpenAICompatibleClient(HttpClient httpClient)
+        {
+            this.httpClient = httpClient;
+        }
 
         private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
         {
@@ -23,7 +29,7 @@ namespace Runiq.Agents.Providers.OpenAI
         /// <summary>
         /// Agent girdisini OpenAI-compatible chat completions formatıyla modele gönderir.
         /// </summary>
-        public static async Task<AgentExecutionResult> ExecuteAsync(
+        public async Task<AgentExecutionResult> ExecuteAsync(
             Agent agent,
             Uri endpoint,
             string input,
@@ -54,7 +60,7 @@ namespace Runiq.Agents.Providers.OpenAI
                         ]),
                     options: JsonOptions);
 
-                using var response = await HttpClient.SendAsync(request, cancellationToken);
+                using var response = await httpClient.SendAsync(request, cancellationToken);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -104,7 +110,7 @@ namespace Runiq.Agents.Providers.OpenAI
         /// <summary>
         /// Agent cevabını OpenAI-compatible stream formatı üzerinden parça parça üretir.
         /// </summary>
-        public static async IAsyncEnumerable<string> StreamAsync(
+        public  async IAsyncEnumerable<AgentExecutionEvent> StreamAsync(
             Agent agent,
             Uri endpoint,
             string input,
@@ -137,21 +143,21 @@ namespace Runiq.Agents.Providers.OpenAI
                     ]),
                 options: JsonOptions);
 
-            Console.WriteLine($"[stream] request prepared. provider={agent.ProviderName}, model={agent.ModelName}, url={requestUrl}");
-
-            using var response = await HttpClient.SendAsync(
+    
+            using var response = await httpClient.SendAsync(
                 request,
                 HttpCompletionOption.ResponseHeadersRead,
                 cancellationToken);
 
-            Console.WriteLine(
-                $"[stream] headers received in {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:N0} ms. status={(int)response.StatusCode}");
-
+   
             if (!response.IsSuccessStatusCode)
             {
                 var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                yield return AgentExecutionEvent.Failed(
+                           errorCode: "ProviderRequestFailed",
+                           errorMessage: $"Provider request failed with status code {(int)response.StatusCode}. {errorBody}");
 
-                yield return $"Provider request failed with status code {(int)response.StatusCode}. {errorBody}";
+                yield return AgentExecutionEvent.Completed();
                 yield break;
             }
 
@@ -166,6 +172,7 @@ namespace Runiq.Agents.Providers.OpenAI
 
                 if (line is null)
                 {
+                    yield return AgentExecutionEvent.Completed();
                     yield break;
                 }
 
@@ -183,28 +190,20 @@ namespace Runiq.Agents.Providers.OpenAI
 
                 if (string.Equals(data, "[DONE]", StringComparison.OrdinalIgnoreCase))
                 {
-                    Console.WriteLine(
-                        $"[stream] done in {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:N0} ms");
-
+                    yield return AgentExecutionEvent.Completed();
                     yield break;
                 }
 
                 var content = TryReadDeltaContent(data);
 
-                if (string.IsNullOrEmpty(content))
-                {
+                if (string.IsNullOrEmpty(content))               
                     continue;
-                }
+                
 
-                if (!firstContentLogged)
-                {
-                    firstContentLogged = true;
+                if (!firstContentLogged)          
+                    firstContentLogged = true;                
 
-                    Console.WriteLine(
-                        $"[stream] first content received in {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:N0} ms");
-                }
-
-                yield return content;
+                yield return AgentExecutionEvent.AssistantDelta(content);
             }
         }
         private static Uri BuildChatCompletionsUrl(Uri endpoint)
