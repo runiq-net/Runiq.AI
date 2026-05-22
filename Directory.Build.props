@@ -9,7 +9,7 @@
     <RepositoryUrl>https://github.com/kkaradag2/Runiq.Net</RepositoryUrl>
     <PackageProjectUrl>https://github.com/kkaradag2/Runiq.Net</PackageProjectUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageReadmeFile Condition="'$(IsPackable)' == 'true'">README.md</PackageReadmeFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
 
     <GenerateDocumentationFile Condition="'$(IsPackable)' == 'true'">true</GenerateDocumentationFile>
 
@@ -18,22 +18,10 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
 
     <IncludeSymbols Condition="'$(IsPackable)' == 'true'">true</IncludeSymbols>
-<SymbolPackageFormat Condition="'$(IsPackable)' == 'true'">snupkg</SymbolPackageFormat>
- <PublishRepositoryUrl Condition="'$(IsPackable)' == 'true'">true</PublishRepositoryUrl>
-   <EmbedUntrackedSources Condition="'$(IsPackable)' == 'true'">true</EmbedUntrackedSources>
+    <SymbolPackageFormat Condition="'$(IsPackable)' == 'true'">snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl Condition="'$(IsPackable)' == 'true'">true</PublishRepositoryUrl>
+    <EmbedUntrackedSources Condition="'$(IsPackable)' == 'true'">true</EmbedUntrackedSources>
 
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
-
-  <ItemGroup Condition="'$(IsPackable)' == 'true'">
-    <None Include="$(MSBuildThisFileDirectory)README.md"
-          Pack="true"
-          PackagePath="\" />
-  </ItemGroup>
-
-  <ItemGroup Condition="'$(IsPackable)' == 'true'">
-    <PackageReference Include="Microsoft.SourceLink.GitHub"
-                      Version="8.0.0"
-                      PrivateAssets="all" />
-  </ItemGroup>
 </Project>
