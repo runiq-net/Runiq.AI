@@ -5,6 +5,8 @@ using Microsoft.Extensions.FileProviders;
 using Runiq.Core.Agents;
 using Runiq.Core.Dashboard;
 using Runiq.Core.Metadata;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 
 namespace Runiq.Core;
 
@@ -131,9 +133,17 @@ public static class RuniqDashboardApplicationBuilderExtensions
                 indexPath,
                 context.RequestAborted);
 
+            var encodedTitle = HtmlEncoder.Default.Encode(options.Title);
+
+            var dashboardConfigJson = JsonSerializer.Serialize(new
+            {
+                basePath,
+                title = options.Title
+            });
+
             html = html
-                .Replace("__RUNIQ_BASE_PATH__", basePath, StringComparison.Ordinal)
-                .Replace("__RUNIQ_TITLE__", options.Title, StringComparison.Ordinal);
+                .Replace("__RUNIQ_TITLE_HTML__", encodedTitle, StringComparison.Ordinal)
+                .Replace("__RUNIQ_DASHBOARD_CONFIG__", dashboardConfigJson, StringComparison.Ordinal);
 
             context.Response.ContentType = "text/html; charset=utf-8";
             await context.Response.WriteAsync(html, context.RequestAborted);

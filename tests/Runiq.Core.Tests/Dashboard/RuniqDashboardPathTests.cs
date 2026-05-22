@@ -25,8 +25,8 @@ public sealed class RuniqDashboardPathTests
 
         var html = await response.Content.ReadAsStringAsync();
 
-        Assert.Contains("basePath: '/dashboard'", html);
-        Assert.Contains("title: 'Test Dashboard'", html);
+        Assert.Contains("\"basePath\":\"/dashboard\"", html);
+        Assert.Contains("\"title\":\"Test Dashboard\"", html);
     }
 
     [Fact]
@@ -41,7 +41,7 @@ public sealed class RuniqDashboardPathTests
 
         var html = await response.Content.ReadAsStringAsync();
 
-        Assert.Contains("basePath: '/dashboard'", html);
+        Assert.Contains("\"basePath\":\"/dashboard\"", html);
     }
 
     [Fact]
@@ -56,8 +56,8 @@ public sealed class RuniqDashboardPathTests
 
         var html = await response.Content.ReadAsStringAsync();
 
-        Assert.Contains("basePath: '/dashboard'", html);
-        Assert.DoesNotContain("basePath: '/dashboard/'", html);
+        Assert.Contains("\"basePath\":\"/dashboard\"", html);
+        Assert.DoesNotContain("\"basePath\":\"/dashboard/\"", html);
     }
 
     [Fact]
@@ -89,7 +89,61 @@ public sealed class RuniqDashboardPathTests
         Assert.Contains("Dashboard", exception.Message);
     }
 
-    private static TestServer CreateServer(string dashboardPath)
+    [Fact]
+    public async Task UseRuniqDashboard_ShouldEncodeTitle_WhenTitleContainsScriptBreakingCharacters()
+    {
+        // Dashboard title içinde HTML/JS kırabilecek karakterler olsa bile güvenli şekilde encode edildiğini doğrular.
+        const string maliciousTitle = "</script><script>alert('xss')</script>";
+
+        using var server = CreateServer("/dashboard", maliciousTitle);
+
+        var response = await server.CreateClient().GetAsync("/dashboard/agents");
+
+        response.EnsureSuccessStatusCode();
+
+        var html = await response.Content.ReadAsStringAsync();
+
+        Assert.DoesNotContain(maliciousTitle, html);
+        Assert.DoesNotContain("<title></script><script>", html);
+        Assert.DoesNotContain("title: '</script><script>", html);
+
+        Assert.Contains("&lt;/script&gt;", html);
+        Assert.Contains("&lt;script&gt;", html);
+        Assert.Contains("\\u003C/script\\u003E", html);
+        Assert.Contains("\\u003Cscript\\u003E", html);
+    }
+
+    private static string PrepareDashboardAssets()
+    {
+        var root = Path.Combine(
+            AppContext.BaseDirectory,
+            "Studio",
+            "wwwroot");
+
+        Directory.CreateDirectory(root);
+
+        var indexPath = Path.Combine(root, "index.html");
+        File.WriteAllText(
+            indexPath,
+            """
+    <!doctype html>
+    <html>
+    <head>
+        <title>__RUNIQ_TITLE_HTML__</title>
+        <script>
+            window.__RUNIQ_DASHBOARD__ = __RUNIQ_DASHBOARD_CONFIG__;
+        </script>
+    </head>
+    <body>Runiq Dashboard</body>
+    </html>
+    """);
+
+        return AppContext.BaseDirectory;
+    }
+
+    private static TestServer CreateServer(
+     string dashboardPath,
+     string dashboardTitle = "Test Dashboard")
     {
         var dashboardRoot = PrepareDashboardAssets();
 
@@ -105,42 +159,13 @@ public sealed class RuniqDashboardPathTests
                 app.UseRuniqDashboard(options =>
                 {
                     options.Path = dashboardPath;
-                    options.Title = "Test Dashboard";
+                    options.Title = dashboardTitle;
                 });
             });
 
         return new TestServer(builder);
     }
 
-    private static string PrepareDashboardAssets()
-    {
-        var root = Path.Combine(
-            AppContext.BaseDirectory,
-            "Studio",
-            "wwwroot");
 
-        Directory.CreateDirectory(root);
 
-        var indexPath = Path.Combine(root, "index.html");
-
-        File.WriteAllText(
-            indexPath,
-            """
-            <!doctype html>
-            <html>
-            <head>
-                <title>__RUNIQ_TITLE__</title>
-                <script>
-                    window.__RUNIQ_DASHBOARD__ = {
-                        basePath: '__RUNIQ_BASE_PATH__',
-                        title: '__RUNIQ_TITLE__'
-                    };
-                </script>
-            </head>
-            <body>Runiq Dashboard</body>
-            </html>
-            """);
-
-        return AppContext.BaseDirectory;
-    }
 }

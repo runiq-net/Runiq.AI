@@ -117,23 +117,19 @@ public sealed class DashboardMetadataEndpointTests
         Directory.CreateDirectory(root);
 
         var indexPath = Path.Combine(root, "index.html");
-
         File.WriteAllText(
             indexPath,
-            """
-            <!doctype html>
-            <html>
-            <head>
-                <title>__RUNIQ_TITLE__</title>
-                <script>
-                    window.__RUNIQ_DASHBOARD__ = {
-                        basePath: '__RUNIQ_BASE_PATH__',
-                        title: '__RUNIQ_TITLE__'
-                    };
-                </script>
-            </head>
-            <body>Runiq Dashboard</body>
-            </html>
-            """);
+                        """
+                <!doctype html>
+                <html>
+                <head>
+                    <title>__RUNIQ_TITLE_HTML__</title>
+                    <script>
+                        window.__RUNIQ_DASHBOARD__ = __RUNIQ_DASHBOARD_CONFIG__;
+                    </script>
+                </head>
+                <body>Runiq Dashboard</body>
+                </html>
+                """);
     }
 }
