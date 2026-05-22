@@ -430,3 +430,5 @@ FodyWeavers.xsd
 
 **/appsettings.Development.json
 **/appsettings.Local.json
+
+artifacts/

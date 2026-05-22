@@ -1,7 +1,4 @@
-﻿/// <summary>
-/// Studio chat endpoint'inin cevabı hangi biçimde döndüreceğini belirtir.
-/// </summary>
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
 namespace Runiq.Core.Agents;
 

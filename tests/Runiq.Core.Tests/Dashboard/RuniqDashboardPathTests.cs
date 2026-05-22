@@ -7,6 +7,10 @@ using Runiq.Core.Configuration;
 
 namespace Runiq.Core.Tests.Dashboard;
 
+/// <summary>
+/// Dashboard path normalizasyonu ve yönlendirme davranışlarını doğrulayan testleri içerir.
+/// </summary>
+[Collection("Dashboard assets")]
 public sealed class RuniqDashboardPathTests
 {
     [Fact]

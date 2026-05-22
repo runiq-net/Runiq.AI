@@ -16,6 +16,10 @@ namespace Runiq.Agents.Providers.OpenAI
 
         private readonly HttpClient httpClient;
 
+        /// <summary>
+        /// Yeni bir OpenAI-compatible client örneği oluşturur.
+        /// </summary>
+        /// <param name="httpClient">Provider HTTP çağrılarında kullanılacak HTTP client örneğidir.</param>
         public OpenAICompatibleClient(HttpClient httpClient)
         {
             this.httpClient = httpClient;
@@ -107,10 +111,7 @@ namespace Runiq.Agents.Providers.OpenAI
         /// <summary>
         /// Agent cevabını OpenAI-compatible stream formatı üzerinden parça parça üretir.
         /// </summary>
-        /// <summary>
-        /// Agent cevabını OpenAI-compatible stream formatı üzerinden parça parça üretir.
-        /// </summary>
-        public  async IAsyncEnumerable<AgentExecutionEvent> StreamAsync(
+        public async IAsyncEnumerable<AgentExecutionEvent> StreamAsync(
             Agent agent,
             Uri endpoint,
             string input,

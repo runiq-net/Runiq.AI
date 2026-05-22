@@ -14,6 +14,12 @@ public sealed class AgentExecutionRuntime
     private readonly OpenAIResponsesClient openAIResponsesClient;
     private readonly OpenAICompatibleClient openAICompatibleClient;
 
+    /// <summary>
+    /// Yeni bir agent execution runtime örneği oluşturur.
+    /// </summary>
+    /// <param name="agents">Runtime tarafından çalıştırılabilecek kayıtlı agent koleksiyonudur.</param>
+    /// <param name="openAIResponsesClient">OpenAI Responses API provider çağrılarını yürüten client örneğidir.</param>
+    /// <param name="openAICompatibleClient">OpenAI-compatible provider çağrılarını yürüten client örneğidir.</param>
     public AgentExecutionRuntime(
         IEnumerable<Agent> agents,
         OpenAIResponsesClient openAIResponsesClient,

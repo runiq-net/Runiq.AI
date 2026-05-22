@@ -24,11 +24,23 @@ public sealed class OpenAIResponsesClient
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
+    /// <summary>
+    /// Yeni bir OpenAI Responses API client örneği oluşturur.
+    /// </summary>
+    /// <param name="httpClient">OpenAI Responses API çağrılarında kullanılacak HTTP client örneğidir.</param>
     public OpenAIResponsesClient(HttpClient httpClient)
     {
         this.httpClient = httpClient;
     }
 
+    /// <summary>
+    /// Agent girdisini OpenAI Responses API üzerinden tek seferlik sonuç olarak üretir.
+    /// </summary>
+    /// <param name="agent">Çalıştırılacak agent tanımıdır.</param>
+    /// <param name="endpoint">Provider için kullanılacak base endpoint adresidir.</param>
+    /// <param name="input">Modele gönderilecek kullanıcı girdisidir.</param>
+    /// <param name="cancellationToken">İşlemi iptal etmek için kullanılan cancellation token değeridir.</param>
+    /// <returns>Agent çalışmasının başarı veya hata sonucunu döner.</returns>
     public async Task<AgentExecutionResult> ExecuteAsync(
         Agent agent,
         Uri endpoint,
@@ -79,7 +91,7 @@ public sealed class OpenAIResponsesClient
         Agent agent,
         Uri endpoint,
         string input,
-         AgentToolInvoker? toolInvoker = null,
+        AgentToolInvoker? toolInvoker = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(agent);

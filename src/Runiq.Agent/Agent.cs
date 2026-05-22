@@ -3,8 +3,6 @@ using Runiq.Agents.Configuration;
 using Runiq.Agents.Models;
 using Runiq.Agents.Tools;
 
-
-
 namespace Runiq.Agents;
 
 /// <summary>
@@ -19,28 +17,72 @@ public class Agent
     /// </summary>
     public IReadOnlyList<AgentToolRegistration> Tools => tools;
 
+    /// <summary>
+    /// Ajanın sistem içindeki benzersiz kimliğini alır.
+    /// </summary>
     public string Id { get; }
 
+    /// <summary>
+    /// Ajanın kullanıcı arayüzünde veya metadata çıktılarında gösterilecek adını alır.
+    /// </summary>
     public string Name { get; }
 
+    /// <summary>
+    /// Ajanın model çağrılarında kullanılacak sistem yönergelerini alır.
+    /// </summary>
     public string Instructions { get; }
 
+    /// <summary>
+    /// Ajanın kullanacağı modeli provider/model biçiminde alır.
+    /// </summary>
     public string Model { get; }
 
+    /// <summary>
+    /// Model tanımından çözümlenen provider adını alır.
+    /// </summary>
     public string ProviderName => ModelReference.ProviderName;
 
+    /// <summary>
+    /// Model tanımından çözümlenen model adını alır.
+    /// </summary>
     public string ModelName => ModelReference.ModelName;
 
+    /// <summary>
+    /// Provider çağrılarında kullanılacak opsiyonel API anahtarını alır.
+    /// </summary>
     public string? ApiKey { get; }
 
+    /// <summary>
+    /// Modelin yanıt üretirken kullanacağı akıl yürütme yoğunluğunu alır.
+    /// </summary>
     public string ReasoningEffort { get; }
 
+    /// <summary>
+    /// Model yanıtının ayrıntı seviyesini alır.
+    /// </summary>
     public string Verbosity { get; }
 
+    /// <summary>
+    /// Provider için tanımlanan opsiyonel çalışma zamanı ayarlarını alır.
+    /// </summary>
     public ProviderOptions? Provider { get; }
 
+    /// <summary>
+    /// Provider ve model adını ayrıştırılmış biçimde temsil eden model referansını alır.
+    /// </summary>
     public ModelReference ModelReference { get; }
 
+    /// <summary>
+    /// Yeni bir agent tanımı oluşturur.
+    /// </summary>
+    /// <param name="id">Ajanın sistem içindeki benzersiz kimliğidir.</param>
+    /// <param name="name">Ajanın gösterilecek adıdır.</param>
+    /// <param name="instructions">Ajanın model çağrılarında kullanılacak sistem yönergeleridir.</param>
+    /// <param name="model">Kullanılacak modelin provider/model biçimindeki adıdır.</param>
+    /// <param name="apiKey">Provider çağrılarında kullanılacak opsiyonel API anahtarıdır.</param>
+    /// <param name="provider">Provider için opsiyonel çalışma zamanı ayarlarıdır.</param>
+    /// <param name="reasoningEffort">Modelin akıl yürütme yoğunluğudur.</param>
+    /// <param name="verbosity">Model yanıtının ayrıntı seviyesidir.</param>
     public Agent(
         string id,
         string name,

@@ -4,22 +4,28 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+
+    <IsPackable>true</IsPackable>
+    <PackageId>Runiq.Core</PackageId>
+    <Version>0.1.0-alpha.1</Version>
+    <Title>Runiq Core</Title>
+    <Description>Embedded ASP.NET Core runtime and dashboard hosting layer for Runiq.Net agents.</Description>
+    <PackageTags>ai;agents;dashboard;aspnetcore;dotnet;runiq</PackageTags>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Content Include="Studio\wwwroot\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
 
-<ItemGroup>
-  <Content Include="Studio\wwwroot\**\*">
-    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-  </Content>
-</ItemGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
 
-<ItemGroup>
-  <FrameworkReference Include="Microsoft.AspNetCore.App" />
-</ItemGroup>
-
-<ItemGroup>
-  <ProjectReference Include="..\Runiq.Agent\Runiq.Agents.csproj" />
-</ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Runiq.Agent\Runiq.Agents.csproj" />
+  </ItemGroup>
 
 </Project>

@@ -10,6 +10,10 @@ using Runiq.Core.Configuration;
 
 namespace Runiq.Core.Tests.Dashboard;
 
+/// <summary>
+/// Dashboard metadata endpoint davranışlarını doğrulayan testleri içerir.
+/// </summary>
+[Collection("Dashboard assets")]
 public sealed class DashboardMetadataEndpointTests
 {
     [Fact]
