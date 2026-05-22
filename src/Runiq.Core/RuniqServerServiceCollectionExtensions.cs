@@ -2,6 +2,7 @@
 using Runiq.Agents;
 using Runiq.Agents.Providers.OpenAI;
 using Runiq.Agents.Runtime;
+using Runiq.Agents.Tools;
 using Runiq.Agents.Validation;
 using Runiq.Core.Agents;
 using Runiq.Core.Configuration;
@@ -25,9 +26,12 @@ public static class RuniqServerServiceCollectionExtensions
 
         services.AddHttpClient<OpenAIResponsesClient>();
         services.AddHttpClient<OpenAICompatibleClient>();
+        services.AddSingleton<AgentToolInvoker>();
 
         services.AddScoped<AgentExecutionRuntime>();
         services.AddScoped<AgentChatApiHandler>();
+
+       
 
         return services;
     }
