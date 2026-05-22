@@ -14,10 +14,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="Studio\wwwroot\**\*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
+    <EmbeddedResource Include="Studio\wwwroot\**\*" />
   </ItemGroup>
 
   <ItemGroup>

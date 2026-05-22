@@ -1,12 +1,12 @@
-﻿using Microsoft.AspNetCore.Builder;
+﻿using System.Text.Encodings.Web;
+using System.Text.Json;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.FileProviders;
 using Runiq.Core.Agents;
 using Runiq.Core.Dashboard;
 using Runiq.Core.Metadata;
-using System.Text.Encodings.Web;
-using System.Text.Json;
+using Runiq.Core.Studio;
 
 namespace Runiq.Core;
 
@@ -45,17 +45,6 @@ public static class RuniqDashboardApplicationBuilderExtensions
             endpoints.MapRuniqAgentApi($"{basePath}/api");
         });
 
-        var dashboardRoot = Path.Combine(
-            AppContext.BaseDirectory,
-            "Studio",
-            "wwwroot");
-
-        if (!Directory.Exists(dashboardRoot))
-        {
-            throw new DirectoryNotFoundException(
-                $"Runiq Dashboard assets could not be found. Expected path: {dashboardRoot}");
-        }
-
         app.Use(async (context, next) =>
         {
             if (context.Request.Path.Equals(basePath, StringComparison.OrdinalIgnoreCase))
@@ -65,12 +54,6 @@ public static class RuniqDashboardApplicationBuilderExtensions
             }
 
             await next();
-        });
-
-        app.UseStaticFiles(new StaticFileOptions
-        {
-            RequestPath = basePath,
-            FileProvider = new PhysicalFileProvider(dashboardRoot)
         });
 
         app.Use(async (context, next) =>
@@ -113,13 +96,37 @@ public static class RuniqDashboardApplicationBuilderExtensions
 
             if (isStaticAsset)
             {
-                await next();
+                var assetRelativePath = relativePath.TrimStart('/');
+
+                var assetStream = RuniqDashboardAssets.OpenRead(assetRelativePath);
+
+                if (assetStream is null)
+                {
+                    context.Response.StatusCode = StatusCodes.Status404NotFound;
+                    await context.Response.WriteAsync(
+                        "Runiq Dashboard asset was not found.",
+                        context.RequestAborted);
+
+                    return;
+                }
+
+                await using (assetStream)
+                {
+                    context.Response.ContentType = GetContentType(assetRelativePath);
+
+                    await assetStream.CopyToAsync(
+                        context.Response.Body,
+                        context.RequestAborted);
+                }
+
                 return;
             }
 
-            var indexPath = Path.Combine(dashboardRoot, "index.html");
+            var html = await RuniqDashboardAssets.ReadTextAsync(
+                "index.html",
+                context.RequestAborted);
 
-            if (!File.Exists(indexPath))
+            if (html is null)
             {
                 context.Response.StatusCode = StatusCodes.Status404NotFound;
                 await context.Response.WriteAsync(
@@ -128,10 +135,6 @@ public static class RuniqDashboardApplicationBuilderExtensions
 
                 return;
             }
-
-            var html = await File.ReadAllTextAsync(
-                indexPath,
-                context.RequestAborted);
 
             var encodedTitle = HtmlEncoder.Default.Encode(options.Title);
 
@@ -152,6 +155,38 @@ public static class RuniqDashboardApplicationBuilderExtensions
         return app;
     }
 
+    /// <summary>
+    /// Dashboard asset dosyası için content type değerini belirler.
+    /// </summary>
+    /// <param name="relativePath">Asset göreli yoludur.</param>
+    /// <returns>HTTP content type değeridir.</returns>
+    private static string GetContentType(string relativePath)
+    {
+        var extension = Path.GetExtension(relativePath);
+
+        return extension.ToLowerInvariant() switch
+        {
+            ".html" => "text/html; charset=utf-8",
+            ".js" => "text/javascript; charset=utf-8",
+            ".mjs" => "text/javascript; charset=utf-8",
+            ".css" => "text/css; charset=utf-8",
+            ".json" => "application/json; charset=utf-8",
+            ".svg" => "image/svg+xml",
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".webp" => "image/webp",
+            ".ico" => "image/x-icon",
+            ".woff" => "font/woff",
+            ".woff2" => "font/woff2",
+            _ => "application/octet-stream"
+        };
+    }
+
+    /// <summary>
+    /// Dashboard path değerini canonical forma dönüştürür.
+    /// </summary>
+    /// <param name="path">Kullanıcı tarafından verilen dashboard path değeridir.</param>
+    /// <returns>Normalize edilmiş dashboard path değeridir.</returns>
     private static string NormalizePath(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
