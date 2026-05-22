@@ -1,13 +1,13 @@
 ﻿using System.Runtime.CompilerServices;
+using System.Text;
 using Runiq.Agents.Providers;
 using Runiq.Agents.Providers.OpenAI;
 using Runiq.Agents.Tools;
-using System.Text;
 
 namespace Runiq.Agents.Runtime;
 
 /// <summary>
-/// Kayıtlı agent tanımlarını provider client'lar üzerinden çalıştıran runtime servisidir.
+/// Kayıtlı agent tanımlarını provider pipeline'ı üzerinden çalıştıran runtime servisidir.
 /// </summary>
 public sealed class AgentExecutionRuntime
 {
@@ -22,6 +22,7 @@ public sealed class AgentExecutionRuntime
     /// <param name="agents">Runtime tarafından çalıştırılabilecek kayıtlı agent koleksiyonudur.</param>
     /// <param name="openAIResponsesClient">OpenAI Responses API provider çağrılarını yürüten client örneğidir.</param>
     /// <param name="openAICompatibleClient">OpenAI-compatible provider çağrılarını yürüten client örneğidir.</param>
+    /// <param name="toolInvoker">Agent tool çağrılarını çalıştıran invoker örneğidir.</param>
     public AgentExecutionRuntime(
         IEnumerable<Agent> agents,
         OpenAIResponsesClient openAIResponsesClient,
@@ -37,7 +38,11 @@ public sealed class AgentExecutionRuntime
     /// <summary>
     /// Agent cevabını agent kimliğine göre tek seferlik sonuç olarak üretir.
     /// </summary>
-    public Task<AgentExecutionResult> ExecuteAsync(
+    /// <param name="agentId">Çalıştırılacak agent kimliğidir.</param>
+    /// <param name="input">Agent'a gönderilecek kullanıcı girdisidir.</param>
+    /// <param name="cancellationToken">İptal bildirimidir.</param>
+    /// <returns>Agent çalıştırma sonucudur.</returns>
+    public async Task<AgentExecutionResult> ExecuteAsync(
         string agentId,
         string input,
         CancellationToken cancellationToken = default)
@@ -46,18 +51,60 @@ public sealed class AgentExecutionRuntime
 
         if (agent is null)
         {
-            return Task.FromResult(AgentExecutionResult.Failure(
+            return AgentExecutionResult.Failure(
                 errorCode: "AgentNotFound",
-                errorMessage: $"Agent '{agentId}' was not found."));
+                errorMessage: $"Agent '{agentId}' was not found.");
         }
 
-        return ExecuteAsync(agent, input, cancellationToken);
+        return await ExecuteAgentAsync(
+            agent,
+            input,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Agent cevabını agent kimliğine göre event stream olarak üretir.
+    /// </summary>
+    /// <param name="agentId">Çalıştırılacak agent kimliğidir.</param>
+    /// <param name="input">Agent'a gönderilecek kullanıcı girdisidir.</param>
+    /// <param name="toolInvoker">Varsa bu çağrı için kullanılacak tool invoker örneğidir.</param>
+    /// <param name="cancellationToken">İptal bildirimidir.</param>
+    /// <returns>Agent çalışması sırasında üretilen olay stream'idir.</returns>
+    public async IAsyncEnumerable<AgentExecutionEvent> ExecuteStreamAsync(
+        string agentId,
+        string input,
+        AgentToolInvoker? toolInvoker = null,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var agent = FindAgent(agentId);
+
+        if (agent is null)
+        {
+            yield return AgentExecutionEvent.Failed(
+                $"Agent '{agentId}' was not found.",
+                "AgentNotFound");
+
+            yield break;
+        }
+
+        await foreach (var executionEvent in ExecuteAgentStreamAsync(
+                           agent,
+                           input,
+                           toolInvoker ?? this.toolInvoker,
+                           cancellationToken))
+        {
+            yield return executionEvent;
+        }
     }
 
     /// <summary>
     /// Agent cevabını tek seferlik sonuç olarak üretir.
     /// </summary>
-    public async Task<AgentExecutionResult> ExecuteAsync(
+    /// <param name="agent">Çalıştırılacak agent tanımıdır.</param>
+    /// <param name="input">Agent'a gönderilecek kullanıcı girdisidir.</param>
+    /// <param name="cancellationToken">İptal bildirimidir.</param>
+    /// <returns>Agent çalıştırma sonucudur.</returns>
+    private async Task<AgentExecutionResult> ExecuteAgentAsync(
         Agent agent,
         string input,
         CancellationToken cancellationToken = default)
@@ -71,16 +118,9 @@ public sealed class AgentExecutionRuntime
                 errorMessage: "Agent input cannot be empty.");
         }
 
-        var validationFailure = ValidateProviderRuntime(agent);
-
-        if (validationFailure is not null)
-        {
-            return validationFailure;
-        }
-
         var messageBuilder = new StringBuilder();
 
-        await foreach (var executionEvent in ExecuteStreamAsync(
+        await foreach (var executionEvent in ExecuteAgentStreamAsync(
                            agent,
                            input,
                            toolInvoker,
@@ -90,7 +130,7 @@ public sealed class AgentExecutionRuntime
             {
                 case AgentExecutionEventKind.AssistantDelta:
                     messageBuilder.Append(executionEvent.Content);
-                    break; 
+                    break;
 
                 case AgentExecutionEventKind.Failed:
                     return AgentExecutionResult.Failure(
@@ -118,40 +158,14 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Agent cevabını agent kimliğine göre event stream olarak üretir.
-    /// </summary>
-    public async IAsyncEnumerable<AgentExecutionEvent> ExecuteStreamAsync(
-        string agentId,
-        string input,
-        AgentToolInvoker? toolInvoker = null,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        var agent = FindAgent(agentId);
-
-        if (agent is null)
-        {
-            yield return AgentExecutionEvent.Failed(
-                $"Agent '{agentId}' was not found.",
-                "AgentNotFound");
-
-            yield break;
-        }
-
-        await foreach (var executionEvent in ExecuteStreamAsync(
-            agent,
-            input,
-            toolInvoker,
-            cancellationToken))
-        {
-            yield return executionEvent;
-        }
-    }
-
-
-    /// <summary>
     /// Agent cevabını event stream olarak üretir.
     /// </summary>
-    public async IAsyncEnumerable<AgentExecutionEvent> ExecuteStreamAsync(
+    /// <param name="agent">Çalıştırılacak agent tanımıdır.</param>
+    /// <param name="input">Agent'a gönderilecek kullanıcı girdisidir.</param>
+    /// <param name="toolInvoker">Tool çağrılarını çalıştıracak invoker örneğidir.</param>
+    /// <param name="cancellationToken">İptal bildirimidir.</param>
+    /// <returns>Agent çalışması sırasında üretilen olay stream'idir.</returns>
+    private async IAsyncEnumerable<AgentExecutionEvent> ExecuteAgentStreamAsync(
         Agent agent,
         string input,
         AgentToolInvoker? toolInvoker = null,
@@ -161,6 +175,10 @@ public sealed class AgentExecutionRuntime
 
         if (string.IsNullOrWhiteSpace(input))
         {
+            yield return AgentExecutionEvent.Failed(
+                "Agent input cannot be empty.",
+                "InputRequired");
+
             yield break;
         }
 
@@ -226,6 +244,15 @@ public sealed class AgentExecutionRuntime
         }
     }
 
+    /// <summary>
+    /// OpenAI veya OpenAI-compatible provider için stream çalıştırmasını yürütür.
+    /// </summary>
+    /// <param name="agent">Çalıştırılacak agent tanımıdır.</param>
+    /// <param name="endpoint">Provider endpoint adresidir.</param>
+    /// <param name="input">Agent'a gönderilecek kullanıcı girdisidir.</param>
+    /// <param name="toolInvoker">Tool çağrılarını çalıştıracak invoker örneğidir.</param>
+    /// <param name="cancellationToken">İptal bildirimidir.</param>
+    /// <returns>Provider tarafından üretilen agent execution event stream'idir.</returns>
     private async IAsyncEnumerable<AgentExecutionEvent> ExecuteOpenAICompatibleStreamAsync(
         Agent agent,
         Uri endpoint,
@@ -258,6 +285,14 @@ public sealed class AgentExecutionRuntime
         }
     }
 
+    /// <summary>
+    /// Ollama provider için geçici agent çalıştırma sonucunu üretir.
+    /// </summary>
+    /// <param name="agent">Çalıştırılacak agent tanımıdır.</param>
+    /// <param name="endpoint">Ollama endpoint adresidir.</param>
+    /// <param name="input">Agent'a gönderilecek kullanıcı girdisidir.</param>
+    /// <param name="cancellationToken">İptal bildirimidir.</param>
+    /// <returns>Agent çalıştırma sonucudur.</returns>
     private static Task<AgentExecutionResult> ExecuteOllamaAsync(
         Agent agent,
         Uri endpoint,
@@ -270,6 +305,11 @@ public sealed class AgentExecutionRuntime
         return Task.FromResult(AgentExecutionResult.Success(message));
     }
 
+    /// <summary>
+    /// Provider runtime ayarlarının çalıştırma öncesi geçerli olup olmadığını doğrular.
+    /// </summary>
+    /// <param name="agent">Doğrulanacak agent tanımıdır.</param>
+    /// <returns>Geçersiz ayar varsa hata sonucudur; aksi halde null döner.</returns>
     private static AgentExecutionResult? ValidateProviderRuntime(Agent agent)
     {
         var providerDefault = ProviderDefaults.Get(agent.ProviderName);
@@ -287,6 +327,11 @@ public sealed class AgentExecutionRuntime
         return null;
     }
 
+    /// <summary>
+    /// Agent'ın native OpenAI provider kullanıp kullanmadığını belirtir.
+    /// </summary>
+    /// <param name="agent">Kontrol edilecek agent tanımıdır.</param>
+    /// <returns>Agent native OpenAI provider kullanıyorsa true döner.</returns>
     private static bool IsNativeOpenAIProvider(Agent agent)
     {
         return string.Equals(
@@ -295,6 +340,11 @@ public sealed class AgentExecutionRuntime
             StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Kayıtlı agent koleksiyonu içinde agent kimliğine göre arama yapar.
+    /// </summary>
+    /// <param name="agentId">Aranacak agent kimliğidir.</param>
+    /// <returns>Bulunan agent tanımıdır; bulunamazsa null döner.</returns>
     private Agent? FindAgent(string agentId)
     {
         return agents.FirstOrDefault(agent =>
