@@ -20,6 +20,10 @@ if (string.IsNullOrWhiteSpace(openAiApiKey))
 builder.Services.AddRuniqServer(opt =>
 {
 
+    opt.AddTool<ServerTimeTool>();
+
+    opt.AddTool<WeatherTool>();
+
     opt.AddAgent(new Agent(
     id: "broken-compatible-agent",
     name: "Broken Compatible Agent",

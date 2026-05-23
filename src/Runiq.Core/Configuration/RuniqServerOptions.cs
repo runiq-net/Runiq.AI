@@ -1,4 +1,5 @@
 ﻿using Runiq.Agents;
+using Runiq.Agents.Tools;
 
 namespace Runiq.Core.Configuration;
 
@@ -8,11 +9,17 @@ namespace Runiq.Core.Configuration;
 public sealed class RuniqServerOptions
 {
     private readonly List<Agent> _agents = [];
+    private readonly List<AgentToolRegistration> _tools = [];
 
     /// <summary>
     /// Host uygulamada tanımlanan agent kayıtlarını döndürür.
     /// </summary>
     public IReadOnlyList<Agent> Agents => _agents;
+
+    /// <summary>
+    /// Host uygulamada agent'a bağlanmadan doğrudan register edilmiş tool kayıtlarını döndürür.
+    /// </summary>
+    public IReadOnlyList<AgentToolRegistration> Tools => _tools;
 
     /// <summary>
     /// Runtime'a yeni bir agent kaydı ekler.
@@ -22,6 +29,18 @@ public sealed class RuniqServerOptions
         ArgumentNullException.ThrowIfNull(agent);
 
         _agents.Add(agent);
+
+        return this;
+    }
+
+    /// <summary>
+    /// Runtime'a agent'a bağlı olmak zorunda olmayan typed bir tool kaydı ekler.
+    /// </summary>
+    /// <typeparam name="TTool">IRuniqTool&lt;TInput,TOutput&gt; uygulayan tool tipidir.</typeparam>
+    public RuniqServerOptions AddTool<TTool>()
+        where TTool : class
+    {
+        _tools.Add(AgentToolRegistration.FromToolType(typeof(TTool)));
 
         return this;
     }

@@ -1,13 +1,16 @@
 import type { ComponentType } from 'react';
 import { AgentsPage } from './pages/AgentsPage';
+import { ToolsPage } from './pages/ToolsPage';
 import { WorkflowsPage } from './pages/WorkflowsPage';
 
-export type DashboardPage = 'agents' | 'workflows';
+export type DashboardPage = 'agents' | 'tools' | 'workflows';
 
 export type DashboardRoute =
   | { page: 'agents' }
+  | { page: 'tools' }
   | { page: 'workflows' }
-  | { page: 'agent-chat'; agentId: string };
+  | { page: 'agent-chat'; agentId: string }
+  | { page: 'tool-detail'; toolName: string };
 
 export type DashboardRouteDefinition = {
   page: DashboardPage;
@@ -26,6 +29,14 @@ export const dashboardRoutes: DashboardRouteDefinition[] = [
     navLabel: 'Agents',
     showInNavigation: true,
     component: AgentsPage,
+  },
+  {
+    page: 'tools',
+    path: 'tools',
+    title: 'Tools',
+    navLabel: 'Tools',
+    showInNavigation: true,
+    component: ToolsPage,
   },
   {
     page: 'workflows',
@@ -100,8 +111,19 @@ export function resolveDashboardRouteFromUrl(
     };
   }
 
+  if (firstSegment === 'tools' && segments.length === 2) {
+    return {
+      page: 'tool-detail',
+      toolName: decodeURIComponent(segments[1]),
+    };
+  }
+
   if (firstSegment === 'agents') {
     return { page: 'agents' };
+  }
+
+  if (firstSegment === 'tools') {
+    return { page: 'tools' };
   }
 
   if (firstSegment === 'workflows') {

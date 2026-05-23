@@ -224,30 +224,30 @@ export function AgentChatPage({ agentId }: AgentChatPageProps) {
 
       setMessages((current) => [...current, assistantMessage]);
 
-await streamAgentMessage(
-  {
-    basePath,
-    agentId,
-    message,
-  },
-  (event) => {
-    setMessages((current) =>
-      current.map((item) =>
-        item.id === assistantMessage.id
-          ? applyStreamEvent(item, event)
-          : item,
-      ),
-    );
-  },
-);
+      await streamAgentMessage(
+        {
+          basePath,
+          agentId,
+          message,
+        },
+        (event) => {
+          setMessages((current) =>
+            current.map((item) =>
+              item.id === assistantMessage.id
+                ? applyStreamEvent(item, event)
+                : item,
+            ),
+          );
+        },
+      );
 
-setMessages((current) =>
-  current.map((item) =>
-    item.id === assistantMessage.id
-      ? { ...item, isStreaming: false }
-      : item,
-  ),
-);
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === assistantMessage.id
+            ? { ...item, isStreaming: false }
+            : item,
+        ),
+      );
     } catch (error) {
       setMessages((current) => [
         ...current,
