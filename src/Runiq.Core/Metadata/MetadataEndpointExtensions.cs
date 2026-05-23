@@ -23,6 +23,11 @@ public static class MetadataEndpointExtensions
             return Results.Ok(metadataService.GetAgents());
         });
 
+        group.MapGet("/tools", (IRuntimeMetadataService metadataService) =>
+        {
+            return Results.Ok(metadataService.GetTools());
+        });
+
         return endpoints;
     }
 }

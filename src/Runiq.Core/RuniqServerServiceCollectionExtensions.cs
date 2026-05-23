@@ -1,5 +1,4 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
-using Runiq.Agents;
 using Runiq.Agents.Providers.OpenAI;
 using Runiq.Agents.Runtime;
 using Runiq.Agents.Tools;
@@ -7,6 +6,7 @@ using Runiq.Agents.Validation;
 using Runiq.Core.Agents;
 using Runiq.Core.Configuration;
 using Runiq.Core.Metadata;
+using Runiq.Core.Tools;
 
 namespace Runiq.Core;
 
@@ -28,6 +28,7 @@ public static class RuniqServerServiceCollectionExtensions
         services.AddHttpClient<OpenAICompatibleClient>();
         services.AddSingleton<AgentToolInvoker>();
 
+        services.AddScoped<ToolRunApiHandler>();
         services.AddScoped<AgentExecutionRuntime>();
         services.AddScoped<AgentChatApiHandler>();
 
@@ -52,6 +53,9 @@ public static class RuniqServerServiceCollectionExtensions
 
         AgentValidator.ValidateRegisteredAgents(options.Agents);
 
+        services.AddSingleton<IReadOnlyList<AgentToolRegistration>>(
+            BuildRegisteredToolRegistry(options));
+
         foreach (var agent in options.Agents)
         {
             services.AddSingleton(agent);
@@ -60,5 +64,48 @@ public static class RuniqServerServiceCollectionExtensions
         services.AddRuniqServer();
 
         return services;
+    }
+
+    private static IReadOnlyList<AgentToolRegistration> BuildRegisteredToolRegistry(
+    RuniqServerOptions options)
+    {
+        var toolsByName = new Dictionary<string, AgentToolRegistration>(
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var tool in options.Tools)
+        {
+            AddToolRegistration(toolsByName, tool);
+        }
+
+        foreach (var tool in options.Agents.SelectMany(agent => agent.Tools))
+        {
+            AddToolRegistration(toolsByName, tool);
+        }
+
+        return toolsByName
+            .Values
+            .OrderBy(tool => tool.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static void AddToolRegistration(
+        Dictionary<string, AgentToolRegistration> toolsByName,
+        AgentToolRegistration tool)
+    {
+        if (!toolsByName.TryGetValue(tool.Name, out var existing))
+        {
+            toolsByName[tool.Name] = tool;
+            return;
+        }
+
+        if (existing.ToolType == tool.ToolType)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"Tool name '{tool.Name}' is registered by multiple tool types: " +
+            $"'{existing.ToolType.FullName}' and '{tool.ToolType.FullName}'. " +
+            "Tool names must be unique.");
     }
 }

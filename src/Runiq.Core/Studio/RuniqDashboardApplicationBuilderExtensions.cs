@@ -7,6 +7,7 @@ using Runiq.Core.Agents;
 using Runiq.Core.Dashboard;
 using Runiq.Core.Metadata;
 using Runiq.Core.Studio;
+using Runiq.Core.Tools;
 
 namespace Runiq.Core;
 
@@ -43,6 +44,7 @@ public static class RuniqDashboardApplicationBuilderExtensions
         app.UseEndpoints(endpoints =>
         {
             endpoints.MapRuniqAgentApi($"{basePath}/api");
+            endpoints.MapRuniqToolApi($"{basePath}/api");
         });
 
         app.Use(async (context, next) =>
@@ -75,6 +77,18 @@ public static class RuniqDashboardApplicationBuilderExtensions
 
                 context.Response.ContentType = "application/json; charset=utf-8";
                 await context.Response.WriteAsJsonAsync(agents, context.RequestAborted);
+                return;
+            }
+
+            if (relativePath.Equals("/metadata/tools", StringComparison.OrdinalIgnoreCase))
+            {
+                var metadataService =
+                    context.RequestServices.GetRequiredService<IRuntimeMetadataService>();
+
+                var tools = metadataService.GetTools();
+
+                context.Response.ContentType = "application/json; charset=utf-8";
+                await context.Response.WriteAsJsonAsync(tools, context.RequestAborted);
                 return;
             }
 

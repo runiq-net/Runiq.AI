@@ -9,4 +9,9 @@ public interface IRuntimeMetadataService
     /// Host uygulamada register edilmiş agent listesini döndürür.
     /// </summary>
     IReadOnlyList<AgentMetadataDto> GetAgents();
+
+    /// <summary>
+    /// Host uygulamada register edilmiş ve agent'lara bağlı tool listesini döndürür.
+    /// </summary>
+    IReadOnlyList<ToolMetadataDto> GetTools();
 }

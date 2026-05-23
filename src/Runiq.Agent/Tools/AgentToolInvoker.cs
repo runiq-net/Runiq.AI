@@ -55,6 +55,26 @@ public sealed class AgentToolInvoker
                 $"Agent '{agent.Id}' does not have a tool named '{toolName}'.");
         }
 
+        return await InvokeAsync(
+            tool,
+            argumentsJson,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Verilen typed tool kaydını JSON argümanlarıyla doğrudan çalıştırır.
+    /// </summary>
+    /// <param name="tool">Çalıştırılacak tool kaydıdır.</param>
+    /// <param name="argumentsJson">Tool input JSON değeridir.</param>
+    /// <param name="cancellationToken">İptal belirteci.</param>
+    /// <returns>Tool çalıştırma sonucunu JSON output olarak döner.</returns>
+    public async Task<AgentToolInvocationResult> InvokeAsync(
+        AgentToolRegistration tool,
+        string argumentsJson,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(tool);
+
         try
         {
             var outputJson = await InvokeCoreAsync(
