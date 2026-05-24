@@ -128,6 +128,39 @@ public sealed class ContextSpaceSourceSearchServiceTests
         Assert.Equal("maxResults", exception.ParamName);
     }
 
+    [Fact]
+    public async Task SearchAsync_ShouldBoostMatchesInFileNameRelativePathAndTitleArea()
+    {
+        // Bu test, şehir adının dosya adı, göreli yol veya başlık alanında geçmesinin arama skorunu yükselttiğini doğrular.
+        var documents = new[]
+        {
+        CreateDocument(
+            relativePath: "ankara-guide.md",
+            content: "# Ankara Practical Travel Guide Ankara has history, food, museums and cultural routes."),
+
+        CreateDocument(
+            relativePath: "bursa-guide.md",
+            content: "# Bursa Practical Travel Guide Bursa is strong for history, food, Koza Han, Ulu Cami and Iskender."),
+
+        CreateDocument(
+            relativePath: "istanbul-guide.md",
+            content: "# Istanbul Practical Travel Guide Istanbul has history, food, ferry routes and district-based planning.")
+    };
+
+        var searchService = new ContextSpaceSourceSearchService(
+            new StubSourceReader(documents));
+
+        var results = await searchService.SearchAsync(
+            CreateContextSpace(),
+            "Bursa tarih yemek",
+            maxResults: 3);
+
+        var result = Assert.Single(results);
+
+        Assert.Equal("bursa-guide.md", result.RelativePath);
+        Assert.True(result.Score > 0);
+    }
+
     private static ContextSpace CreateContextSpace()
     {
         return new ContextSpace(

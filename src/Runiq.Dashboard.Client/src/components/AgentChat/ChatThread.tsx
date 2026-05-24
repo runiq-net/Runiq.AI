@@ -1,13 +1,23 @@
 ﻿import { useEffect, useRef, useState } from 'react';
-import { BookOpen, Check, Copy, FileText } from 'lucide-react';
+import type { ReactNode } from 'react';
+import {
+  BookOpen,
+  Check,
+  CheckCircle2,
+  Copy,
+  FileSearch,
+  FileText,
+} from 'lucide-react';
 
 import './ChatThread.css';
+
+import { ToolCallCard } from './tool/ToolCallCard';
 
 import type {
   AgentChatMessage,
   AgentProvidedContext,
+  AgentSourceSearchResult,
 } from '../../types/agentChat';
-import { ToolCallCard } from './tool/ToolCallCard';
 
 type ChatThreadProps = {
   messages: AgentChatMessage[];
@@ -73,6 +83,8 @@ function ChatMessageItem({ message }: { message: AgentChatMessage }) {
   const hasContext = Boolean(message.context);
   const hasToolCalls = Boolean(message.toolCalls?.length);
   const hasContent = Boolean(message.content.trim());
+  const hasSourceSearchResults = Boolean(message.sourceSearchResults?.length);
+  const attachedSourceCount = message.context?.sources.length ?? 0;
 
   const isAssistantStreaming =
     message.role === 'assistant' && message.isStreaming === true;
@@ -80,14 +92,14 @@ function ChatMessageItem({ message }: { message: AgentChatMessage }) {
   const showInitialThinking =
     message.role === 'assistant' &&
     isAssistantStreaming &&
-    !hasContent &&
     !hasContext &&
+    !hasSourceSearchResults &&
     !hasToolCalls;
 
   const showContextWaiting =
     message.role === 'assistant' &&
     isAssistantStreaming &&
-    hasContext &&
+    (hasContext || hasSourceSearchResults) &&
     !hasContent &&
     !hasToolCalls;
 
@@ -142,6 +154,23 @@ function ChatMessageItem({ message }: { message: AgentChatMessage }) {
         <div className="mb-4">
           <ContextProvidedCard context={message.context} />
 
+          {showContextWaiting && !hasSourceSearchResults && (
+            <div className="mt-3">
+              <DotsOnlyIndicator />
+            </div>
+          )}
+        </div>
+      )}
+
+      {hasSourceSearchResults && (
+        <div className="mb-4">
+          <ContextSearchedCard
+            results={message.sourceSearchResults ?? []}
+            attachedSourceCount={
+              message.context ? attachedSourceCount : undefined
+            }
+          />
+
           {showContextWaiting && (
             <div className="mt-3">
               <DotsOnlyIndicator />
@@ -189,7 +218,11 @@ function ChatMessageItem({ message }: { message: AgentChatMessage }) {
                 aria-label="Copy assistant answer"
                 title={copied ? 'Copied' : 'Copy'}
               >
-                {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copied ? (
+                  <Check className="size-4" />
+                ) : (
+                  <Copy className="size-4" />
+                )}
               </button>
 
               {copied && (
@@ -226,7 +259,9 @@ function ContextProvidedCard({ context }: { context: AgentProvidedContext }) {
 
           <div className="mt-0.5 truncate text-xs text-zinc-600 dark:text-zinc-400">
             {contextSpace?.name ?? 'Runtime context'}
-            {hasMoreContextSpaces ? ` +${context.contextSpaces.length - 1} more` : ''}
+            {hasMoreContextSpaces
+              ? ` +${context.contextSpaces.length - 1} more`
+              : ''}
           </div>
         </div>
 
@@ -254,13 +289,107 @@ function ContextProvidedCard({ context }: { context: AgentProvidedContext }) {
   );
 }
 
+function ContextSearchedCard({
+  results,
+  attachedSourceCount,
+}: {
+  results: AgentSourceSearchResult[];
+  attachedSourceCount?: number;
+}) {
+  const visibleResults = results.slice(0, 4);
+  const hiddenCount = Math.max(0, results.length - visibleResults.length);
+  const selectedCount = results.length;
+  const summary =
+    attachedSourceCount === undefined
+      ? formatSelectedExcerptCount(selectedCount)
+      : `${formatAttachedSourceCount(
+          attachedSourceCount,
+        )} · ${formatSelectedExcerptCount(selectedCount)}`;
+
+  return (
+    <div className="w-full min-w-0 overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/70 text-xs shadow-sm dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:shadow-none">
+      <div className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2.5 text-left">
+        <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300">
+          <FileSearch className="size-3.5" />
+        </span>
+
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold text-zinc-950 dark:text-zinc-100">
+            Context searched
+          </div>
+
+          <div className="mt-0.5 truncate text-xs text-zinc-600 dark:text-zinc-400">
+            {summary}
+          </div>
+        </div>
+
+        <span className="ml-auto inline-flex shrink-0 items-center justify-center rounded-full border border-emerald-200 bg-white/80 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/50 dark:text-emerald-300">
+          Selected
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-2 border-t border-emerald-200/80 bg-white/60 px-3 py-3 dark:border-emerald-900/50 dark:bg-zinc-950/30">
+        {visibleResults.map((result) => (
+          <div
+            key={`${result.sourceId}-${result.relativePath}-${result.snippet}`}
+            className="relative min-w-0 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 pr-10 dark:border-zinc-800 dark:bg-zinc-950/70"
+          >
+            <span
+              className="absolute right-3 top-3 inline-flex text-emerald-600 dark:text-emerald-300"
+              aria-label="Sent to model context"
+              title="Sent to model context"
+            >
+              <CheckCircle2 className="size-4" aria-hidden="true" />
+            </span>
+
+            <div className="mb-1.5 flex min-w-0 flex-wrap items-center gap-1.5 text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+              <FileText className="size-3.5 shrink-0 text-zinc-400 dark:text-zinc-500" />
+
+              <span className="min-w-0 max-w-full truncate">
+                {result.sourceName || result.sourceId}
+              </span>
+
+              <span className="min-w-0 max-w-full truncate text-zinc-500 dark:text-zinc-400">
+                {result.relativePath || result.fileName}
+              </span>
+
+              <span className="shrink-0 rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[11px] font-medium text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/70 dark:text-zinc-400">
+                Score {result.score.toFixed(2)}
+              </span>
+            </div>
+
+            <div className="max-h-16 overflow-hidden whitespace-pre-wrap break-words text-xs leading-5 text-zinc-600 dark:text-zinc-400">
+              {result.snippet}
+            </div>
+          </div>
+        ))}
+
+        {hiddenCount > 0 && (
+          <div className="text-xs text-zinc-500 dark:text-zinc-400">
+            +{hiddenCount} more selected excerpt
+            {hiddenCount === 1 ? '' : 's'}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function formatAttachedSourceCount(value: number): string {
+  return `${value} attached source${value === 1 ? '' : 's'}`;
+}
+
+function formatSelectedExcerptCount(value: number): string {
+  return `${value} selected excerpt${value === 1 ? '' : 's'}`;
+}
+
 function ContextProvidedSection({
   icon,
   title,
   emptyText,
   items,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   title: string;
   emptyText: string;
   items: string[];
@@ -312,7 +441,7 @@ function formatContextSummary(skillCount: number, sourceCount: number): string {
     parts.push(`${sourceCount} source${sourceCount === 1 ? '' : 's'}`);
   }
 
-  return parts.length > 0 ? parts.join(' Â· ') : 'Context';
+  return parts.length > 0 ? parts.join(' · ') : 'Context';
 }
 
 function DotsOnlyIndicator() {
@@ -340,4 +469,3 @@ function AnimatedDots() {
     </span>
   );
 }
-

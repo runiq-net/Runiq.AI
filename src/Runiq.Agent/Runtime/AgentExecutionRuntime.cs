@@ -201,9 +201,11 @@ public sealed class AgentExecutionRuntime
 
         var contextProvidedEvent = CreateContextProvidedEvent(runtimeContext);
 
-        if (contextProvidedEvent is not null)
+        var contextSearchedEvent = CreateContextSearchedEvent(runtimeContext);
+
+        if (contextSearchedEvent is not null)
         {
-            yield return contextProvidedEvent;
+            yield return contextSearchedEvent;
         }
 
         var validationFailure = ValidateProviderRuntime(agent);
@@ -471,6 +473,30 @@ public sealed class AgentExecutionRuntime
             contextSpaces,
             skills,
             sources);
+    }
+
+    /// <summary>
+    /// Runtime context içindeki source arama sonuçlarından chat ekranına gönderilecek context arandı olayını üretir.
+    /// </summary>
+    private static AgentExecutionEvent? CreateContextSearchedEvent(
+        AgentRuntimeContext runtimeContext)
+    {
+        if (runtimeContext.RetrievedSourceContext.Count == 0)
+        {
+            return null;
+        }
+
+        var sourceSearchResults = runtimeContext.RetrievedSourceContext
+            .Select(result => new AgentExecutionSourceSearchResultInfo(
+                SourceId: result.SourceId,
+                SourceName: result.SourceName,
+                RelativePath: result.RelativePath,
+                FileName: result.FileName,
+                Snippet: result.Snippet,
+                Score: result.Score))
+            .ToArray();
+
+        return AgentExecutionEvent.ContextSearched(sourceSearchResults);
     }
 
 

@@ -16,7 +16,8 @@ public sealed record AgentChatStreamEvent(
     [property: JsonPropertyName("errorMessage")] string? ErrorMessage = null,
     [property: JsonPropertyName("contextSpaces")] IReadOnlyList<AgentChatContextSpaceStreamItem>? ContextSpaces = null,
     [property: JsonPropertyName("skills")] IReadOnlyList<AgentChatSkillStreamItem>? Skills = null,
-    [property: JsonPropertyName("sources")] IReadOnlyList<AgentChatSourceStreamItem>? Sources = null);
+    [property: JsonPropertyName("sources")] IReadOnlyList<AgentChatSourceStreamItem>? Sources = null,
+    [property: JsonPropertyName("sourceSearchResults")] IReadOnlyList<AgentChatSourceSearchResultStreamItem>? SourceSearchResults = null);
 
 
 /// <summary>
@@ -47,3 +48,15 @@ public sealed record AgentChatSourceStreamItem(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("kind")] string Kind,
     [property: JsonPropertyName("description")] string? Description);
+
+
+/// <summary>
+/// Chat SSE olayında gösterilecek source arama sonucunu temsil eder.
+/// </summary>
+public sealed record AgentChatSourceSearchResultStreamItem(
+    [property: JsonPropertyName("sourceId")] string SourceId,
+    [property: JsonPropertyName("sourceName")] string SourceName,
+    [property: JsonPropertyName("relativePath")] string RelativePath,
+    [property: JsonPropertyName("fileName")] string FileName,
+    [property: JsonPropertyName("snippet")] string Snippet,
+    [property: JsonPropertyName("score")] double Score);

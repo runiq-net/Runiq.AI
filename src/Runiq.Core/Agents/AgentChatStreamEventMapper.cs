@@ -40,31 +40,44 @@ internal static class AgentChatStreamEventMapper
                 ErrorMessage: executionEvent.ErrorMessage),
 
             AgentExecutionEventKind.ContextProvided => new AgentChatStreamEvent(
-Type: "context_provided",
-Content: null,
-ContextSpaces: executionEvent.ContextSpaces?
-    .Select(contextSpace => new AgentChatContextSpaceStreamItem(
-        Id: contextSpace.Id,
-        Name: contextSpace.Name,
-        Description: contextSpace.Description))
-    .ToArray(),
-Skills: executionEvent.Skills?
-    .Select(skill => new AgentChatSkillStreamItem(
-        Id: skill.Id,
-        Name: skill.Name,
-        Description: skill.Description,
-        Version: skill.Version,
-        Tags: skill.Tags,
-        SourceId: skill.SourceId,
-        RelativePath: skill.RelativePath))
-    .ToArray(),
-Sources: executionEvent.Sources?
-    .Select(source => new AgentChatSourceStreamItem(
-        Id: source.Id,
-        Name: source.Name,
-        Kind: source.Kind,
-        Description: source.Description))
-    .ToArray()),
+                Type: "context_provided",
+                Content: null,
+                ContextSpaces: executionEvent.ContextSpaces?
+                    .Select(contextSpace => new AgentChatContextSpaceStreamItem(
+                        Id: contextSpace.Id,
+                        Name: contextSpace.Name,
+                        Description: contextSpace.Description))
+                    .ToArray(),
+                Skills: executionEvent.Skills?
+                    .Select(skill => new AgentChatSkillStreamItem(
+                        Id: skill.Id,
+                        Name: skill.Name,
+                        Description: skill.Description,
+                        Version: skill.Version,
+                        Tags: skill.Tags,
+                        SourceId: skill.SourceId,
+                        RelativePath: skill.RelativePath))
+                    .ToArray(),
+                Sources: executionEvent.Sources?
+                    .Select(source => new AgentChatSourceStreamItem(
+                        Id: source.Id,
+                        Name: source.Name,
+                        Kind: source.Kind,
+                        Description: source.Description))
+                    .ToArray()),
+
+            AgentExecutionEventKind.ContextSearched => new AgentChatStreamEvent(
+                Type: "context_searched",
+                Content: null,
+                SourceSearchResults: executionEvent.SourceSearchResults?
+                    .Select(result => new AgentChatSourceSearchResultStreamItem(
+                        SourceId: result.SourceId,
+                        SourceName: result.SourceName,
+                        RelativePath: result.RelativePath,
+                        FileName: result.FileName,
+                        Snippet: result.Snippet,
+                        Score: result.Score))
+                    .ToArray()),
 
             AgentExecutionEventKind.Completed => new AgentChatStreamEvent(
                 Type: "completed",

@@ -14,7 +14,8 @@ public sealed record AgentExecutionEvent(
     string? ErrorMessage = null,
     IReadOnlyList<AgentExecutionContextSpaceInfo>? ContextSpaces = null,
     IReadOnlyList<AgentExecutionSkillInfo>? Skills = null,
-    IReadOnlyList<AgentExecutionSourceInfo>? Sources = null)
+    IReadOnlyList<AgentExecutionSourceInfo>? Sources = null,
+    IReadOnlyList<AgentExecutionSourceSearchResultInfo>? SourceSearchResults = null)
 {
     /// <summary>
     /// Assistant yanıtından gelen parça metin olayını oluşturur.
@@ -112,6 +113,22 @@ public sealed record AgentExecutionEvent(
     }
 
     /// <summary>
+    /// Agent çalışması sırasında context source'larda arama yapıldığını bildiren stream olayını oluşturur.
+    /// </summary>
+    /// <param name="sourceSearchResults">Kullanıcı girdisine göre bulunan source arama sonuçlarıdır.</param>
+    /// <returns>Context arama olayını temsil eden stream olayıdır.</returns>
+    public static AgentExecutionEvent ContextSearched(
+        IReadOnlyList<AgentExecutionSourceSearchResultInfo> sourceSearchResults)
+    {
+        ArgumentNullException.ThrowIfNull(sourceSearchResults);
+
+        return new AgentExecutionEvent(
+            Kind: AgentExecutionEventKind.ContextSearched,
+            Content: null,
+            SourceSearchResults: sourceSearchResults);
+    }
+
+    /// <summary>
     /// Agent çalışmasının başarıyla tamamlandığını bildiren stream olayını oluşturur.
     /// </summary>
     /// <returns>Tamamlanma olayını temsil eden stream olayıdır.</returns>
@@ -178,7 +195,13 @@ public enum AgentExecutionEventKind
     /// <summary>
     /// Agent çalışmasına context space bilgilerinin sağlandığını belirtir.
     /// </summary>
-    ContextProvided = 6
+    ContextProvided = 6,
+
+    /// <summary>
+    /// Agent çalışması sırasında context source'larda arama yapıldığını belirtir.
+    /// </summary>
+    ContextSearched = 7
+
 }
 
 /// <summary>
@@ -209,3 +232,14 @@ public sealed record AgentExecutionSourceInfo(
     string Name,
     string Kind,
     string? Description);
+
+/// <summary>
+/// Agent çalışması sırasında bulunan source arama sonucunu temsil eder.
+/// </summary>
+public sealed record AgentExecutionSourceSearchResultInfo(
+    string SourceId,
+    string SourceName,
+    string RelativePath,
+    string FileName,
+    string Snippet,
+    double Score);

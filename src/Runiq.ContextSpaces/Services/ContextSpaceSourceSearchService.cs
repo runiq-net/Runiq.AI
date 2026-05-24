@@ -10,6 +10,7 @@ namespace Runiq.ContextSpaces.Services;
 public sealed partial class ContextSpaceSourceSearchService : IContextSpaceSourceSearchService
 {
     private const int DefaultSnippetLength = 320;
+    private const int TitleScanLength = 250;
 
     private readonly IContextSpaceSourceReader sourceReader;
 
@@ -69,7 +70,7 @@ public sealed partial class ContextSpaceSourceSearchService : IContextSpaceSourc
                 continue;
             }
 
-            var score = CalculateScore(content, queryTerms);
+            var score = CalculateScore(document, content, queryTerms);
 
             if (score <= 0)
             {
@@ -95,24 +96,46 @@ public sealed partial class ContextSpaceSourceSearchService : IContextSpaceSourc
     }
 
     private static double CalculateScore(
+        ContextSpaceSourceDocument document,
         string content,
         IReadOnlyList<string> queryTerms)
     {
         var score = 0.0;
+        var titleArea = content[..Math.Min(content.Length, TitleScanLength)];
 
         foreach (var term in queryTerms)
         {
             var occurrenceCount = CountOccurrences(content, term);
 
-            if (occurrenceCount == 0)
+            if (occurrenceCount > 0)
             {
-                continue;
+                score += 1.0 + Math.Min(occurrenceCount, 5) * 0.25;
             }
 
-            score += 1.0 + Math.Min(occurrenceCount, 5) * 0.25;
+            if (ContainsTerm(document.FileName, term))
+            {
+                score += 8.0;
+            }
+
+            if (ContainsTerm(document.RelativePath, term))
+            {
+                score += 8.0;
+            }
+
+            if (ContainsTerm(titleArea, term))
+            {
+                score += 3.0;
+            }
         }
 
         return score;
+    }
+
+    private static bool ContainsTerm(string value, string term)
+    {
+        return value.Contains(
+            term,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private static int CountOccurrences(string content, string term)

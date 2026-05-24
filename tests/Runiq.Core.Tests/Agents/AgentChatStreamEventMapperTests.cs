@@ -132,4 +132,34 @@ public sealed class AgentChatStreamEventMapperTests
         Assert.Throws<ArgumentNullException>(
             () => AgentChatStreamEventMapper.FromExecutionEvent(null!));
     }
+
+    [Fact]
+    public void FromExecutionEvent_ShouldMapContextSearched()
+    {
+        // Context searched olayında source arama sonuçlarının Dashboard DTO'suna taşındığını doğrular.
+        var executionEvent = AgentExecutionEvent.ContextSearched([
+            new AgentExecutionSourceSearchResultInfo(
+            SourceId: "travel-docs",
+            SourceName: "Travel Documents",
+            RelativePath: "guide.txt",
+            FileName: "guide.txt",
+            Snippet: "Museum visit is recommended.",
+            Score: 2.5)
+        ]);
+
+        var streamEvent = AgentChatStreamEventMapper.FromExecutionEvent(executionEvent);
+
+        Assert.Equal("context_searched", streamEvent.Type);
+        Assert.Null(streamEvent.Content);
+
+        var result = Assert.Single(streamEvent.SourceSearchResults!);
+
+        Assert.Equal("travel-docs", result.SourceId);
+        Assert.Equal("Travel Documents", result.SourceName);
+        Assert.Equal("guide.txt", result.RelativePath);
+        Assert.Equal("guide.txt", result.FileName);
+        Assert.Equal("Museum visit is recommended.", result.Snippet);
+        Assert.Equal(2.5, result.Score);
+    }
+
 }

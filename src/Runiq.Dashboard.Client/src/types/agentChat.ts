@@ -43,11 +43,21 @@ export type AgentProvidedContext = {
   sources: AgentProvidedSource[];
 };
 
+export type AgentSourceSearchResult = {
+  sourceId: string;
+  sourceName: string;
+  relativePath: string;
+  fileName: string;
+  snippet: string;
+  score: number;
+};
+
 export type AgentChatMessage = {
   id: string;
   role: AgentChatMessageRole;
   content: string;
   context?: AgentProvidedContext;
+  sourceSearchResults?: AgentSourceSearchResult[];
   toolCalls?: AgentToolCall[];
   isStreaming?: boolean;
 };
@@ -55,6 +65,7 @@ export type AgentChatMessage = {
 export type AgentChatStreamEventType =
   | 'context_provided'
   | 'assistant_delta'
+  | 'context_searched'
   | 'tool_call_started'
   | 'tool_call_completed'
   | 'tool_call_failed'
@@ -67,6 +78,7 @@ export type AgentChatStreamEvent = {
   contextSpaces?: AgentProvidedContextSpace[] | null;
   skills?: AgentProvidedSkill[] | null;
   sources?: AgentProvidedSource[] | null;
+  sourceSearchResults?: AgentSourceSearchResult[] | null;
   toolCallId?: string | null;
   toolName?: string | null;
   argumentsJson?: string | null;

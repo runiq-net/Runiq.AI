@@ -41,7 +41,7 @@ function applyStreamEvent(
     };
   }
 
-    if (event.type === 'context_provided') {
+  if (event.type === 'context_provided') {
     const contextSpaces = event.contextSpaces ?? [];
     const skills = event.skills ?? [];
     const sources = event.sources ?? [];
@@ -65,6 +65,23 @@ function applyStreamEvent(
         skills,
         sources,
       },
+    };
+  }
+
+  if (event.type === 'context_searched') {
+    const sourceSearchResults = event.sourceSearchResults ?? [];
+
+    if (sourceSearchResults.length === 0) {
+      return {
+        ...message,
+        isStreaming: true,
+      };
+    }
+
+    return {
+      ...message,
+      isStreaming: true,
+      sourceSearchResults,
     };
   }
 
