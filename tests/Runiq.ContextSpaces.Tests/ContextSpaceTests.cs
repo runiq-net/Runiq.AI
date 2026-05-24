@@ -1,5 +1,5 @@
-﻿using Runiq.ContextSpaces.Models;
-using Runiq.ContextSpaces.Models.Skills;
+﻿using Runiq.ContextSpaces.Models.Skills;
+using Runiq.ContextSpaces.Models.Sources;
 
 namespace Runiq.ContextSpaces.Tests;
 

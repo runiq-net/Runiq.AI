@@ -8,7 +8,7 @@ namespace Runiq.Agents.Runtime;
 internal static class AgentInstructionsBuilder
 {
     /// <summary>
-    /// Agent'ın temel yönergelerini, bağlı context space ve skill yönergeleriyle birleştirir.
+    /// Agent'ın temel yönergelerini, bağlı context space, skill yönergeleri ve source arama sonuçlarıyla birleştirir.
     /// </summary>
     public static string Build(
         Agent agent,
@@ -34,7 +34,16 @@ internal static class AgentInstructionsBuilder
         builder.AppendLine();
         builder.AppendLine("The following context spaces are attached to this agent run.");
         builder.AppendLine("Use the provided skill instructions as operational guidance.");
-        builder.AppendLine("Sources are listed as available context only. Do not claim to have read source contents unless their contents are explicitly provided by a tool, message, or future context capability.");
+
+        if (runtimeContext.RetrievedSourceContext.Count > 0)
+        {
+            builder.AppendLine("Relevant source excerpts are provided below. Use them as grounding context when they are relevant to the user request.");
+        }
+        else
+        {
+            builder.AppendLine("Sources are listed as available context only. Do not claim to have read source contents unless their contents are explicitly provided by a tool, message, or future context capability.");
+        }
+
         builder.AppendLine();
 
         foreach (var contextSpace in runtimeContext.ContextSpaces)
@@ -71,6 +80,25 @@ internal static class AgentInstructionsBuilder
             }
 
             builder.AppendLine();
+        }
+
+        if (runtimeContext.RetrievedSourceContext.Count > 0)
+        {
+            builder.AppendLine("## Runiq Retrieved Source Context");
+            builder.AppendLine();
+            builder.AppendLine("The following excerpts were retrieved from attached context sources for this user request.");
+            builder.AppendLine("Prefer these excerpts over general knowledge when they directly answer the request.");
+            builder.AppendLine();
+
+            foreach (var result in runtimeContext.RetrievedSourceContext)
+            {
+                builder.AppendLine($"### Source: {result.SourceName}");
+                builder.AppendLine($"Path: {result.RelativePath}");
+                builder.AppendLine($"Score: {result.Score:0.##}");
+                builder.AppendLine();
+                builder.AppendLine(result.Snippet.Trim());
+                builder.AppendLine();
+            }
         }
 
         if (runtimeContext.Skills.Count > 0)

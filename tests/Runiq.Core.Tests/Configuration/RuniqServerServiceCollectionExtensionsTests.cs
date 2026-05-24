@@ -1,8 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
-using Runiq.ContextSpaces.Models;
 
 using Runiq.Agents;
-using Runiq.ContextSpaces.Models;
+using Runiq.ContextSpaces.Models.Sources;
 
 namespace Runiq.Core.Tests.Configuration;
 

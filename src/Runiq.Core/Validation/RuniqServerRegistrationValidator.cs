@@ -1,5 +1,5 @@
 ﻿using Runiq.Agents;
-using Runiq.ContextSpaces.Models;
+using Runiq.ContextSpaces.Models.Sources;
 using Runiq.Core.Configuration;
 
 namespace Runiq.Core.Validation;

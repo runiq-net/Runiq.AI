@@ -1,4 +1,4 @@
-﻿namespace Runiq.ContextSpaces.Models;
+﻿namespace Runiq.ContextSpaces.Models.Sources;
 
 /// <summary>
 /// Context space içinde agent'ın erişebileceği bir bilgi kaynağını temsil eder.

@@ -1,7 +1,7 @@
 ﻿using Runiq.ContextSpaces.Builders;
 using Runiq.ContextSpaces.Models.Skills;
 
-namespace Runiq.ContextSpaces.Models;
+namespace Runiq.ContextSpaces.Models.Sources;
 
 /// <summary>
 /// Bir agent'ın görev yaparken erişebileceği bilgi, kaynak ve politika sınırını temsil eder.

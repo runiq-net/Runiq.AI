@@ -1,4 +1,4 @@
-﻿using Runiq.ContextSpaces.Models;
+﻿using Runiq.ContextSpaces.Models.Sources;
 using Runiq.ContextSpaces.Services;
 
 namespace Runiq.ContextSpaces.Tests;

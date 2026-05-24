@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Runiq.Agents;
-using Runiq.ContextSpaces.Models;
+using Runiq.ContextSpaces.Models.Sources;
 using Runiq.Core;
 using Runiq.Core.Configuration;
 

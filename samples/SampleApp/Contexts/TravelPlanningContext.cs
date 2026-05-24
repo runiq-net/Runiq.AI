@@ -1,4 +1,4 @@
-﻿using Runiq.ContextSpaces.Models;
+﻿using Runiq.ContextSpaces.Models.Sources;
 
 namespace SampleApp.Contexts;
 

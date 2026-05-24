@@ -3,7 +3,7 @@ using System.Text;
 using Runiq.Agents.Providers;
 using Runiq.Agents.Providers.OpenAI;
 using Runiq.Agents.Tools;
-using Runiq.ContextSpaces.Models;
+using Runiq.ContextSpaces.Models.Sources;
 using Runiq.ContextSpaces.Services;
 
 namespace Runiq.Agents.Runtime;
@@ -19,6 +19,7 @@ public sealed class AgentExecutionRuntime
     private readonly AgentToolInvoker toolInvoker;
     private readonly IReadOnlyList<ContextSpace> contextSpaces;
     private readonly IContextSpaceSkillDiscoveryService skillDiscoveryService;
+    private readonly IContextSpaceSourceSearchService sourceSearchService;
 
 
     /// <summary>
@@ -34,7 +35,8 @@ public sealed class AgentExecutionRuntime
         OpenAICompatibleClient openAICompatibleClient,
         AgentToolInvoker toolInvoker,
         IReadOnlyList<ContextSpace>? contextSpaces = null,
-        IContextSpaceSkillDiscoveryService? skillDiscoveryService = null)
+        IContextSpaceSkillDiscoveryService? skillDiscoveryService = null,
+        IContextSpaceSourceSearchService? sourceSearchService = null)
     {
         this.agents = agents;
         this.openAIResponsesClient = openAIResponsesClient;
@@ -42,6 +44,8 @@ public sealed class AgentExecutionRuntime
         this.toolInvoker = toolInvoker;
         this.contextSpaces = contextSpaces ?? [];
         this.skillDiscoveryService = skillDiscoveryService ?? new ContextSpaceSkillDiscoveryService();
+        this.sourceSearchService = sourceSearchService
+                ?? new ContextSpaceSourceSearchService(new ContextSpaceFileSystemSourceReader());
     }
 
     /// <summary>
@@ -191,7 +195,8 @@ public sealed class AgentExecutionRuntime
             yield break;
         }
 
-        var runtimeContext = CreateRuntimeContext(agent);
+        var runtimeContext = await CreateRuntimeContextAsync(agent, input, cancellationToken);
+
         var instructions = AgentInstructionsBuilder.Build(agent, runtimeContext);
 
         var contextProvidedEvent = CreateContextProvidedEvent(runtimeContext);
@@ -373,9 +378,12 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Agent'a bağlı context space ve skill bilgilerini runtime için çözümler.
+    /// Agent'a bağlı context space, skill ve source search bilgilerini runtime için çözümler.
     /// </summary>
-    private AgentRuntimeContext CreateRuntimeContext(Agent agent)
+    private async Task<AgentRuntimeContext> CreateRuntimeContextAsync(
+        Agent agent,
+        string input,
+        CancellationToken cancellationToken)
     {
         if (agent.ContextSpaceIds.Count == 0 || contextSpaces.Count == 0)
         {
@@ -396,9 +404,29 @@ public sealed class AgentExecutionRuntime
             .SelectMany(contextSpace => skillDiscoveryService.Discover(contextSpace))
             .ToArray();
 
+        var sourceSearchResults = new List<ContextSpaceSourceSearchResult>();
+
+        foreach (var contextSpace in attachedContextSpaces)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var results = await sourceSearchService.SearchAsync(
+                contextSpace,
+                input,
+                maxResults: 5,
+                cancellationToken);
+
+            sourceSearchResults.AddRange(results);
+        }
+
         return new AgentRuntimeContext(
             ContextSpaces: attachedContextSpaces,
-            Skills: skills);
+            Skills: skills,
+            SourceSearchResults: sourceSearchResults
+                .OrderByDescending(result => result.Score)
+                .ThenBy(result => result.RelativePath, StringComparer.OrdinalIgnoreCase)
+                .Take(5)
+                .ToArray());
     }
 
     /// <summary>

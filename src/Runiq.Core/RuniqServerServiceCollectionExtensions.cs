@@ -3,13 +3,13 @@ using Runiq.Agents.Providers.OpenAI;
 using Runiq.Agents.Runtime;
 using Runiq.Agents.Tools;
 using Runiq.Agents.Validation;
-using Runiq.ContextSpaces.Models;
 using Runiq.Core.Agents;
 using Runiq.Core.Configuration;
 using Runiq.Core.Metadata;
 using Runiq.Core.Tools;
 using Runiq.Core.Validation;
 using Runiq.ContextSpaces.Services;
+using Runiq.ContextSpaces.Models.Sources;
 
 namespace Runiq.Core;
 

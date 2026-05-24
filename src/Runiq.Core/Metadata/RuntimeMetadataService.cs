@@ -1,6 +1,6 @@
 ﻿using Runiq.Agents;
 using Runiq.Agents.Tools;
-using Runiq.ContextSpaces.Models;
+using Runiq.ContextSpaces.Models.Sources;
 using Runiq.ContextSpaces.Services;
 
 namespace Runiq.Core.Metadata;
