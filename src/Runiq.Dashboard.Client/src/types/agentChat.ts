@@ -14,15 +14,46 @@ export type AgentToolCall = {
   errorMessage?: string;
 };
 
+export type AgentProvidedContextSpace = {
+  id: string;
+  name: string;
+  description?: string | null;
+};
+
+export type AgentProvidedSkill = {
+  id: string;
+  name: string;
+  description?: string | null;
+  version?: string | null;
+  tags?: string[] | null;
+  sourceId?: string | null;
+  relativePath?: string | null;
+};
+
+export type AgentProvidedSource = {
+  id: string;
+  name: string;
+  kind?: string | null;
+  description?: string | null;
+};
+
+export type AgentProvidedContext = {
+  contextSpaces: AgentProvidedContextSpace[];
+  skills: AgentProvidedSkill[];
+  sources: AgentProvidedSource[];
+};
+
 export type AgentChatMessage = {
   id: string;
   role: AgentChatMessageRole;
   content: string;
+  context?: AgentProvidedContext;
   toolCalls?: AgentToolCall[];
   isStreaming?: boolean;
 };
 
 export type AgentChatStreamEventType =
+  | 'context_provided'
   | 'assistant_delta'
   | 'tool_call_started'
   | 'tool_call_completed'
@@ -33,6 +64,9 @@ export type AgentChatStreamEventType =
 export type AgentChatStreamEvent = {
   type: AgentChatStreamEventType;
   content?: string | null;
+  contextSpaces?: AgentProvidedContextSpace[] | null;
+  skills?: AgentProvidedSkill[] | null;
+  sources?: AgentProvidedSource[] | null;
   toolCallId?: string | null;
   toolName?: string | null;
   argumentsJson?: string | null;

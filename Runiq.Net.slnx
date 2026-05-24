@@ -4,10 +4,12 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Runiq.Agent/Runiq.Agents.csproj" />
+    <Project Path="src/Runiq.ContextSpaces/Runiq.ContextSpaces.csproj" />
     <Project Path="src/Runiq.Core/Runiq.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Runiq.Agents.Tests/Runiq.Agents.Tests.csproj" />
+    <Project Path="tests/Runiq.ContextSpaces.Tests/Runiq.ContextSpaces.Tests.csproj" />
     <Project Path="tests/Runiq.Core.Tests/Runiq.Core.Tests.csproj" />
   </Folder>
 </Solution>

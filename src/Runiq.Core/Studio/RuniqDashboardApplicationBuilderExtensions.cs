@@ -2,7 +2,6 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
 using Runiq.Core.Agents;
 using Runiq.Core.Dashboard;
 using Runiq.Core.Metadata;
@@ -43,6 +42,7 @@ public static class RuniqDashboardApplicationBuilderExtensions
 
         app.UseEndpoints(endpoints =>
         {
+            endpoints.MapRuniqMetadataApi($"{basePath}/metadata");
             endpoints.MapRuniqAgentApi($"{basePath}/api");
             endpoints.MapRuniqToolApi($"{basePath}/api");
         });
@@ -68,35 +68,12 @@ public static class RuniqDashboardApplicationBuilderExtensions
 
             var relativePath = remainingPath.Value ?? string.Empty;
 
-            if (relativePath.Equals("/metadata/agents", StringComparison.OrdinalIgnoreCase))
-            {
-                var metadataService =
-                    context.RequestServices.GetRequiredService<IRuntimeMetadataService>();
-
-                var agents = metadataService.GetAgents();
-
-                context.Response.ContentType = "application/json; charset=utf-8";
-                await context.Response.WriteAsJsonAsync(agents, context.RequestAborted);
-                return;
-            }
-
-            if (relativePath.Equals("/metadata/tools", StringComparison.OrdinalIgnoreCase))
-            {
-                var metadataService =
-                    context.RequestServices.GetRequiredService<IRuntimeMetadataService>();
-
-                var tools = metadataService.GetTools();
-
-                context.Response.ContentType = "application/json; charset=utf-8";
-                await context.Response.WriteAsJsonAsync(tools, context.RequestAborted);
-                return;
-            }
-
-            if (relativePath.StartsWith("/api/", StringComparison.OrdinalIgnoreCase))
+            if (relativePath.StartsWith("/api/", StringComparison.OrdinalIgnoreCase) ||
+                relativePath.StartsWith("/metadata/", StringComparison.OrdinalIgnoreCase))
             {
                 context.Response.StatusCode = StatusCodes.Status404NotFound;
                 await context.Response.WriteAsync(
-                    "Runiq API endpoint was not found.",
+                    "Runiq endpoint was not found.",
                     context.RequestAborted);
 
                 return;

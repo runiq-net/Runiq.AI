@@ -7,6 +7,9 @@ using Runiq.Core.Agents;
 using Runiq.Core.Configuration;
 using Runiq.Core.Metadata;
 using Runiq.Core.Tools;
+using Runiq.Core.Validation;
+using Runiq.ContextSpaces.Services;
+using Runiq.ContextSpaces.Models.Sources;
 
 namespace Runiq.Core;
 
@@ -24,6 +27,8 @@ public static class RuniqServerServiceCollectionExtensions
 
         services.AddSingleton<IRuntimeMetadataService, RuntimeMetadataService>();
 
+        services.AddSingleton<IContextSpaceSkillDiscoveryService, ContextSpaceSkillDiscoveryService>();
+
         services.AddHttpClient<OpenAIResponsesClient>();
         services.AddHttpClient<OpenAICompatibleClient>();
         services.AddSingleton<AgentToolInvoker>();
@@ -31,8 +36,6 @@ public static class RuniqServerServiceCollectionExtensions
         services.AddScoped<ToolRunApiHandler>();
         services.AddScoped<AgentExecutionRuntime>();
         services.AddScoped<AgentChatApiHandler>();
-
-       
 
         return services;
     }
@@ -52,6 +55,10 @@ public static class RuniqServerServiceCollectionExtensions
         configure(options);
 
         AgentValidator.ValidateRegisteredAgents(options.Agents);
+        RuniqServerRegistrationValidator.Validate(options);
+
+        services.AddSingleton<IReadOnlyList<ContextSpace>>(
+            options.ContextSpaces.ToArray());
 
         services.AddSingleton<IReadOnlyList<AgentToolRegistration>>(
             BuildRegisteredToolRegistry(options));
@@ -67,7 +74,7 @@ public static class RuniqServerServiceCollectionExtensions
     }
 
     private static IReadOnlyList<AgentToolRegistration> BuildRegisteredToolRegistry(
-    RuniqServerOptions options)
+        RuniqServerOptions options)
     {
         var toolsByName = new Dictionary<string, AgentToolRegistration>(
             StringComparer.OrdinalIgnoreCase);

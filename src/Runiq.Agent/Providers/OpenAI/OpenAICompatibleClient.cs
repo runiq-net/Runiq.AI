@@ -37,7 +37,8 @@ namespace Runiq.Agents.Providers.OpenAI
             Agent agent,
             Uri endpoint,
             string input,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            string? instructions = null)
         {
             ArgumentNullException.ThrowIfNull(agent);
             ArgumentNullException.ThrowIfNull(endpoint);
@@ -45,6 +46,7 @@ namespace Runiq.Agents.Providers.OpenAI
             try
             {
                 var requestUrl = BuildChatCompletionsUrl(endpoint);
+                var effectiveInstructions = ResolveInstructions(agent, instructions);
 
                 using var request = new HttpRequestMessage(HttpMethod.Post, requestUrl);
 
@@ -59,7 +61,7 @@ namespace Runiq.Agents.Providers.OpenAI
                         Stream: null,
                         Messages:
                         [
-                            new OpenAIChatMessage("system", agent.Instructions),
+                            new OpenAIChatMessage("system", effectiveInstructions),
                             new OpenAIChatMessage("user", input)
                         ]),
                     options: JsonOptions);
@@ -115,11 +117,13 @@ namespace Runiq.Agents.Providers.OpenAI
             Agent agent,
             Uri endpoint,
             string input,
+            string? instructions = null,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(agent);
             ArgumentNullException.ThrowIfNull(endpoint);
 
+            var effectiveInstructions = ResolveInstructions(agent, instructions);
 
 
             var requestUrl = BuildChatCompletionsUrl(endpoint);
@@ -139,7 +143,7 @@ namespace Runiq.Agents.Providers.OpenAI
                     Stream: true,
                     Messages:
                     [
-                        new OpenAIChatMessage("system", agent.Instructions),
+                        new OpenAIChatMessage("system", effectiveInstructions),
                         new OpenAIChatMessage("user", input)
                     ]),
                     options: JsonOptions);
@@ -282,6 +286,13 @@ namespace Runiq.Agents.Providers.OpenAI
         private sealed class OpenAIChatCompletionMessage
         {
             public string? Content { get; set; }
+        }
+
+        private static string ResolveInstructions(Agent agent, string? instructions)
+        {
+            return string.IsNullOrWhiteSpace(instructions)
+                ? agent.Instructions
+                : instructions;
         }
     }
 }

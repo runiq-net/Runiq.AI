@@ -13,6 +13,57 @@ export type AgentMetadata = {
   reasoningEffort?: string;
   verbosity?: string;
   tools?: AgentToolMetadata[];
+  contextSpaces?: AgentContextSpaceMetadata[];
+};
+
+export type AgentContextSpaceMetadata = {
+  id: string;
+  name: string;
+  description?: string | null;
+};
+
+export type ContextSpaceSourceMetadata = {
+  id: string;
+  name: string;
+  kind: string;
+  description?: string | null;
+  path?: string | null;
+  bucketName?: string | null;
+  prefix?: string | null;
+};
+
+export type ContextSpaceAttachedAgentMetadata = {
+  id: string;
+  name: string;
+};
+
+export type ContextSpaceMetadata = {
+  id: string;
+  name: string;
+  description?: string | null;
+  sources: ContextSpaceSourceMetadata[];
+  skillSources: ContextSpaceSkillSourceMetadata[];
+  skills: ContextSpaceSkillMetadata[];
+  attachedAgents: ContextSpaceAttachedAgentMetadata[];
+};
+
+export type ContextSpaceSkillSourceMetadata = {
+  id: string;
+  name: string;
+  kind: string;
+  path?: string | null;
+  bucketName?: string | null;
+  prefix?: string | null;
+};
+
+export type ContextSpaceSkillMetadata = {
+  id: string;
+  name: string;
+  description?: string | null;
+  version?: string | null;
+  tags: string[];
+  sourceId: string;
+  relativePath: string;
 };
 
 export type ToolAttachedAgentMetadata = {
@@ -92,4 +143,16 @@ export async function getTools(basePath: string): Promise<ToolMetadata[]> {
   }
 
   return response.json() as Promise<ToolMetadata[]>;
+}
+
+export async function getContextSpaces(
+  basePath: string,
+): Promise<ContextSpaceMetadata[]> {
+  const response = await fetch(`${basePath}/metadata/context-spaces`);
+
+  if (!response.ok) {
+    throw new Error('Context Spaces metadata could not be loaded.');
+  }
+
+  return response.json() as Promise<ContextSpaceMetadata[]>;
 }

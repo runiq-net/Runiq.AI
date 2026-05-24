@@ -15,4 +15,14 @@
     <ProjectReference Include="..\..\src\Runiq.Core\Runiq.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Contexts\TravelPlanning\skills\trip-planning\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Contexts\TravelPlanning\skills\trip-planning\SKILL.md">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

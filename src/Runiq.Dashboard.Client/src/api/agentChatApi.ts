@@ -32,13 +32,13 @@ export async function sendAgentMessage({
     }),
   });
 
-const payload = (await response.json()) as AgentChatResult;
+  const payload = (await response.json()) as AgentChatResult;
 
   if (!response.ok || payload.isSuccess === false) {
     throw new Error(
       payload.errorMessage ||
-        payload.errorCode ||
-        `Agent chat request failed. Status: ${response.status}`,
+      payload.errorCode ||
+      `Agent chat request failed. Status: ${response.status}`,
     );
   }
 
@@ -147,6 +147,9 @@ function parseStreamEventPayload(data: string): AgentChatStreamEvent | null {
     return {
       type: parsed.type,
       content: parsed.content ?? null,
+      contextSpaces: parsed.contextSpaces ?? null,
+      skills: parsed.skills ?? null,
+      sources: parsed.sources ?? null,
       toolCallId: parsed.toolCallId ?? null,
       toolName: parsed.toolName ?? null,
       argumentsJson: parsed.argumentsJson ?? null,

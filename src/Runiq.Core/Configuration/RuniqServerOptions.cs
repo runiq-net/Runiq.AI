@@ -1,5 +1,6 @@
 ﻿using Runiq.Agents;
 using Runiq.Agents.Tools;
+using Runiq.ContextSpaces.Models.Sources;
 
 namespace Runiq.Core.Configuration;
 
@@ -10,6 +11,7 @@ public sealed class RuniqServerOptions
 {
     private readonly List<Agent> _agents = [];
     private readonly List<AgentToolRegistration> _tools = [];
+    private readonly List<ContextSpace> _contextSpaces = [];
 
     /// <summary>
     /// Host uygulamada tanımlanan agent kayıtlarını döndürür.
@@ -20,6 +22,11 @@ public sealed class RuniqServerOptions
     /// Host uygulamada agent'a bağlanmadan doğrudan register edilmiş tool kayıtlarını döndürür.
     /// </summary>
     public IReadOnlyList<AgentToolRegistration> Tools => _tools;
+
+    /// <summary>
+    /// Host uygulamada tanımlanan context space kayıtlarını döndürür.
+    /// </summary>
+    public IReadOnlyList<ContextSpace> ContextSpaces => _contextSpaces;
 
     /// <summary>
     /// Runtime'a yeni bir agent kaydı ekler.
@@ -41,6 +48,25 @@ public sealed class RuniqServerOptions
         where TTool : class
     {
         _tools.Add(AgentToolRegistration.FromToolType(typeof(TTool)));
+
+        return this;
+    }
+
+    /// <summary>
+    /// Runtime'a yeni bir context space kaydı ekler.
+    /// </summary>
+    public RuniqServerOptions AddContextSpace(ContextSpace contextSpace)
+    {
+        ArgumentNullException.ThrowIfNull(contextSpace);
+
+        if (_contextSpaces.Any(existing =>
+                string.Equals(existing.Id, contextSpace.Id, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException(
+                $"A context space with id '{contextSpace.Id}' is already registered.");
+        }
+
+        _contextSpaces.Add(contextSpace);
 
         return this;
     }

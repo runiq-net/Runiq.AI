@@ -1,7 +1,12 @@
 import type { ReactNode } from 'react';
-import { Wrench } from 'lucide-react';
+import { Database, Wrench } from 'lucide-react';
 
-import type { AgentMetadata, AgentToolMetadata } from '../../../api/agentMetadataApi';
+import type {
+  AgentContextSpaceMetadata,
+  AgentMetadata,
+  AgentToolMetadata,
+} from '../../../api/agentMetadataApi';
+import { getDashboardBasePath } from '../../../dashboardConfig';
 import { parseModelReference } from '../../../utils/modelReference';
 
 type AgentOverviewTabProps = {
@@ -17,6 +22,7 @@ export function AgentOverviewTab({
 }: AgentOverviewTabProps) {
   const modelReference = parseModelReference(agent.model);
   const tools = agent.tools ?? [];
+  const contextSpaces = agent.contextSpaces ?? [];
 
   return (
     <div className="flex min-h-0 flex-col gap-3">
@@ -27,6 +33,10 @@ export function AgentOverviewTab({
             onOpenTools={onOpenTools}
             onOpenTool={onOpenTool}
           />
+        </OverviewSection>
+
+        <OverviewSection label="Context Spaces">
+          <ContextSpaceList contextSpaces={contextSpaces} />
         </OverviewSection>
 
         <OverviewSection label="Workflows">
@@ -79,32 +89,75 @@ function ToolList({
   const visibleTools = tools.slice(0, 2);
   const hiddenToolCount = tools.length - visibleTools.length;
 
-return (
-  <div className="flex flex-wrap gap-1.5">
-    {visibleTools.map((tool) => (
-      <button
-        key={tool.name}
-        type="button"
-        title={formatToolTitle(tool)}
-        onClick={() => onOpenTool(tool.name)}
-        className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
-      >
-        <Wrench className="size-3 text-zinc-500 dark:text-zinc-400" />
-        {tool.name}
-      </button>
-    ))}
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {visibleTools.map((tool) => (
+        <button
+          key={tool.name}
+          type="button"
+          title={formatToolTitle(tool)}
+          onClick={() => onOpenTool(tool.name)}
+          className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
+        >
+          <Wrench className="size-3 text-zinc-500 dark:text-zinc-400" />
+          {tool.name}
+        </button>
+      ))}
 
-    {hiddenToolCount > 0 && (
-      <button
-        type="button"
-        onClick={onOpenTools}
-        className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs font-medium text-zinc-500 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-      >
-        +{hiddenToolCount} more
-      </button>
-    )}
-  </div>
-);
+      {hiddenToolCount > 0 && (
+        <button
+          type="button"
+          onClick={onOpenTools}
+          className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs font-medium text-zinc-500 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+        >
+          +{hiddenToolCount} more
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ContextSpaceList({
+  contextSpaces,
+}: {
+  contextSpaces: AgentContextSpaceMetadata[];
+}) {
+  if (contextSpaces.length === 0) {
+    return (
+      <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+        No context spaces attached
+      </span>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {contextSpaces.map((contextSpace) => (
+        <button
+          key={contextSpace.id}
+          type="button"
+          title={contextSpace.description || contextSpace.name || contextSpace.id}
+          onClick={() => navigateToContextSpace(contextSpace.id)}
+          className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
+        >
+          <Database className="size-3 text-zinc-500 dark:text-zinc-400" />
+          {contextSpace.name || contextSpace.id}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function navigateToContextSpace(contextSpaceId: string) {
+  const basePath = getDashboardBasePath().replace(/\/+$/g, '');
+
+  window.history.pushState(
+    {},
+    '',
+    `${basePath}/context-spaces/${encodeURIComponent(contextSpaceId)}`,
+  );
+
+  window.dispatchEvent(new PopStateEvent('popstate'));
 }
 
 function formatToolTitle(tool: AgentToolMetadata): string {

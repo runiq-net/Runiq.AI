@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Runiq.Agent\Runiq.Agents.csproj" />
+    <ProjectReference Include="..\Runiq.ContextSpaces\Runiq.ContextSpaces.csproj" />
   </ItemGroup>
 
 </Project>

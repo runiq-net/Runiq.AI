@@ -45,10 +45,13 @@ public sealed class OpenAIResponsesClient
         Agent agent,
         Uri endpoint,
         string input,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? instructions = null)
     {
         ArgumentNullException.ThrowIfNull(agent);
         ArgumentNullException.ThrowIfNull(endpoint);
+
+        var effectiveInstructions = ResolveInstructions(agent, instructions);
 
         var requestUrl = BuildResponsesUrl(endpoint);
 
@@ -57,7 +60,7 @@ public sealed class OpenAIResponsesClient
             requestUrl,
             new OpenAIResponseRequest(
                 Model: agent.ModelName,
-                Instructions: agent.Instructions,
+                Instructions: effectiveInstructions,
                 Input: input,
                 Stream: false,
                 Reasoning: new OpenAIReasoningOptions(Effort: agent.ReasoningEffort),
@@ -92,6 +95,7 @@ public sealed class OpenAIResponsesClient
         Uri endpoint,
         string input,
         AgentToolInvoker? toolInvoker = null,
+        string? instructions = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(agent);
@@ -100,14 +104,14 @@ public sealed class OpenAIResponsesClient
         var startedAt = Stopwatch.GetTimestamp();
         var requestUrl = BuildResponsesUrl(endpoint);
         var toolDefinitions = CreateToolDefinitions(agent);
-
+        var effectiveInstructions = ResolveInstructions(agent, instructions);
 
         using var request = CreateRequest(
             agent,
             requestUrl,
             new OpenAIResponseRequest(
                 Model: agent.ModelName,
-                Instructions: agent.Instructions,
+                Instructions: effectiveInstructions,
                 Input: input,
                 Stream: true,
                 Reasoning: new OpenAIReasoningOptions(Effort: agent.ReasoningEffort),
@@ -231,6 +235,7 @@ public sealed class OpenAIResponsesClient
                        toolCallId: functionCall.ToolCallId,
                        outputJson: outputJson,
                        toolInvoker: toolInvoker,
+                       instructions: effectiveInstructions,
                        cancellationToken))
                 {
                     hasAnyRuntimeEvent = true;
@@ -276,18 +281,19 @@ public sealed class OpenAIResponsesClient
     }
 
     private static HttpRequestMessage CreateToolOutputRequest(
-                        Agent agent,
-                        Uri requestUrl,
-                        string previousResponseId,
-                        string toolCallId,
-                        string outputJson)
+        Agent agent,
+        Uri requestUrl,
+        string previousResponseId,
+        string toolCallId,
+        string outputJson,
+        string instructions)
     {
         return CreateRequest(
             agent,
             requestUrl,
             new OpenAIResponseRequest(
                 Model: agent.ModelName,
-                Instructions: agent.Instructions,
+                Instructions: instructions,
                 Input: new object[]
                 {
                 new OpenAIFunctionCallOutputInput(
@@ -298,25 +304,27 @@ public sealed class OpenAIResponsesClient
                 Stream: true,
                 Reasoning: new OpenAIReasoningOptions(Effort: agent.ReasoningEffort),
                 Text: new OpenAITextOptions(Verbosity: agent.Verbosity),
-                Tools: CreateToolDefinitions(agent),
+                Tools: CreateToolDefinitions(agent),         
                 PreviousResponseId: previousResponseId));
     }
 
     private async IAsyncEnumerable<AgentExecutionEvent> StreamToolOutputAsync(
-    Agent agent,
-    Uri requestUrl,
-    string previousResponseId,
-    string toolCallId,
-    string outputJson,
-    AgentToolInvoker? toolInvoker,
-    [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        Agent agent,
+        Uri requestUrl,
+        string previousResponseId,
+        string toolCallId,
+        string outputJson,
+        AgentToolInvoker? toolInvoker,
+        string instructions,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         using var request = CreateToolOutputRequest(
             agent,
             requestUrl,
             previousResponseId,
             toolCallId,
-            outputJson);
+            outputJson,
+            instructions);
 
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
 
@@ -433,6 +441,7 @@ public sealed class OpenAIResponsesClient
                                    toolCallId: functionCall.ToolCallId,
                                    outputJson: nextOutputJson,
                                    toolInvoker: toolInvoker,
+                                   instructions: instructions,
                                    cancellationToken))
                 {
                     hasAnyRuntimeEvent = true;
@@ -768,6 +777,15 @@ public sealed class OpenAIResponsesClient
         }
 
         return "string";
+    }
+
+    private static string ResolveInstructions(
+    Agent agent,
+    string? instructions)
+    {
+        return string.IsNullOrWhiteSpace(instructions)
+            ? agent.Instructions
+            : instructions;
     }
 
     private sealed record OpenAIFunctionCall(

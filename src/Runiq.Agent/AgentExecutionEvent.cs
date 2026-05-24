@@ -11,7 +11,10 @@ public sealed record AgentExecutionEvent(
     string? ArgumentsJson = null,
     string? OutputJson = null,
     string? ErrorCode = null,
-    string? ErrorMessage = null)
+    string? ErrorMessage = null,
+    IReadOnlyList<AgentExecutionContextSpaceInfo>? ContextSpaces = null,
+    IReadOnlyList<AgentExecutionSkillInfo>? Skills = null,
+    IReadOnlyList<AgentExecutionSourceInfo>? Sources = null)
 {
     /// <summary>
     /// Assistant yanıtından gelen parça metin olayını oluşturur.
@@ -89,6 +92,26 @@ public sealed record AgentExecutionEvent(
     }
 
     /// <summary>
+    /// Agent çalışmasına sağlanan context space, skill ve source bilgilerini bildiren stream olayını oluşturur.
+    /// </summary>
+    public static AgentExecutionEvent ContextProvided(
+        IReadOnlyList<AgentExecutionContextSpaceInfo> contextSpaces,
+        IReadOnlyList<AgentExecutionSkillInfo> skills,
+        IReadOnlyList<AgentExecutionSourceInfo> sources)
+    {
+        ArgumentNullException.ThrowIfNull(contextSpaces);
+        ArgumentNullException.ThrowIfNull(skills);
+        ArgumentNullException.ThrowIfNull(sources);
+
+        return new AgentExecutionEvent(
+            Kind: AgentExecutionEventKind.ContextProvided,
+            Content: null,
+            ContextSpaces: contextSpaces,
+            Skills: skills,
+            Sources: sources);
+    }
+
+    /// <summary>
     /// Agent çalışmasının başarıyla tamamlandığını bildiren stream olayını oluşturur.
     /// </summary>
     /// <returns>Tamamlanma olayını temsil eden stream olayıdır.</returns>
@@ -150,5 +173,39 @@ public enum AgentExecutionEventKind
     /// <summary>
     /// Agent çalışmasının hata ile sonlandığını belirtir.
     /// </summary>
-    Failed = 5
+    Failed = 5,
+
+    /// <summary>
+    /// Agent çalışmasına context space bilgilerinin sağlandığını belirtir.
+    /// </summary>
+    ContextProvided = 6
 }
+
+/// <summary>
+/// Agent çalışmasına sağlanan context space özet bilgisini temsil eder.
+/// </summary>
+public sealed record AgentExecutionContextSpaceInfo(
+    string Id,
+    string Name,
+    string? Description);
+
+/// <summary>
+/// Agent çalışmasına sağlanan skill özet bilgisini temsil eder.
+/// </summary>
+public sealed record AgentExecutionSkillInfo(
+    string Id,
+    string Name,
+    string? Description,
+    string? Version,
+    IReadOnlyList<string> Tags,
+    string SourceId,
+    string RelativePath);
+
+/// <summary>
+/// Agent çalışmasına kullanılabilir olarak sağlanan source özet bilgisini temsil eder.
+/// </summary>
+public sealed record AgentExecutionSourceInfo(
+    string Id,
+    string Name,
+    string Kind,
+    string? Description);

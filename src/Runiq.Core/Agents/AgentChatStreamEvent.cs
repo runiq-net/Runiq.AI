@@ -13,4 +13,37 @@ public sealed record AgentChatStreamEvent(
     [property: JsonPropertyName("argumentsJson")] string? ArgumentsJson = null,
     [property: JsonPropertyName("outputJson")] string? OutputJson = null,
     [property: JsonPropertyName("errorCode")] string? ErrorCode = null,
-    [property: JsonPropertyName("errorMessage")] string? ErrorMessage = null);
+    [property: JsonPropertyName("errorMessage")] string? ErrorMessage = null,
+    [property: JsonPropertyName("contextSpaces")] IReadOnlyList<AgentChatContextSpaceStreamItem>? ContextSpaces = null,
+    [property: JsonPropertyName("skills")] IReadOnlyList<AgentChatSkillStreamItem>? Skills = null,
+    [property: JsonPropertyName("sources")] IReadOnlyList<AgentChatSourceStreamItem>? Sources = null);
+
+
+/// <summary>
+/// Chat SSE olayında gösterilecek context space özet bilgisini temsil eder.
+/// </summary>
+public sealed record AgentChatContextSpaceStreamItem(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("description")] string? Description);
+
+/// <summary>
+/// Chat SSE olayında gösterilecek skill özet bilgisini temsil eder.
+/// </summary>
+public sealed record AgentChatSkillStreamItem(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("description")] string? Description,
+    [property: JsonPropertyName("version")] string? Version,
+    [property: JsonPropertyName("tags")] IReadOnlyList<string> Tags,
+    [property: JsonPropertyName("sourceId")] string SourceId,
+    [property: JsonPropertyName("relativePath")] string RelativePath);
+
+/// <summary>
+/// Chat SSE olayında gösterilecek source özet bilgisini temsil eder.
+/// </summary>
+public sealed record AgentChatSourceStreamItem(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("kind")] string Kind,
+    [property: JsonPropertyName("description")] string? Description);

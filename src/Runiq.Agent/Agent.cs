@@ -11,6 +11,7 @@ namespace Runiq.Agents;
 public class Agent
 {
     private readonly List<AgentToolRegistration> tools = [];
+    private readonly List<string> contextSpaceIds = [];
 
     /// <summary>
     /// Agent'a code-first olarak eklenmiş tool kayıtlarını döner.
@@ -73,6 +74,11 @@ public class Agent
     public ModelReference ModelReference { get; }
 
     /// <summary>
+    /// Agent'a bağlanmış context space teknik kimliklerini döner.
+    /// </summary>
+    public IReadOnlyList<string> ContextSpaceIds => contextSpaceIds;
+
+    /// <summary>
     /// Yeni bir agent tanımı oluşturur.
     /// </summary>
     /// <param name="id">Ajanın sistem içindeki benzersiz kimliğidir.</param>
@@ -133,6 +139,27 @@ public class Agent
             "Direct Agent.ExecuteStreamAsync is no longer responsible for provider execution. " +
             "Use AgentExecutionRuntime.ExecuteStreamAsync through dependency injection.",
             "DirectAgentExecutionNotSupported");
+    }
+
+    /// <summary>
+    /// Agent'a kullanılacak bir context space bağlantısı ekler.
+    /// </summary>
+    /// <param name="contextSpaceId">Bağlanacak context space teknik kimliğidir.</param>
+    /// <returns>Akıcı yapılandırma için mevcut agent örneği.</returns>
+    public Agent UseContextSpace(string contextSpaceId)
+    {
+        var normalizedContextSpaceId = ValidateRequired(contextSpaceId, nameof(contextSpaceId));
+
+        if (contextSpaceIds.Any(existing =>
+                string.Equals(existing, normalizedContextSpaceId, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException(
+                $"Agent '{Id}' already uses context space '{normalizedContextSpaceId}'.");
+        }
+
+        contextSpaceIds.Add(normalizedContextSpaceId);
+
+        return this;
     }
 
     /// <summary>
