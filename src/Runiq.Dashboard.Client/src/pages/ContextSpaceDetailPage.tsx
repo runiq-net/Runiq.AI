@@ -4,6 +4,14 @@ import {
   getContextSpaces,
   type ContextSpaceMetadata,
 } from '../api/agentMetadataApi';
+import {
+  getContextSpaceSourceDocuments,
+  type ContextSpaceSourceDocumentsResponse,
+} from '../api/contextSpaceSourceDocumentsApi';
+import {
+  getContextSpaceSkillDocuments,
+  type ContextSpaceSkillDocumentsResponse,
+} from '../api/contextSpaceSkillDocumentsApi';
 import { ContextSpaceInspectorPanel } from '../components/ContextSpaces/ContextSpaceInspectorPanel';
 import { ContextSpaceMainPanel } from '../components/ContextSpaces/ContextSpaceMainPanel';
 import { getDashboardBasePath } from '../dashboardConfig';
@@ -18,6 +26,14 @@ export function ContextSpaceDetailPage({
   const [contextSpaces, setContextSpaces] = useState<ContextSpaceMetadata[]>([]);
   const [isLoading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [sourceDocuments, setSourceDocuments] =
+    useState<ContextSpaceSourceDocumentsResponse | null>(null);
+  const [isSourceDocumentsLoading, setSourceDocumentsLoading] = useState(false);
+  const [sourceDocumentsError, setSourceDocumentsError] = useState<string | null>(null);
+  const [skillDocuments, setSkillDocuments] =
+    useState<ContextSpaceSkillDocumentsResponse | null>(null);
+  const [isSkillDocumentsLoading, setSkillDocumentsLoading] = useState(false);
+  const [skillDocumentsError, setSkillDocumentsError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -58,11 +74,77 @@ export function ContextSpaceDetailPage({
     };
   }, []);
 
+  useEffect(() => {
+    setSourceDocuments(null);
+    setSourceDocumentsError(null);
+    setSkillDocuments(null);
+    setSkillDocumentsError(null);
+  }, [contextSpaceId]);
+
   const contextSpace = useMemo(() => {
     return contextSpaces.find(
       (item) => item.id.toLowerCase() === contextSpaceId.toLowerCase(),
     );
   }, [contextSpaceId, contextSpaces]);
+
+  useEffect(() => {
+    if (contextSpace) {
+      void loadSourceDocuments();
+      void loadSkillDocuments();
+    }
+  }, [contextSpace?.id]);
+
+  async function loadSourceDocuments() {
+    if (isSourceDocumentsLoading || sourceDocuments) {
+      return;
+    }
+
+    try {
+      setSourceDocumentsLoading(true);
+      setSourceDocumentsError(null);
+
+      const result = await getContextSpaceSourceDocuments(
+        getDashboardBasePath(),
+        contextSpaceId,
+      );
+
+      setSourceDocuments(result);
+    } catch (error) {
+      setSourceDocumentsError(
+        error instanceof Error
+          ? error.message
+          : 'Context Space source documents could not be loaded.',
+      );
+    } finally {
+      setSourceDocumentsLoading(false);
+    }
+  }
+
+  async function loadSkillDocuments() {
+    if (isSkillDocumentsLoading || skillDocuments) {
+      return;
+    }
+
+    try {
+      setSkillDocumentsLoading(true);
+      setSkillDocumentsError(null);
+
+      const result = await getContextSpaceSkillDocuments(
+        getDashboardBasePath(),
+        contextSpaceId,
+      );
+
+      setSkillDocuments(result);
+    } catch (error) {
+      setSkillDocumentsError(
+        error instanceof Error
+          ? error.message
+          : 'Context Space skill documents could not be loaded.',
+      );
+    } finally {
+      setSkillDocumentsLoading(false);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -90,8 +172,24 @@ export function ContextSpaceDetailPage({
 
   return (
     <div className="flex h-full min-h-0 w-full gap-3">
-      <ContextSpaceMainPanel contextSpace={contextSpace} />
-      <ContextSpaceInspectorPanel contextSpace={contextSpace} />
+      <ContextSpaceMainPanel
+        contextSpace={contextSpace}
+        sourceDocuments={sourceDocuments}
+        isSourceDocumentsLoading={isSourceDocumentsLoading}
+        sourceDocumentsError={sourceDocumentsError}
+        onSourcesTabOpen={loadSourceDocuments}
+        skillDocuments={skillDocuments}
+        isSkillDocumentsLoading={isSkillDocumentsLoading}
+        skillDocumentsError={skillDocumentsError}
+        onSkillsTabOpen={loadSkillDocuments}
+      />
+      <ContextSpaceInspectorPanel
+        contextSpace={contextSpace}
+        documentCount={sourceDocuments?.sourceGroups.reduce(
+          (sum, group) => sum + group.documentCount,
+          0,
+        )}
+      />
     </div>
   );
 }

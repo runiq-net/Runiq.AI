@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Runiq.Core.Agents;
+using Runiq.Core.ContextSpaces;
 using Runiq.Core.Dashboard;
 using Runiq.Core.Metadata;
 using Runiq.Core.Studio;
@@ -44,6 +45,7 @@ public static class RuniqDashboardApplicationBuilderExtensions
         {
             endpoints.MapRuniqMetadataApi($"{basePath}/metadata");
             endpoints.MapRuniqAgentApi($"{basePath}/api");
+            endpoints.MapRuniqContextSpaceApi($"{basePath}/api");
             endpoints.MapRuniqToolApi($"{basePath}/api");
         });
 

@@ -1,15 +1,26 @@
 import { useMemo, useState } from 'react';
 
 import type { ContextSpaceMetadata } from '../../api/agentMetadataApi';
+import type { ContextSpaceSourceDocumentsResponse } from '../../api/contextSpaceSourceDocumentsApi';
+import type { ContextSpaceSkillDocumentsResponse } from '../../api/contextSpaceSkillDocumentsApi';
 import { ContextSpaceOverviewTab } from './tabs/ContextSpaceOverviewTab';
+import { ContextSpaceAgentsTab } from './tabs/ContextSpaceAgentsTab';
 import { ContextSpaceSkillsTab } from './tabs/ContextSpaceSkillsTab';
 import { ContextSpaceSourcesTab } from './tabs/ContextSpaceSourcesTab';
 
 type ContextSpaceMainPanelProps = {
   contextSpace: ContextSpaceMetadata;
+  sourceDocuments?: ContextSpaceSourceDocumentsResponse | null;
+  isSourceDocumentsLoading: boolean;
+  sourceDocumentsError?: string | null;
+  onSourcesTabOpen: () => void;
+  skillDocuments?: ContextSpaceSkillDocumentsResponse | null;
+  isSkillDocumentsLoading: boolean;
+  skillDocumentsError?: string | null;
+  onSkillsTabOpen: () => void;
 };
 
-type ContextSpaceMainTab = 'overview' | 'skills' | 'sources';
+type ContextSpaceMainTab = 'overview' | 'skills' | 'sources' | 'agents';
 
 const tabs: Array<{
   key: ContextSpaceMainTab;
@@ -18,16 +29,26 @@ const tabs: Array<{
   { key: 'overview', label: 'Overview' },
   { key: 'skills', label: 'Skills' },
   { key: 'sources', label: 'Sources' },
+  { key: 'agents', label: 'Agents' },
 ];
 
 const tabTitles: Record<ContextSpaceMainTab, string> = {
   overview: 'Context Overview',
   skills: 'Skills',
   sources: 'Sources',
+  agents: 'Agents',
 };
 
 export function ContextSpaceMainPanel({
   contextSpace,
+  sourceDocuments,
+  isSourceDocumentsLoading,
+  sourceDocumentsError,
+  onSourcesTabOpen,
+  skillDocuments,
+  isSkillDocumentsLoading,
+  skillDocumentsError,
+  onSkillsTabOpen,
 }: ContextSpaceMainPanelProps) {
   const [activeTab, setActiveTab] = useState<ContextSpaceMainTab>('overview');
 
@@ -51,7 +72,17 @@ export function ContextSpaceMainPanel({
               <button
                 key={tab.key}
                 type="button"
-                onClick={() => setActiveTab(tab.key)}
+                onClick={() => {
+                  setActiveTab(tab.key);
+
+                  if (tab.key === 'sources') {
+                    onSourcesTabOpen();
+                  }
+
+                  if (tab.key === 'skills') {
+                    onSkillsTabOpen();
+                  }
+                }}
                 className={[
                   'flex-1 rounded px-3 py-1.5 transition sm:flex-none',
                   activeTab === tab.key
@@ -66,17 +97,44 @@ export function ContextSpaceMainPanel({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 [scrollbar-width:thin] [scrollbar-color:rgb(161_161_170)_transparent] dark:[scrollbar-color:rgb(82_82_91)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-300 dark:[&::-webkit-scrollbar-thumb]:bg-zinc-700">
+      <div
+        className={[
+          'min-h-0 flex-1 px-5 py-5 [scrollbar-width:thin] [scrollbar-color:rgb(161_161_170)_transparent] dark:[scrollbar-color:rgb(82_82_91)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-300 dark:[&::-webkit-scrollbar-thumb]:bg-zinc-700',
+          activeTab === 'sources' || activeTab === 'skills'
+            ? 'overflow-hidden'
+            : 'overflow-y-auto',
+        ].join(' ')}
+      >
         {activeTab === 'overview' ? (
-          <ContextSpaceOverviewTab contextSpace={contextSpace} />
+          <ContextSpaceOverviewTab
+            contextSpace={contextSpace}
+            documentCount={sourceDocuments?.sourceGroups.reduce(
+              (sum, group) => sum + group.documentCount,
+              0,
+            )}
+          />
         ) : null}
 
         {activeTab === 'skills' ? (
-          <ContextSpaceSkillsTab contextSpace={contextSpace} />
+          <ContextSpaceSkillsTab
+            contextSpace={contextSpace}
+            skillDocuments={skillDocuments}
+            isLoading={isSkillDocumentsLoading}
+            errorMessage={skillDocumentsError}
+          />
         ) : null}
 
         {activeTab === 'sources' ? (
-          <ContextSpaceSourcesTab contextSpace={contextSpace} />
+          <ContextSpaceSourcesTab
+            contextSpace={contextSpace}
+            sourceDocuments={sourceDocuments}
+            isLoading={isSourceDocumentsLoading}
+            errorMessage={sourceDocumentsError}
+          />
+        ) : null}
+
+        {activeTab === 'agents' ? (
+          <ContextSpaceAgentsTab contextSpace={contextSpace} />
         ) : null}
       </div>
     </section>

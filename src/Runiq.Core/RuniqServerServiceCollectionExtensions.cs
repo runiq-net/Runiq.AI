@@ -5,6 +5,7 @@ using Runiq.Agents.Tools;
 using Runiq.Agents.Validation;
 using Runiq.Core.Agents;
 using Runiq.Core.Configuration;
+using Runiq.Core.ContextSpaces;
 using Runiq.Core.Metadata;
 using Runiq.Core.Tools;
 using Runiq.Core.Validation;
@@ -28,6 +29,7 @@ public static class RuniqServerServiceCollectionExtensions
         services.AddSingleton<IRuntimeMetadataService, RuntimeMetadataService>();
 
         services.AddSingleton<IContextSpaceSkillDiscoveryService, ContextSpaceSkillDiscoveryService>();
+        services.AddSingleton<IContextSpaceSourceReader, ContextSpaceFileSystemSourceReader>();
 
         services.AddHttpClient<OpenAIResponsesClient>();
         services.AddHttpClient<OpenAICompatibleClient>();
@@ -36,6 +38,8 @@ public static class RuniqServerServiceCollectionExtensions
         services.AddScoped<ToolRunApiHandler>();
         services.AddScoped<AgentExecutionRuntime>();
         services.AddScoped<AgentChatApiHandler>();
+        services.AddScoped<ContextSpaceSourceDocumentApiHandler>();
+        services.AddScoped<ContextSpaceSkillDocumentApiHandler>();
 
         return services;
     }

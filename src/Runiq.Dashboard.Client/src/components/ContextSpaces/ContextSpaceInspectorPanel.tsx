@@ -6,10 +6,12 @@ import { getDashboardBasePath } from '../../dashboardConfig';
 
 type ContextSpaceInspectorPanelProps = {
   contextSpace: ContextSpaceMetadata;
+  documentCount?: number;
 };
 
 export function ContextSpaceInspectorPanel({
   contextSpace,
+  documentCount,
 }: ContextSpaceInspectorPanelProps) {
   return (
     <aside className="hidden w-[320px] shrink-0 rounded-lg border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40 dark:shadow-none xl:flex xl:min-h-0 xl:flex-col">
@@ -31,9 +33,14 @@ export function ContextSpaceInspectorPanel({
                 {contextSpace.skills.length}
               </span>
             </InspectorRow>
-            <InspectorRow label="Sources">
+            <InspectorRow label="Source groups">
               <span className="font-medium text-zinc-800 dark:text-zinc-200">
                 {contextSpace.sources.length}
+              </span>
+            </InspectorRow>
+            <InspectorRow label="Documents">
+              <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                {documentCount ?? '...'}
               </span>
             </InspectorRow>
             <InspectorRow label="Agents">
