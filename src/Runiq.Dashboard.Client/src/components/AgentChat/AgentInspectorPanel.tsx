@@ -1,8 +1,8 @@
 import { useState } from 'react';
 
 import type { AgentMetadata } from '../../api/agentMetadataApi';
-import { AgentMemoryTab } from './tabs/AgentMemoryTab';
 import { AgentOverviewTab } from './tabs/AgentOverviewTab';
+import { AgentPromptTab } from './tabs/AgentPromptTab';
 import { RunningBehaviorTab } from './tabs/RunningBehaviorTab';
 import type { AgentChatMethod } from '../../types/agentChat';
 import { AgentToolsPanel } from './tabs/AgentToolsPanel';
@@ -14,7 +14,7 @@ type AgentInspectorPanelProps = {
   onChatMethodChange: (chatMethod: AgentChatMethod) => void;
 };
 
-type InspectorTab = 'overview' | 'running-behavior' | 'memory';
+type InspectorTab = 'overview' | 'running-behavior' | 'prompt';
 
 type InspectorView =
   | { kind: 'tab' }
@@ -27,7 +27,7 @@ const tabs: Array<{
 }> = [
   { key: 'overview', label: 'Overview' },
   { key: 'running-behavior', label: 'Behavior' },
-  { key: 'memory', label: 'Memory' },
+  { key: 'prompt', label: 'Prompt' },
 ];
 
 export function AgentInspectorPanel({
@@ -97,7 +97,7 @@ export function AgentInspectorPanel({
               type="button"
               onClick={() => handleTabChange(tab.key)}
               className={[
-                'rounded px-2 py-1 transition',
+                'rounded px-1.5 py-1 transition',
                 inspectorView.kind === 'tab' && activeTab === tab.key
                   ? 'bg-white text-zinc-950 shadow-sm dark:bg-zinc-800 dark:text-zinc-100'
                   : 'text-zinc-500 hover:text-zinc-950 dark:text-zinc-500 dark:hover:text-zinc-200',
@@ -149,8 +149,8 @@ export function AgentInspectorPanel({
           />
         )}
 
-        {inspectorView.kind === 'tab' && activeTab === 'memory' && (
-          <AgentMemoryTab agent={agent} />
+        {inspectorView.kind === 'tab' && activeTab === 'prompt' && (
+          <AgentPromptTab agent={agent} />
         )}
       </div>
     </aside>

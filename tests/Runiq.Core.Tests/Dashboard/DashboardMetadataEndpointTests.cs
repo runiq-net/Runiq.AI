@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Runiq.Agents;
+using Runiq.Agents.Tools;
 using Runiq.ContextSpaces.Models.Sources;
 using Runiq.Core;
 using Runiq.Core.Configuration;
@@ -54,6 +55,19 @@ public sealed class DashboardMetadataEndpointTests
         Assert.Equal("test-context", contextSpace.GetProperty("id").GetString());
         Assert.Equal("Test Context", contextSpace.GetProperty("name").GetString());
         Assert.Equal("Test context description.", contextSpace.GetProperty("description").GetString());
+        Assert.Equal(1, contextSpace.GetProperty("sourceCount").GetInt32());
+        Assert.Equal(0, contextSpace.GetProperty("documentCount").GetInt32());
+        Assert.Equal(0, contextSpace.GetProperty("skillCount").GetInt32());
+
+        var tools = agent.GetProperty("tools");
+
+        Assert.Equal(JsonValueKind.Array, tools.ValueKind);
+        Assert.Single(tools.EnumerateArray());
+
+        var tool = tools[0];
+
+        Assert.Equal("test_tool", tool.GetProperty("name").GetString());
+        Assert.Equal("Test Tool", tool.GetProperty("displayName").GetString());
     }
 
     [Fact]
@@ -177,6 +191,7 @@ public sealed class DashboardMetadataEndpointTests
                             instructions: "Test instructions.",
                             model: "openai/gpt-5",
                             apiKey: "test-key")
+                        .AddTool<TestTool>()
                         .UseContextSpace("test-context"));
                 });
             })
@@ -218,4 +233,19 @@ public sealed class DashboardMetadataEndpointTests
             </html>
             """);
     }
+
+    [RuniqTool("test_tool", "Test tool.")]
+    private sealed class TestTool : IRuniqTool<TestToolInput, TestToolOutput>
+    {
+        public Task<TestToolOutput> ExecuteAsync(
+            TestToolInput input,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new TestToolOutput(input.Value));
+        }
+    }
+
+    private sealed record TestToolInput(string Value);
+
+    private sealed record TestToolOutput(string Value);
 }

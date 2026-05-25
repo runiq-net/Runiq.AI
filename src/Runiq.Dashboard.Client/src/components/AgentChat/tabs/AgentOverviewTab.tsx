@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Database, Wrench } from 'lucide-react';
+import { Database, Users, Wrench } from 'lucide-react';
 
 import type {
   AgentContextSpaceMetadata,
@@ -8,6 +8,7 @@ import type {
 } from '../../../api/agentMetadataApi';
 import { getDashboardBasePath } from '../../../dashboardConfig';
 import { parseModelReference } from '../../../utils/modelReference';
+import { getToolDisplayName } from './agentToolDisplay';
 
 type AgentOverviewTabProps = {
   agent: AgentMetadata;
@@ -25,44 +26,34 @@ export function AgentOverviewTab({
   const contextSpaces = agent.contextSpaces ?? [];
 
   return (
-    <div className="flex min-h-0 flex-col gap-3">
-      <InspectorCard title="Capabilities">
-        <OverviewSection label="Tools">
-          <ToolList
-            tools={tools}
-            onOpenTools={onOpenTools}
-            onOpenTool={onOpenTool}
-          />
-        </OverviewSection>
-
-        <OverviewSection label="Context Spaces">
-          <ContextSpaceList contextSpaces={contextSpaces} />
-        </OverviewSection>
-
-        <OverviewSection label="Workflows">
-          <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-            No workflows attached
-          </span>
-        </OverviewSection>
-      </InspectorCard>
-
+    <div className="flex min-h-0 flex-col gap-2">
       <InspectorCard title="Model">
-        <OverviewRow label="Provider">
-          <span className="truncate text-right font-medium text-zinc-800 dark:text-zinc-200">
-            {modelReference.provider}
-          </span>
-        </OverviewRow>
-
-        <OverviewRow label="Model">
-          <span className="truncate text-right font-medium text-zinc-800 dark:text-zinc-200">
-            {modelReference.model}
-          </span>
-        </OverviewRow>
+        <KeyValueRow label="Provider" value={formatProvider(modelReference.provider)} />
+        <KeyValueRow label="Model" value={modelReference.model} />
       </InspectorCard>
 
-      <InspectorCard title="System Prompt" className="min-h-0 flex-1">
-        <div className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words pr-2 text-sm leading-6 text-zinc-700 [scrollbar-width:thin] [scrollbar-color:rgb(161_161_170)_transparent] dark:text-zinc-300 dark:[scrollbar-color:rgb(82_82_91)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-300 dark:[&::-webkit-scrollbar-thumb]:bg-zinc-700">
-          {formatSystemPrompt(agent.instructions)}
+      <InspectorCard title="Tools">
+        <ToolList
+          tools={tools}
+          onOpenTools={onOpenTools}
+          onOpenTool={onOpenTool}
+        />
+      </InspectorCard>
+
+      <InspectorCard title="Context Space">
+        <ContextSpaceSummary contextSpaces={contextSpaces} />
+      </InspectorCard>
+
+      <InspectorCard title="Multi-Agent Teams">
+        <div className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">
+          <Users className="size-3.5 shrink-0 text-zinc-500 dark:text-zinc-500" />
+          <span className="truncate">No team members</span>
+        </div>
+      </InspectorCard>
+
+      <InspectorCard title="Memory">
+        <div className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-200">
+          Off
         </div>
       </InspectorCard>
     </div>
@@ -100,7 +91,7 @@ function ToolList({
           className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
         >
           <Wrench className="size-3 text-zinc-500 dark:text-zinc-400" />
-          {tool.name}
+          {getToolDisplayName(tool)}
         </button>
       ))}
 
@@ -117,7 +108,7 @@ function ToolList({
   );
 }
 
-function ContextSpaceList({
+function ContextSpaceSummary({
   contextSpaces,
 }: {
   contextSpaces: AgentContextSpaceMetadata[];
@@ -125,25 +116,40 @@ function ContextSpaceList({
   if (contextSpaces.length === 0) {
     return (
       <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-        No context spaces attached
+        No context space attached
       </span>
     );
   }
 
+  const visibleContextSpace = contextSpaces[0];
+  const hiddenContextSpaceCount = contextSpaces.length - 1;
+
   return (
-    <div className="flex flex-wrap gap-1.5">
-      {contextSpaces.map((contextSpace) => (
-        <button
-          key={contextSpace.id}
-          type="button"
-          title={contextSpace.description || contextSpace.name || contextSpace.id}
-          onClick={() => navigateToContextSpace(contextSpace.id)}
-          className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
-        >
-          <Database className="size-3 text-zinc-500 dark:text-zinc-400" />
-          {contextSpace.name || contextSpace.id}
-        </button>
-      ))}
+    <div className="space-y-1.5">
+      <button
+        type="button"
+        title={
+          visibleContextSpace.description ||
+          visibleContextSpace.name ||
+          visibleContextSpace.id
+        }
+        onClick={() => navigateToContextSpace(visibleContextSpace.id)}
+        className="group -mx-1.5 flex w-[calc(100%+0.75rem)] cursor-pointer flex-col rounded-md border border-transparent px-1.5 py-1 text-left transition hover:border-zinc-200 hover:bg-white focus-visible:border-zinc-400 focus-visible:bg-white focus-visible:outline-none dark:hover:border-zinc-700 dark:hover:bg-zinc-900 dark:focus-visible:border-zinc-600 dark:focus-visible:bg-zinc-900"
+      >
+        <span className="flex w-full min-w-0 items-center gap-2 text-sm font-semibold text-zinc-900 transition group-hover:text-zinc-950 dark:text-zinc-100 dark:group-hover:text-white">
+          <Database className="size-3.5 shrink-0 text-zinc-500 transition group-hover:text-zinc-700 dark:text-zinc-500 dark:group-hover:text-zinc-300" />
+          <span className="truncate">
+            {visibleContextSpace.name || visibleContextSpace.id}
+          </span>
+        </span>
+
+        <span className="mt-1 truncate text-xs text-zinc-500 dark:text-zinc-500">
+          {formatContextSpaceCounts(visibleContextSpace)}
+          {hiddenContextSpaceCount > 0
+            ? ` · +${hiddenContextSpaceCount} more`
+            : ''}
+        </span>
+      </button>
     </div>
   );
 }
@@ -170,16 +176,6 @@ function formatToolTitle(tool: AgentToolMetadata): string {
   return parts.join('\n');
 }
 
-function formatSystemPrompt(value: string | undefined): string {
-  const trimmedValue = value?.trim();
-
-  if (!trimmedValue) {
-    return 'No system prompt configured.';
-  }
-
-  return trimmedValue;
-}
-
 function InspectorCard({
   title,
   children,
@@ -200,37 +196,61 @@ function InspectorCard({
         {title}
       </div>
 
-      <div className="mt-3 space-y-2.5 text-sm">{children}</div>
+      <div className="mt-2 space-y-1.5 text-sm">{children}</div>
     </section>
   );
 }
 
-function OverviewSection({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
+function KeyValueRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="space-y-1.5">
-      <div className="text-zinc-500 dark:text-zinc-500">{label}</div>
-      <div className="min-w-0">{children}</div>
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-zinc-500 dark:text-zinc-500">{label}</span>
+      <span className="min-w-0 truncate text-right font-medium text-zinc-800 dark:text-zinc-200">
+        {value}
+      </span>
     </div>
   );
 }
 
-function OverviewRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <span className="text-zinc-500 dark:text-zinc-500">{label}</span>
-      <div className="min-w-0 text-right">{children}</div>
-    </div>
-  );
+function formatContextSpaceCounts(
+  contextSpace: AgentContextSpaceMetadata,
+): string {
+  const counts = [
+    formatCount(contextSpace.skillCount, 'Skill'),
+    formatCount(contextSpace.documentCount, 'Document'),
+  ].filter(Boolean);
+
+  return counts.length > 0 ? counts.join(' · ') : 'Document summary unavailable';
+}
+
+function formatCount(value: number | undefined, label: string): string | null {
+  if (typeof value !== 'number') {
+    return null;
+  }
+
+  return `${value} ${label}${value === 1 ? '' : 's'}`;
+}
+
+function formatProvider(provider: string): string {
+  const normalizedProvider = provider.trim().toLowerCase();
+
+  if (normalizedProvider === 'openai') {
+    return 'OpenAI';
+  }
+
+  if (normalizedProvider === 'azure-openai') {
+    return 'Azure OpenAI';
+  }
+
+  if (normalizedProvider === 'ollama') {
+    return 'Ollama';
+  }
+
+  return provider
+    .replace(/[-_]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 }

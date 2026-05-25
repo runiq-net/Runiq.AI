@@ -1,6 +1,7 @@
 import { ArrowLeft, ChevronRight, Wrench } from 'lucide-react';
 
 import type { AgentToolMetadata } from '../../../api/agentMetadataApi';
+import { getToolDisplayName } from './agentToolDisplay';
 
 type AgentToolsPanelProps = {
   tools: AgentToolMetadata[];
@@ -49,7 +50,7 @@ export function AgentToolsPanel({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
                   <div className="truncate text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                    {tool.name}
+                    {getToolDisplayName(tool)}
                   </div>
 
                   <ChevronRight className="size-4 shrink-0 text-zinc-400 transition group-hover:text-zinc-700 dark:text-zinc-600 dark:group-hover:text-zinc-300" />
