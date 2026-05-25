@@ -171,10 +171,8 @@ public sealed class AgentExecutionRuntimeTests
                 "..",
                 "..",
                 "samples",
-                "SampleApp",
-                "Contexts",
-                "TravelPlanning",
-                "sources"));
+                "Runiq.ContextTravelGuide",
+                "Context"));
 
         var contextSpace = new ContextSpace(
                 id: "travel-planning",

@@ -429,10 +429,8 @@ public sealed class ContextSpaceSourceSearchServiceTests
                 "..",
                 "..",
                 "samples",
-                "SampleApp",
-                "Contexts",
-                "TravelPlanning",
-                "sources"));
+                "Runiq.ContextTravelGuide",
+                "Context"));
 
         return new ContextSpace(
                 id: "travel-planning",
