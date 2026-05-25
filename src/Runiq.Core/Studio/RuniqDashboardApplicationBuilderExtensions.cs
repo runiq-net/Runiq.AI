@@ -139,7 +139,9 @@ public static class RuniqDashboardApplicationBuilderExtensions
 
             html = html
                 .Replace("__RUNIQ_TITLE_HTML__", encodedTitle, StringComparison.Ordinal)
-                .Replace("__RUNIQ_DASHBOARD_CONFIG__", dashboardConfigJson, StringComparison.Ordinal);
+                .Replace("__RUNIQ_DASHBOARD_CONFIG__", dashboardConfigJson, StringComparison.Ordinal)
+                .Replace("src=\"./assets/", $"src=\"{basePath}/assets/", StringComparison.Ordinal)
+                .Replace("href=\"./assets/", $"href=\"{basePath}/assets/", StringComparison.Ordinal);
 
             context.Response.ContentType = "text/html; charset=utf-8";
             await context.Response.WriteAsync(html, context.RequestAborted);

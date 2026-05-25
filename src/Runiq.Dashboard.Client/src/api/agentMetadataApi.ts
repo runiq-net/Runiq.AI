@@ -1,5 +1,6 @@
 export type AgentToolMetadata = {
   name: string;
+  displayName?: string;
   description?: string;
   inputType?: string;
   outputType?: string;
@@ -20,6 +21,9 @@ export type AgentContextSpaceMetadata = {
   id: string;
   name: string;
   description?: string | null;
+  sourceCount?: number;
+  documentCount?: number;
+  skillCount?: number;
 };
 
 export type ContextSpaceSourceMetadata = {

@@ -19,7 +19,7 @@ public sealed class RuniqDashboardPathTests
         // Dashboard path değeri slash ile verildiğinde base path'in index.html içine doğru enjekte edildiğini doğrular.
         using var server = CreateServer("/dashboard");
 
-        var response = await server.CreateClient().GetAsync("/dashboard/agents");
+        var response = await server.CreateClient().GetAsync("/dashboard/agents/travel-agent/chat/new");
 
         response.EnsureSuccessStatusCode();
 
@@ -27,6 +27,10 @@ public sealed class RuniqDashboardPathTests
 
         Assert.Contains("\"basePath\":\"/dashboard\"", html);
         Assert.Contains("\"title\":\"Test Dashboard\"", html);
+        Assert.Contains("src=\"/dashboard/assets/", html);
+        Assert.Contains("href=\"/dashboard/assets/", html);
+        Assert.DoesNotContain("src=\"./assets/", html);
+        Assert.DoesNotContain("href=\"./assets/", html);
     }
 
     [Fact]
@@ -133,6 +137,8 @@ public sealed class RuniqDashboardPathTests
         <script>
             window.__RUNIQ_DASHBOARD__ = __RUNIQ_DASHBOARD_CONFIG__;
         </script>
+        <script type="module" src="./assets/index-test.js"></script>
+        <link rel="stylesheet" href="./assets/index-test.css">
     </head>
     <body>Runiq Dashboard</body>
     </html>

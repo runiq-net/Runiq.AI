@@ -129,19 +129,25 @@ internal sealed class RuntimeMetadataService : IRuntimeMetadataService
             .ToList();
     }
 
-    private static AgentContextSpaceMetadataDto MapAgentContextSpace(
+    private AgentContextSpaceMetadataDto MapAgentContextSpace(
         ContextSpace contextSpace)
     {
+        var skills = _skillDiscoveryService.Discover(contextSpace);
+
         return new AgentContextSpaceMetadataDto(
             Id: contextSpace.Id,
             Name: contextSpace.Name,
-            Description: contextSpace.Description);
+            Description: contextSpace.Description,
+            SourceCount: contextSpace.Sources.Count,
+            DocumentCount: CountReadableSourceDocuments(contextSpace),
+            SkillCount: skills.Count);
     }
 
     private static AgentToolMetadataDto MapAgentTool(AgentToolRegistration tool)
     {
         return new AgentToolMetadataDto(
             Name: tool.Name,
+            DisplayName: FormatDisplayName(tool.Name),
             Description: tool.Description,
             InputType: tool.InputType.Name,
             OutputType: tool.OutputType.Name);
@@ -156,5 +162,61 @@ internal sealed class RuntimeMetadataService : IRuntimeMetadataService
                 .Replace("_", " ")
                 .Split(' ', StringSplitOptions.RemoveEmptyEntries)
                 .Select(part => char.ToUpperInvariant(part[0]) + part[1..]));
+    }
+
+    private static int CountReadableSourceDocuments(ContextSpace contextSpace)
+    {
+        return contextSpace.Sources.Sum(CountReadableSourceDocuments);
+    }
+
+    private static int CountReadableSourceDocuments(ContextSpaceSource source)
+    {
+        if (source.Kind != ContextSpaceSourceKind.LocalFileSystem ||
+            string.IsNullOrWhiteSpace(source.Path))
+        {
+            return 0;
+        }
+
+        var sourceRoot = Path.GetFullPath(source.Path);
+
+        if (!Directory.Exists(sourceRoot))
+        {
+            return 0;
+        }
+
+        return Directory
+            .EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories)
+            .Count(filePath =>
+            {
+                var extension = Path.GetExtension(filePath);
+
+                if (!IsReadableSourceDocumentExtension(extension))
+                {
+                    return false;
+                }
+
+                var fullFilePath = Path.GetFullPath(filePath);
+
+                return IsUnderRoot(sourceRoot, fullFilePath);
+            });
+    }
+
+    private static bool IsReadableSourceDocumentExtension(string extension)
+    {
+        return extension.Equals(".md", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".txt", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".json", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsUnderRoot(string sourceRoot, string filePath)
+    {
+        var normalizedRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(sourceRoot))
+            + Path.DirectorySeparatorChar;
+
+        var normalizedFilePath = Path.GetFullPath(filePath);
+
+        return normalizedFilePath.StartsWith(
+            normalizedRoot,
+            StringComparison.OrdinalIgnoreCase);
     }
 }

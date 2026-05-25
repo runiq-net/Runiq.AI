@@ -1,6 +1,8 @@
-import { ArrowLeft, Wrench } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Wrench } from 'lucide-react';
 
 import type { AgentToolMetadata } from '../../../api/agentMetadataApi';
+import { getDashboardBasePath } from '../../../dashboardConfig';
+import { getToolDisplayName } from './agentToolDisplay';
 
 type AgentToolDetailPanelProps = {
   tool: AgentToolMetadata;
@@ -30,7 +32,7 @@ export function AgentToolDetailPanel({
 
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold text-zinc-950 dark:text-zinc-100">
-              {tool.name}
+              {getToolDisplayName(tool)}
             </div>
             <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-500">
               Tool
@@ -50,10 +52,31 @@ export function AgentToolDetailPanel({
           <DetailSection title="Output">
             {tool.outputType || 'Unknown'}
           </DetailSection>
+
+          <button
+            type="button"
+            onClick={() => navigateToTool(tool.name)}
+            className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-50 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-900 dark:hover:text-white dark:focus-visible:ring-zinc-600 dark:focus-visible:ring-offset-zinc-900"
+          >
+            Open Playground
+            <ExternalLink className="size-3.5" />
+          </button>
         </div>
       </div>
     </div>
   );
+}
+
+function navigateToTool(toolName: string) {
+  const basePath = getDashboardBasePath().replace(/\/+$/g, '');
+
+  window.history.pushState(
+    {},
+    '',
+    `${basePath}/tools/${encodeURIComponent(toolName)}`,
+  );
+
+  window.dispatchEvent(new PopStateEvent('popstate'));
 }
 
 function DetailSection({

@@ -19,13 +19,17 @@ public sealed record AgentMetadataDto(
 public sealed record AgentContextSpaceMetadataDto(
     string Id,
     string Name,
-    string? Description);
+    string? Description,
+    int SourceCount,
+    int DocumentCount,
+    int SkillCount);
 
 /// <summary>
 /// Studio tarafında gösterilecek agent tool metadata bilgisini temsil eder.
 /// </summary>
 public sealed record AgentToolMetadataDto(
     string Name,
+    string DisplayName,
     string Description,
     string InputType,
     string OutputType);
