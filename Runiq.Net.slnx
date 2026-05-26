@@ -9,11 +9,13 @@
     <Project Path="src/Runiq.ContextSpaces/Runiq.ContextSpaces.csproj" />
     <Project Path="src/Runiq.Core/Runiq.Core.csproj" />
     <Project Path="src/Runiq.Teams/Runiq.Teams.csproj" />
+    <Project Path="src/Runiq.Workflows/Runiq.Workflows.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Runiq.Agents.Tests/Runiq.Agents.Tests.csproj" />
     <Project Path="tests/Runiq.ContextSpaces.Tests/Runiq.ContextSpaces.Tests.csproj" />
     <Project Path="tests/Runiq.Core.Tests/Runiq.Core.Tests.csproj" />
     <Project Path="tests/Runiq.Teams.Tests/Runiq.Teams.Tests.csproj" />
+    <Project Path="tests/Runiq.Workflows.Tests/Runiq.Workflows.Tests.csproj" />
   </Folder>
 </Solution>
