@@ -5,6 +5,7 @@ using Runiq.Agents.Tools;
 using Runiq.ContextSpaces.Models.Sources;
 using Runiq.ContextSpaces.Services;
 using Runiq.Teams.Execution;
+using Runiq.Teams.Execution.Planning;
 using Runiq.Teams.Models.Execution;
 using Runiq.Teams.Models.Teams;
 using Microsoft.Extensions.DependencyInjection;
@@ -197,6 +198,73 @@ public sealed class TeamExecutionRuntimeTests
     }
 
     /// <summary>
+    /// Runtime'ın ham takım üye sırası yerine planner tarafından dönen plan sırasını yürüttüğünü doğrular.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteStreamAsync_ShouldExecuteSelectedPlanOrder()
+    {
+        var weatherAgent = new Agent(
+            id: "weather-agent",
+            name: "Weather Agent",
+            instructions: "Provide weather findings.",
+            model: "ollama/demo");
+
+        var plannerAgent = new Agent(
+            id: "planner-agent",
+            name: "Planner Agent",
+            instructions: "Create the final plan.",
+            model: "ollama/demo");
+
+        var team = new AgentTeam(
+                id: "travel-team",
+                name: "Travel Planning Team",
+                instructions: "Create travel plans.")
+            .AddMember(
+                agentId: "weather-agent",
+                role: "Weather Analyst")
+            .AddMember(
+                agentId: "planner-agent",
+                role: "Travel Planner");
+
+        var plan = new TeamExecutionPlan(
+            [
+                new TeamExecutionPlanStep(
+                    "planner-agent",
+                    "Travel Planner",
+                    "Selected first by test planner.",
+                    0,
+                    false),
+                new TeamExecutionPlanStep(
+                    "weather-agent",
+                    "Weather Analyst",
+                    "Selected final by test planner.",
+                    1,
+                    true)
+            ],
+            "weather-agent",
+            "Test plan.");
+
+        var runtime = CreateRuntime(
+            teams: [team],
+            agents: [weatherAgent, plannerAgent],
+            plannerResolver: new FixedPlannerResolver(plan));
+
+        var events = await runtime.ExecuteStreamAsync(
+                teamId: "travel-team",
+                input: "Create a one day travel plan.")
+            .ToListAsync();
+
+        var memberStartedEvents = events
+            .Where(executionEvent => executionEvent.Type == TeamExecutionEventType.MemberStarted)
+            .ToArray();
+
+        Assert.Collection(
+            memberStartedEvents,
+            first => Assert.Equal("planner-agent", first.MemberAgentId),
+            second => Assert.Equal("weather-agent", second.MemberAgentId));
+    }
+
+    /// <summary>
     /// Bilinmeyen team kimliği verildiğinde team not found event'i üretildiğini doğrular.
     /// </summary>
     [Fact]
@@ -274,7 +342,8 @@ public sealed class TeamExecutionRuntimeTests
         IReadOnlyList<AgentTeam> teams,
         IReadOnlyList<Agent> agents,
         IReadOnlyList<ContextSpace>? contextSpaces = null,
-        IContextSpaceSourceSearchService? sourceSearchService = null)
+        IContextSpaceSourceSearchService? sourceSearchService = null,
+        ITeamExecutionPlannerResolver? plannerResolver = null)
     {
 
         var serviceProvider = new ServiceCollection().BuildServiceProvider();
@@ -291,7 +360,19 @@ public sealed class TeamExecutionRuntimeTests
         return new TeamExecutionRuntime(
             teams,
             agentRuntime,
-            toolInvoker);
+            toolInvoker,
+            plannerResolver ?? CreatePlannerResolver());
+    }
+
+    private static ITeamExecutionPlannerResolver CreatePlannerResolver()
+    {
+        var sequentialPlanner = new SequentialTeamExecutionPlanner();
+
+        return new TeamExecutionPlannerResolver(
+            sequentialPlanner,
+            new AdaptiveTeamExecutionPlanner(
+                new ThrowingTeamPlanningModelClient(),
+                sequentialPlanner));
     }
 
     private static OpenAIResponsesClient CreateOpenAIResponsesClient()
@@ -339,6 +420,50 @@ public sealed class TeamExecutionRuntimeTests
             CancellationToken cancellationToken = default)
         {
             throw new InvalidOperationException(message);
+        }
+    }
+
+    private sealed class ThrowingTeamPlanningModelClient : ITeamPlanningModelClient
+    {
+        public Task<string> CreatePlanJsonAsync(
+            AgentTeam team,
+            string userInput,
+            CancellationToken cancellationToken = default)
+        {
+            throw new InvalidOperationException("Planning model should not be called by sequential tests.");
+        }
+    }
+
+    private sealed class FixedPlannerResolver : ITeamExecutionPlannerResolver
+    {
+        private readonly TeamExecutionPlan plan;
+
+        public FixedPlannerResolver(TeamExecutionPlan plan)
+        {
+            this.plan = plan;
+        }
+
+        public ITeamExecutionPlanner Resolve(AgentTeam team)
+        {
+            return new FixedPlanner(plan);
+        }
+    }
+
+    private sealed class FixedPlanner : ITeamExecutionPlanner
+    {
+        private readonly TeamExecutionPlan plan;
+
+        public FixedPlanner(TeamExecutionPlan plan)
+        {
+            this.plan = plan;
+        }
+
+        public Task<TeamExecutionPlan> CreatePlanAsync(
+            AgentTeam team,
+            string userInput,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(plan);
         }
     }
 }

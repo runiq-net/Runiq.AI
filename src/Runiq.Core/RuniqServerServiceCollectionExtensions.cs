@@ -13,6 +13,7 @@ using Runiq.Core.Teams;
 using Runiq.Core.Tools;
 using Runiq.Core.Validation;
 using Runiq.Teams.Execution;
+using Runiq.Teams.Execution.Planning;
 using Runiq.Teams.Models.Teams;
 
 namespace Runiq.Core;
@@ -44,6 +45,10 @@ public static class RuniqServerServiceCollectionExtensions
         services.AddScoped<AgentChatApiHandler>();
 
         // Agent Teams 
+        services.AddScoped<SequentialTeamExecutionPlanner>();
+        services.AddScoped<AdaptiveTeamExecutionPlanner>();
+        services.AddScoped<ITeamPlanningModelClient, AgentRuntimeTeamPlanningModelClient>();
+        services.AddScoped<ITeamExecutionPlannerResolver, TeamExecutionPlannerResolver>();
         services.AddScoped<TeamExecutionRuntime>();
         services.AddScoped<TeamChatApiHandler>();
 

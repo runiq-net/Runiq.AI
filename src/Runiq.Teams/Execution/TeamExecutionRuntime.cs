@@ -3,6 +3,7 @@ using System.Text;
 using Runiq.Agents;
 using Runiq.Agents.Runtime;
 using Runiq.Agents.Tools;
+using Runiq.Teams.Execution.Planning;
 using Runiq.Teams.Models.Execution;
 using Runiq.Teams.Models.Teams;
 
@@ -16,6 +17,7 @@ public sealed class TeamExecutionRuntime
     private readonly IReadOnlyList<AgentTeam> teams;
     private readonly AgentExecutionRuntime agentRuntime;
     private readonly AgentToolInvoker toolInvoker;
+    private readonly ITeamExecutionPlannerResolver plannerResolver;
 
     /// <summary>
     /// Yeni bir team execution runtime örneği oluşturur.
@@ -26,11 +28,13 @@ public sealed class TeamExecutionRuntime
     public TeamExecutionRuntime(
         IReadOnlyList<AgentTeam>? teams,
         AgentExecutionRuntime agentRuntime,
-        AgentToolInvoker toolInvoker)
+        AgentToolInvoker toolInvoker,
+        ITeamExecutionPlannerResolver plannerResolver)
     {
         this.teams = teams ?? [];
         this.agentRuntime = agentRuntime;
         this.toolInvoker = toolInvoker;
+        this.plannerResolver = plannerResolver;
     }
 
     /// <summary>
@@ -81,22 +85,58 @@ public sealed class TeamExecutionRuntime
             team.Id,
             team.Name);
 
-        var currentInput = string.Empty;
         var previousOutputs = new List<(TeamMember Member, string Output)>();
         string? finalContent = null;
 
-        for (var memberIndex = 0; memberIndex < team.Members.Count; memberIndex++)
+        TeamExecutionPlan? plan = null;
+        string? planningFailureMessage = null;
+
+        try
         {
-            var member = team.Members[memberIndex];
-            var isFinalMember = memberIndex == team.Members.Count - 1;
+            plan = await plannerResolver
+                .Resolve(team)
+                .CreatePlanAsync(team, input, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            planningFailureMessage = exception.Message;
+        }
+
+        if (planningFailureMessage is not null || plan is null)
+        {
+            yield return TeamExecutionEvent.TeamFailed(
+                team.Id,
+                $"Agent team planning failed: {planningFailureMessage ?? "No plan was created."}",
+                "TeamPlanningFailed");
+
+            yield break;
+        }
+
+        foreach (var planStep in plan.Steps)
+        {
+            var member = team.Members.FirstOrDefault(candidate =>
+                string.Equals(candidate.AgentId, planStep.AgentId, StringComparison.OrdinalIgnoreCase));
+
+            if (member is null)
+            {
+                yield return TeamExecutionEvent.TeamFailed(
+                    team.Id,
+                    $"Agent team plan selected unknown member '{planStep.AgentId}'.",
+                    "TeamPlanMemberNotFound");
+
+                yield break;
+            }
+
+            var isFinalMember = planStep.IsFinalMember;
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            currentInput = BuildMemberInput(
+            var currentInput = BuildMemberInput(
                 team,
                 originalInput: input,
                 currentMember: member,
                 isFinalMember: isFinalMember,
+                planStepReason: planStep.Reason,
                 previousOutputs: previousOutputs);
 
             yield return TeamExecutionEvent.MemberStarted(
@@ -285,6 +325,7 @@ public sealed class TeamExecutionRuntime
         string originalInput,
         TeamMember currentMember,
         bool isFinalMember,
+        string planStepReason,
         IReadOnlyList<(TeamMember Member, string Output)> previousOutputs)
     {
         var previousOutputText = BuildPreviousOutputText(previousOutputs);
@@ -308,6 +349,9 @@ public sealed class TeamExecutionRuntime
 
         Member-specific instructions:
         {memberInstructions}
+
+        Planning reason for this member:
+        {planStepReason}
 
         Original user request:
         {originalInput}

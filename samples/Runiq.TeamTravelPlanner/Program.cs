@@ -14,6 +14,7 @@ builder.Services.AddRuniqServer(options =>
     options.AddAgent(TravelPlanningAgents.CreatePlannerAgent(openAiApiKey));
 
     options.AddTeam(TravelPlanningTeam.Create());
+    options.AddTeam(TravelPlanningTeam.CreateAdaptive());
 });
 
 var app = builder.Build();

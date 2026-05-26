@@ -119,4 +119,21 @@ public sealed class AgentTeamTests
         Assert.Same(team, configuredTeam);
         Assert.Equal(TeamExecutionMode.Sequential, configuredTeam.ExecutionMode);
     }
+
+    /// <summary>
+    /// Adaptif yürütme modunun akıcı yapılandırma ile ayarlanabildiğini doğrular.
+    /// </summary>
+    [Fact]
+    public void UseAdaptiveMode_ShouldReturnSameTeam()
+    {
+        var team = new AgentTeam(
+            id: "travel-team",
+            name: "Travel Planning Team",
+            instructions: "Create travel plans.");
+
+        var configuredTeam = team.UseAdaptiveMode();
+
+        Assert.Same(team, configuredTeam);
+        Assert.Equal(TeamExecutionMode.Adaptive, configuredTeam.ExecutionMode);
+    }
 }

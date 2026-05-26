@@ -80,6 +80,24 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
+    /// Kayıt listesine bağlı olmayan geçici bir agent tanımıyla tek seferlik sonuç üretir.
+    /// </summary>
+    /// <param name="agent">Çalıştırılacak agent tanımıdır.</param>
+    /// <param name="input">Agent'a gönderilecek kullanıcı girdisidir.</param>
+    /// <param name="cancellationToken">İptal bildirimidir.</param>
+    /// <returns>Agent çalıştırma sonucudur.</returns>
+    public Task<AgentExecutionResult> ExecuteAsync(
+        Agent agent,
+        string input,
+        CancellationToken cancellationToken = default)
+    {
+        return ExecuteAgentAsync(
+            agent,
+            input,
+            cancellationToken);
+    }
+
+    /// <summary>
     /// Agent cevabını agent kimliğine göre event stream olarak üretir.
     /// </summary>
     /// <param name="agentId">Çalıştırılacak agent kimliğidir.</param>

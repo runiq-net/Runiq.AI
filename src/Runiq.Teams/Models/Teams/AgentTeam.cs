@@ -74,6 +74,16 @@ public sealed class AgentTeam
     }
 
     /// <summary>
+    /// Takımı adaptif yürütme moduna ayarlar.
+    /// </summary>
+    /// <returns>Akıcı yapılandırma için mevcut takım örneği.</returns>
+    public AgentTeam UseAdaptiveMode()
+    {
+        ExecutionMode = TeamExecutionMode.Adaptive;
+        return this;
+    }
+
+    /// <summary>
     /// Takıma yeni bir agent üyesi ekler.
     /// </summary>
     /// <param name="agentId">Kayıtlı agent kimliği.</param>
