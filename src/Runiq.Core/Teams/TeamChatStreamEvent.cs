@@ -12,5 +12,10 @@ public sealed record TeamChatStreamEvent(
     [property: JsonPropertyName("teamName")] string? TeamName = null,
     [property: JsonPropertyName("memberAgentId")] string? MemberAgentId = null,
     [property: JsonPropertyName("memberRole")] string? MemberRole = null,
+    [property: JsonPropertyName("toolCallId")] string? ToolCallId = null,
+    [property: JsonPropertyName("toolName")] string? ToolName = null,
+    [property: JsonPropertyName("argumentsJson")] string? ArgumentsJson = null,
+    [property: JsonPropertyName("outputJson")] string? OutputJson = null,
     [property: JsonPropertyName("errorCode")] string? ErrorCode = null,
-    [property: JsonPropertyName("errorMessage")] string? ErrorMessage = null);
+    [property: JsonPropertyName("errorMessage")] string? ErrorMessage = null,
+    [property: JsonPropertyName("isFinalMember")] bool IsFinalMember = false);

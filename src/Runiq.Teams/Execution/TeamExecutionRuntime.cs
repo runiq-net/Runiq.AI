@@ -81,12 +81,23 @@ public sealed class TeamExecutionRuntime
             team.Id,
             team.Name);
 
-        var currentInput = BuildInitialMemberInput(team, input);
+        var currentInput = string.Empty;
+        var previousOutputs = new List<(TeamMember Member, string Output)>();
         string? finalContent = null;
 
-        foreach (var member in team.Members)
+        for (var memberIndex = 0; memberIndex < team.Members.Count; memberIndex++)
         {
+            var member = team.Members[memberIndex];
+            var isFinalMember = memberIndex == team.Members.Count - 1;
+
             cancellationToken.ThrowIfCancellationRequested();
+
+            currentInput = BuildMemberInput(
+                team,
+                originalInput: input,
+                currentMember: member,
+                isFinalMember: isFinalMember,
+                previousOutputs: previousOutputs);
 
             yield return TeamExecutionEvent.MemberStarted(
                 team.Id,
@@ -95,38 +106,133 @@ public sealed class TeamExecutionRuntime
 
             var memberContentBuilder = new StringBuilder();
 
-            await foreach (var agentEvent in agentRuntime.ExecuteStreamAsync(
-                               member.AgentId,
-                               currentInput,
-                               toolInvoker,
-                               cancellationToken))
+            var agentEvents = agentRuntime.ExecuteStreamAsync(
+                member.AgentId,
+                currentInput,
+                toolInvoker,
+                cancellationToken);
+
+            await using var agentEventEnumerator = agentEvents.GetAsyncEnumerator(cancellationToken);
+
+            while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                if (agentEvent.Kind == AgentExecutionEventKind.AssistantDelta &&
-                    !string.IsNullOrEmpty(agentEvent.Content))
-                {
-                    memberContentBuilder.Append(agentEvent.Content);
+                AgentExecutionEvent agentEvent;
+                string? exceptionMessage = null;
 
-                    yield return TeamExecutionEvent.MemberDelta(
-                        team.Id,
-                        member.AgentId,
-                        member.Role,
-                        agentEvent.Content);
+                try
+                {
+                    if (!await agentEventEnumerator.MoveNextAsync())
+                    {
+                        break;
+                    }
+
+                    agentEvent = agentEventEnumerator.Current;
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    exceptionMessage = exception.Message;
+                    agentEvent = null!;
                 }
 
-                if (agentEvent.Kind == AgentExecutionEventKind.Failed)
+                if (exceptionMessage is not null)
                 {
                     yield return TeamExecutionEvent.MemberFailed(
                         team.Id,
                         member.AgentId,
                         member.Role,
-                        agentEvent.ErrorMessage ?? "Agent team member execution failed.",
-                        agentEvent.ErrorCode ?? "MemberExecutionFailed");
+                        exceptionMessage,
+                        "MemberExecutionException");
 
                     yield return TeamExecutionEvent.TeamFailed(
                         team.Id,
-                        $"Agent team member '{member.AgentId}' failed.",
+                        $"Agent team member '{member.AgentId}' failed: {exceptionMessage}",
+                        "TeamMemberFailed");
+
+                    yield break;
+                }
+
+                if (agentEvent.Kind == AgentExecutionEventKind.AssistantDelta)
+                {
+                    var delta = agentEvent.Content;
+
+                    if (delta is null || delta.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    memberContentBuilder.Append(delta);
+
+                    yield return TeamExecutionEvent.MemberDelta(
+                        team.Id,
+                        member.AgentId,
+                        member.Role,
+                        delta,
+                        isFinalMember);
+                    continue;
+                }
+
+                if (agentEvent.Kind == AgentExecutionEventKind.ToolCallStarted)
+                {
+                    yield return TeamExecutionEvent.MemberToolCallStarted(
+                        team.Id,
+                        member.AgentId,
+                        member.Role,
+                        agentEvent.ToolCallId ?? $"{member.AgentId}:tool-call",
+                        agentEvent.ToolName ?? "unknown",
+                        agentEvent.ArgumentsJson);
+                    continue;
+                }
+
+                if (agentEvent.Kind == AgentExecutionEventKind.ToolCallCompleted)
+                {
+                    yield return TeamExecutionEvent.MemberToolCallCompleted(
+                        team.Id,
+                        member.AgentId,
+                        member.Role,
+                        agentEvent.ToolCallId ?? $"{member.AgentId}:tool-call",
+                        agentEvent.ToolName ?? "unknown",
+                        agentEvent.OutputJson);
+
+                    continue;
+                }
+
+                if (agentEvent.Kind == AgentExecutionEventKind.ToolCallFailed)
+                {
+                    yield return TeamExecutionEvent.MemberToolCallFailed(
+                        team.Id,
+                        member.AgentId,
+                        member.Role,
+                        agentEvent.ToolCallId ?? $"{member.AgentId}:tool-call",
+                        agentEvent.ToolName ?? "unknown",
+                        agentEvent.ErrorMessage ?? "Agent team member tool call failed.",
+                        agentEvent.ErrorCode);
+
+                    continue;
+                }
+
+                if (agentEvent.Kind == AgentExecutionEventKind.Failed)
+                {
+                    var memberErrorMessage =
+                        agentEvent.ErrorMessage ?? "Agent team member execution failed.";
+                    var memberErrorCode =
+                        agentEvent.ErrorCode ?? "MemberExecutionFailed";
+
+                    yield return TeamExecutionEvent.MemberFailed(
+                        team.Id,
+                        member.AgentId,
+                        member.Role,
+                        memberErrorMessage,
+                        memberErrorCode);
+
+                    yield return TeamExecutionEvent.TeamFailed(
+                        team.Id,
+                        $"Agent team member '{member.AgentId}' failed: {memberErrorMessage}",
                         "TeamMemberFailed");
 
                     yield break;
@@ -160,11 +266,7 @@ public sealed class TeamExecutionRuntime
                 member.Role,
                 finalContent);
 
-            currentInput = BuildNextMemberInput(
-                team,
-                originalInput: input,
-                previousMember: member,
-                previousOutput: finalContent);
+            previousOutputs.Add((member, finalContent));
         }
 
         yield return TeamExecutionEvent.TeamCompleted(
@@ -178,44 +280,74 @@ public sealed class TeamExecutionRuntime
             string.Equals(team.Id, teamId, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static string BuildInitialMemberInput(
-        AgentTeam team,
-        string userInput)
-    {
-        return $"""
-        You are working as part of the agent team '{team.Name}'.
-
-        Team instructions:
-        {team.Instructions}
-
-        User request:
-        {userInput}
-        """;
-    }
-
-    private static string BuildNextMemberInput(
+    private static string BuildMemberInput(
         AgentTeam team,
         string originalInput,
-        TeamMember previousMember,
-        string previousOutput)
+        TeamMember currentMember,
+        bool isFinalMember,
+        IReadOnlyList<(TeamMember Member, string Output)> previousOutputs)
     {
+        var previousOutputText = BuildPreviousOutputText(previousOutputs);
+        var memberInstructions = string.IsNullOrWhiteSpace(currentMember.Instructions)
+            ? "No member-specific instructions."
+            : currentMember.Instructions;
+        var finalMemberInstruction = isFinalMember
+            ? "You are the final team member. Synthesize previous outputs into the final user-facing response."
+            : "You are not the final team member. Do not summarize the whole plan; only provide your specialist findings for the next member.";
+
         return $"""
         You are working as part of the agent team '{team.Name}'.
 
+        Current member:
+        Role: {currentMember.Role}
+        Agent id: {currentMember.AgentId}
+        Is final team member: {isFinalMember}
+
         Team instructions:
         {team.Instructions}
+
+        Member-specific instructions:
+        {memberInstructions}
 
         Original user request:
         {originalInput}
 
-        Previous team member:
-        Role: {previousMember.Role}
-        Agent id: {previousMember.AgentId}
+        Previous member outputs:
+        {previousOutputText}
 
-        Previous member output:
-        {previousOutput}
+        Role discipline:
+        - Produce only the contribution for your assigned role.
+        - Do not produce the final itinerary unless your role is Travel Planner or you are the final team member.
+        - Keep the output focused and concise.
+        - After using any tool, return a natural-language assistant response for your assigned role.
+        - Do not print raw tool JSON or labels such as "Tool:" or "Output:".
+        - If you are not the final member, do not summarize the whole plan; only provide your specialist findings for the next member.
+        - If you are the final member, synthesize previous outputs into the final user-facing response.
 
-        Continue from the previous member output and produce your contribution according to your role.
+        Current execution instruction:
+        {finalMemberInstruction}
         """;
+    }
+
+    private static string BuildPreviousOutputText(
+        IReadOnlyList<(TeamMember Member, string Output)> previousOutputs)
+    {
+        if (previousOutputs.Count == 0)
+        {
+            return "No previous member output yet.";
+        }
+
+        var builder = new StringBuilder();
+
+        foreach (var previousOutput in previousOutputs)
+        {
+            builder.AppendLine($"Role: {previousOutput.Member.Role}");
+            builder.AppendLine($"Agent id: {previousOutput.Member.AgentId}");
+            builder.AppendLine("Output:");
+            builder.AppendLine(previousOutput.Output);
+            builder.AppendLine();
+        }
+
+        return builder.ToString().Trim();
     }
 }

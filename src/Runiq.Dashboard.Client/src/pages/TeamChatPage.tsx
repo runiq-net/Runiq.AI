@@ -6,7 +6,11 @@ import { ChatComposer } from '../components/AgentChat/ChatComposer';
 import { ChatThread } from '../components/AgentChat/ChatThread';
 import { TeamInspectorPanel } from '../components/TeamChat/TeamInspectorPanel';
 import { getDashboardBasePath } from '../dashboardConfig';
-import type { AgentChatMessage, AgentTeamStep } from '../types/agentChat';
+import type {
+    AgentChatMessage,
+    AgentTeamStep,
+    AgentToolCall,
+} from '../types/agentChat';
 
 type TeamChatPageProps = {
     teamId: string;
@@ -191,12 +195,54 @@ function applyTeamStreamEvent(
     if (event.type === 'member_delta') {
         return {
             ...message,
-            content: message.content + (event.content ?? ''),
+            content: event.isFinalMember === true
+                ? message.content + (event.content ?? '')
+                : message.content,
             teamSteps: appendTeamStepContent(
                 message.teamSteps ?? [],
                 createTeamStepId(event),
                 event.content ?? '',
             ),
+            isStreaming: true,
+        };
+    }
+
+    if (event.type === 'member_tool_call_started') {
+        return {
+            ...message,
+            teamSteps: updateTeamStepToolCall(message.teamSteps ?? [], event, {
+                id: event.toolCallId ?? createFallbackToolCallId(event),
+                name: event.toolName ?? 'unknown',
+                status: 'running',
+                argumentsJson: event.argumentsJson ?? undefined,
+            }),
+            isStreaming: true,
+        };
+    }
+
+    if (event.type === 'member_tool_call_completed') {
+        return {
+            ...message,
+            teamSteps: updateTeamStepToolCall(message.teamSteps ?? [], event, {
+                id: event.toolCallId ?? createFallbackToolCallId(event),
+                name: event.toolName ?? 'unknown',
+                status: 'completed',
+                outputJson: event.outputJson ?? undefined,
+            }),
+            isStreaming: true,
+        };
+    }
+
+    if (event.type === 'member_tool_call_failed') {
+        return {
+            ...message,
+            teamSteps: updateTeamStepToolCall(message.teamSteps ?? [], event, {
+                id: event.toolCallId ?? createFallbackToolCallId(event),
+                name: event.toolName ?? 'unknown',
+                status: 'failed',
+                errorCode: event.errorCode ?? undefined,
+                errorMessage: event.errorMessage ?? undefined,
+            }),
             isStreaming: true,
         };
     }
@@ -216,13 +262,15 @@ function applyTeamStreamEvent(
     }
 
     if (event.type === 'member_failed') {
+        const memberErrorMessage =
+            event.errorMessage ??
+            event.content ??
+            `Team member '${event.memberAgentId ?? event.memberRole ?? 'unknown'}' failed.`;
+
         return {
             ...message,
             role: 'error',
-            content:
-                event.errorMessage ??
-                event.content ??
-                `Team member '${event.memberAgentId ?? event.memberRole ?? 'unknown'}' failed.`,
+            content: memberErrorMessage,
             teamSteps: upsertTeamStep(message.teamSteps ?? [], {
                 id: createTeamStepId(event),
                 agentId: event.memberAgentId ?? 'unknown',
@@ -230,21 +278,32 @@ function applyTeamStreamEvent(
                 status: 'failed',
                 content: event.content ?? undefined,
                 errorCode: event.errorCode ?? undefined,
-                errorMessage: event.errorMessage ?? undefined,
+                errorMessage: memberErrorMessage,
             }),
             isStreaming: false,
         };
     }
 
     if (event.type === 'team_completed') {
+        const completedContent = event.content ?? '';
+
         return {
             ...message,
-            content: event.content?.trim() ? event.content : message.content,
+            content: shouldUseTeamCompletedContent(message, completedContent)
+                ? completedContent
+                : message.content,
             isStreaming: false,
         };
     }
 
     if (event.type === 'team_failed') {
+        if (message.role === 'error' && message.content.trim().length > 0) {
+            return {
+                ...message,
+                isStreaming: false,
+            };
+        }
+
         return {
             ...message,
             role: 'error',
@@ -303,5 +362,83 @@ function appendTeamStepContent(
           content: `${step.content ?? ''}${content}`,
         }
       : step,
+  );
+}
+
+function updateTeamStepToolCall(
+  steps: AgentTeamStep[],
+  event: TeamChatStreamEvent,
+  toolCall: AgentToolCall,
+): AgentTeamStep[] {
+  const stepId = createTeamStepId(event);
+  const baseStep: AgentTeamStep = {
+    id: stepId,
+    agentId: event.memberAgentId ?? 'unknown',
+    role: event.memberRole ?? 'Member',
+    status: 'running',
+  };
+
+  const existingStep = steps.find((step) => step.id === stepId);
+  const nextStep = existingStep ?? baseStep;
+
+  return upsertTeamStep(steps, {
+    ...nextStep,
+    toolCalls: upsertToolCall(nextStep.toolCalls ?? [], toolCall),
+  });
+}
+
+function upsertToolCall(
+  toolCalls: AgentToolCall[],
+  nextToolCall: AgentToolCall,
+): AgentToolCall[] {
+  const existingIndex = toolCalls.findIndex(
+    (toolCall) => toolCall.id === nextToolCall.id,
+  );
+
+  if (existingIndex < 0) {
+    return [...toolCalls, nextToolCall];
+  }
+
+  return toolCalls.map((toolCall, index) =>
+    index === existingIndex
+      ? {
+          ...toolCall,
+          ...nextToolCall,
+          argumentsJson: nextToolCall.argumentsJson ?? toolCall.argumentsJson,
+          outputJson: nextToolCall.outputJson ?? toolCall.outputJson,
+          errorCode: nextToolCall.errorCode ?? toolCall.errorCode,
+          errorMessage: nextToolCall.errorMessage ?? toolCall.errorMessage,
+        }
+      : toolCall,
+  );
+}
+
+function createFallbackToolCallId(event: TeamChatStreamEvent): string {
+  return `${createTeamStepId(event)}:${event.toolName ?? 'tool'}`;
+}
+
+function shouldUseTeamCompletedContent(
+  message: AgentChatMessage,
+  content: string,
+): boolean {
+  if (message.content.trim().length > 0) {
+    return false;
+  }
+
+  if (content.trim().length === 0) {
+    return false;
+  }
+
+  return !looksLikeToolTraceContent(content);
+}
+
+function looksLikeToolTraceContent(content: string): boolean {
+  const trimmed = content.trim();
+
+  return (
+    trimmed.startsWith('Tool:') ||
+    trimmed.startsWith('Output:') ||
+    trimmed.startsWith('{') ||
+    trimmed.startsWith('[')
   );
 }

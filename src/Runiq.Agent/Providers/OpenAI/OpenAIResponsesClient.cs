@@ -140,7 +140,9 @@ public sealed class OpenAIResponsesClient
 
         var firstContentLogged = false;
         var hasAnyRuntimeEvent = false;
+        var hasStreamedTextDelta = false;
         string? responseId = null;
+        var pendingToolOutputs = new List<OpenAIToolOutputSubmission>();
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -148,7 +150,7 @@ public sealed class OpenAIResponsesClient
 
             if (line is null)
             {
-                yield break;
+                break;
             }
 
             if (string.IsNullOrWhiteSpace(line))
@@ -176,18 +178,28 @@ public sealed class OpenAIResponsesClient
             {
                 hasAnyRuntimeEvent = true;
 
-         
                 yield return AgentExecutionEvent.ToolCallStarted(
                     functionCall.ToolCallId,
                     functionCall.ToolName,
                     functionCall.ArgumentsJson);
 
+                string outputJson;
+
                 if (toolInvoker is null)
                 {
+                    outputJson = CreateToolErrorOutputJson(
+                        "ToolInvokerUnavailable",
+                        "Tool invoker is not available.");
+
                     yield return AgentExecutionEvent.ToolCallFailed(
                         functionCall.ToolCallId,
                         functionCall.ToolName,
                         "Tool invoker is not available.");
+
+                    pendingToolOutputs.Add(new OpenAIToolOutputSubmission(
+                        functionCall.ToolCallId,
+                        functionCall.ToolName,
+                        outputJson));
 
                     continue;
                 }
@@ -200,46 +212,73 @@ public sealed class OpenAIResponsesClient
 
                 if (!toolResult.IsSuccess)
                 {
+                    outputJson = CreateToolErrorOutputJson(
+                        toolResult.ErrorCode,
+                        toolResult.ErrorMessage ?? "Tool execution failed.");
+
                     yield return AgentExecutionEvent.ToolCallFailed(
                         functionCall.ToolCallId,
                         functionCall.ToolName,
                         toolResult.ErrorMessage ?? "Tool execution failed.",
                         toolResult.ErrorCode);
 
+                    pendingToolOutputs.Add(new OpenAIToolOutputSubmission(
+                        functionCall.ToolCallId,
+                        functionCall.ToolName,
+                        outputJson));
+
                     continue;
                 }
 
-        
-                var outputJson = toolResult.OutputJson ?? "{}";
+                outputJson = NormalizeToolOutputJson(toolResult.OutputJson);
 
                 yield return AgentExecutionEvent.ToolCallCompleted(
                     functionCall.ToolCallId,
                     functionCall.ToolName,
                     outputJson);
 
-                if (string.IsNullOrWhiteSpace(responseId))
-                {
-                    yield return AgentExecutionEvent.ToolCallFailed(
-                        functionCall.ToolCallId,
-                        functionCall.ToolName,
-                        "OpenAIResponseIdMissing",
-                        "OpenAI response id could not be read before submitting tool output.");
+                pendingToolOutputs.Add(new OpenAIToolOutputSubmission(
+                    functionCall.ToolCallId,
+                    functionCall.ToolName,
+                    outputJson));
 
-                    continue;
-                }
+                continue;
+            }
 
-                await foreach (var followUpEvent in StreamToolOutputAsync(
-                       agent,
-                       requestUrl,
-                       previousResponseId: responseId,
-                       toolCallId: functionCall.ToolCallId,
-                       outputJson: outputJson,
-                       toolInvoker: toolInvoker,
-                       instructions: effectiveInstructions,
-                       cancellationToken))
+            var outputItemText = TryReadCompletedOutputItemText(data);
+
+            if (!string.IsNullOrEmpty(outputItemText))
+            {
+                if (!hasStreamedTextDelta)
                 {
                     hasAnyRuntimeEvent = true;
-                    yield return followUpEvent;
+                    yield return AgentExecutionEvent.AssistantDelta(outputItemText);
+                }
+
+                continue;
+            }
+
+            var completedResponseText = TryReadCompletedResponseText(data);
+
+            if (!string.IsNullOrEmpty(completedResponseText))
+            {
+                if (!hasStreamedTextDelta)
+                {
+                    hasAnyRuntimeEvent = true;
+                    yield return AgentExecutionEvent.AssistantDelta(completedResponseText);
+                }
+
+                continue;
+            }
+
+            var completedText = TryReadCompletedText(data);
+
+            if (!string.IsNullOrEmpty(completedText))
+            {
+                if (!hasStreamedTextDelta)
+                {
+                    hasAnyRuntimeEvent = true;
+                    yield return AgentExecutionEvent.AssistantDelta(completedText);
                 }
 
                 continue;
@@ -255,7 +294,34 @@ public sealed class OpenAIResponsesClient
                 firstContentLogged = true;
 
             hasAnyRuntimeEvent = true;
+            hasStreamedTextDelta = true;
             yield return AgentExecutionEvent.AssistantDelta(content);
+        }
+
+        if (pendingToolOutputs.Count > 0)
+        {
+            if (string.IsNullOrWhiteSpace(responseId))
+            {
+                yield return AgentExecutionEvent.Failed(
+                    "OpenAI response id could not be read before submitting tool output.",
+                    "OpenAIResponseIdMissing");
+
+                yield break;
+            }
+
+            await foreach (var followUpEvent in StreamToolOutputAsync(
+                               agent,
+                               requestUrl,
+                               previousResponseId: responseId,
+                               toolOutputs: pendingToolOutputs,
+                               toolInvoker: toolInvoker,
+                               instructions: effectiveInstructions,
+                               cancellationToken))
+            {
+                yield return followUpEvent;
+            }
+
+            yield break;
         }
 
         yield return hasAnyRuntimeEvent
@@ -284,8 +350,7 @@ public sealed class OpenAIResponsesClient
         Agent agent,
         Uri requestUrl,
         string previousResponseId,
-        string toolCallId,
-        string outputJson,
+        IReadOnlyList<OpenAIToolOutputSubmission> toolOutputs,
         string instructions)
     {
         return CreateRequest(
@@ -294,13 +359,12 @@ public sealed class OpenAIResponsesClient
             new OpenAIResponseRequest(
                 Model: agent.ModelName,
                 Instructions: instructions,
-                Input: new object[]
-                {
-                new OpenAIFunctionCallOutputInput(
-                    Type: "function_call_output",
-                    CallId: toolCallId,
-                    Output: outputJson)
-                },
+                Input: toolOutputs
+                    .Select(toolOutput => new OpenAIFunctionCallOutputInput(
+                        Type: "function_call_output",
+                        CallId: toolOutput.ToolCallId,
+                        Output: NormalizeToolOutputJson(toolOutput.OutputJson)))
+                    .ToArray(),
                 Stream: true,
                 Reasoning: new OpenAIReasoningOptions(Effort: agent.ReasoningEffort),
                 Text: new OpenAITextOptions(Verbosity: agent.Verbosity),
@@ -312,8 +376,7 @@ public sealed class OpenAIResponsesClient
         Agent agent,
         Uri requestUrl,
         string previousResponseId,
-        string toolCallId,
-        string outputJson,
+        IReadOnlyList<OpenAIToolOutputSubmission> toolOutputs,
         AgentToolInvoker? toolInvoker,
         string instructions,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -322,8 +385,7 @@ public sealed class OpenAIResponsesClient
             agent,
             requestUrl,
             previousResponseId,
-            toolCallId,
-            outputJson,
+            toolOutputs,
             instructions);
 
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
@@ -349,6 +411,8 @@ public sealed class OpenAIResponsesClient
 
         var responseId = previousResponseId;
         var hasAnyRuntimeEvent = false;
+        var hasStreamedTextDelta = false;
+        var pendingToolOutputs = new List<OpenAIToolOutputSubmission>();
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -389,12 +453,23 @@ public sealed class OpenAIResponsesClient
                     functionCall.ToolName,
                     functionCall.ArgumentsJson);
 
+                string outputJson;
+
                 if (toolInvoker is null)
                 {
+                    outputJson = CreateToolErrorOutputJson(
+                        "ToolInvokerUnavailable",
+                        "Tool invoker is not available.");
+
                     yield return AgentExecutionEvent.ToolCallFailed(
                         functionCall.ToolCallId,
                         functionCall.ToolName,
                         "Tool invoker is not available.");
+
+                    pendingToolOutputs.Add(new OpenAIToolOutputSubmission(
+                        functionCall.ToolCallId,
+                        functionCall.ToolName,
+                        outputJson));
 
                     continue;
                 }
@@ -407,45 +482,73 @@ public sealed class OpenAIResponsesClient
 
                 if (!toolResult.IsSuccess)
                 {
+                    outputJson = CreateToolErrorOutputJson(
+                        toolResult.ErrorCode,
+                        toolResult.ErrorMessage ?? "Tool execution failed.");
+
                     yield return AgentExecutionEvent.ToolCallFailed(
                         functionCall.ToolCallId,
                         functionCall.ToolName,
                         toolResult.ErrorMessage ?? "Tool execution failed.",
                         toolResult.ErrorCode);
 
+                    pendingToolOutputs.Add(new OpenAIToolOutputSubmission(
+                        functionCall.ToolCallId,
+                        functionCall.ToolName,
+                        outputJson));
+
                     continue;
                 }
 
-                var nextOutputJson = toolResult.OutputJson ?? "{}";
+                outputJson = NormalizeToolOutputJson(toolResult.OutputJson);
 
                 yield return AgentExecutionEvent.ToolCallCompleted(
                     functionCall.ToolCallId,
                     functionCall.ToolName,
-                    nextOutputJson);
+                    outputJson);
 
-                if (string.IsNullOrWhiteSpace(responseId))
-                {
-                    yield return AgentExecutionEvent.ToolCallFailed(
-                        functionCall.ToolCallId,
-                        functionCall.ToolName,
-                        "OpenAI response id could not be read before submitting tool output.",
-                        "OpenAIResponseIdMissing");
+                pendingToolOutputs.Add(new OpenAIToolOutputSubmission(
+                    functionCall.ToolCallId,
+                    functionCall.ToolName,
+                    outputJson));
 
-                    continue;
-                }
+                continue;
+            }
 
-                await foreach (var nextEvent in StreamToolOutputAsync(
-                                   agent,
-                                   requestUrl,
-                                   previousResponseId: responseId,
-                                   toolCallId: functionCall.ToolCallId,
-                                   outputJson: nextOutputJson,
-                                   toolInvoker: toolInvoker,
-                                   instructions: instructions,
-                                   cancellationToken))
+            var outputItemText = TryReadCompletedOutputItemText(data);
+
+            if (!string.IsNullOrEmpty(outputItemText))
+            {
+                if (!hasStreamedTextDelta)
                 {
                     hasAnyRuntimeEvent = true;
-                    yield return nextEvent;
+                    yield return AgentExecutionEvent.AssistantDelta(outputItemText);
+                }
+
+                continue;
+            }
+
+            var completedResponseText = TryReadCompletedResponseText(data);
+
+            if (!string.IsNullOrEmpty(completedResponseText))
+            {
+                if (!hasStreamedTextDelta)
+                {
+                    hasAnyRuntimeEvent = true;
+                    yield return AgentExecutionEvent.AssistantDelta(completedResponseText);
+                }
+
+                continue;
+            }
+
+            var completedText = TryReadCompletedText(data);
+
+            if (!string.IsNullOrEmpty(completedText))
+            {
+                if (!hasStreamedTextDelta)
+                {
+                    hasAnyRuntimeEvent = true;
+                    yield return AgentExecutionEvent.AssistantDelta(completedText);
                 }
 
                 continue;
@@ -459,15 +562,45 @@ public sealed class OpenAIResponsesClient
             }
 
             hasAnyRuntimeEvent = true;
+            hasStreamedTextDelta = true;
 
             yield return AgentExecutionEvent.AssistantDelta(content);
+        }
+
+        if (pendingToolOutputs.Count > 0)
+        {
+            if (string.IsNullOrWhiteSpace(responseId))
+            {
+                yield return AgentExecutionEvent.Failed(
+                    "OpenAI response id could not be read before submitting tool output.",
+                    "OpenAIResponseIdMissing");
+
+                yield break;
+            }
+
+            await foreach (var nextEvent in StreamToolOutputAsync(
+                               agent,
+                               requestUrl,
+                               previousResponseId: responseId,
+                               toolOutputs: pendingToolOutputs,
+                               toolInvoker: toolInvoker,
+                               instructions: instructions,
+                               cancellationToken))
+            {
+                yield return nextEvent;
+            }
+
+            yield break;
         }
 
         if (!hasAnyRuntimeEvent)
         {
             yield return AgentExecutionEvent.Failed(
                 "OpenAIToolOutputEmptyStream: OpenAI tool output stream completed without producing content or tool calls.");
+            yield break;
         }
+
+        yield return AgentExecutionEvent.Completed();
     }
 
     private static Uri BuildResponsesUrl(Uri endpoint)
@@ -563,6 +696,126 @@ public sealed class OpenAIResponsesClient
                 ToolCallId: toolCallId,
                 ToolName: toolName,
                 ArgumentsJson: string.IsNullOrWhiteSpace(argumentsJson) ? "{}" : argumentsJson);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string? TryReadCompletedOutputItemText(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+
+            if (!root.TryGetProperty("type", out var typeElement) ||
+                typeElement.GetString() != "response.output_item.done")
+            {
+                return null;
+            }
+
+            if (!root.TryGetProperty("item", out var itemElement))
+            {
+                return null;
+            }
+
+            if (!itemElement.TryGetProperty("type", out var itemTypeElement) ||
+                itemTypeElement.GetString() != "message")
+            {
+                return null;
+            }
+
+            if (!itemElement.TryGetProperty("content", out var contentElement) ||
+                contentElement.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            var parts = new List<string>();
+
+            foreach (var contentItem in contentElement.EnumerateArray())
+            {
+                if (!contentItem.TryGetProperty("type", out var contentTypeElement) ||
+                    contentTypeElement.GetString() != "output_text")
+                {
+                    continue;
+                }
+
+                if (contentItem.TryGetProperty("text", out var textElement))
+                {
+                    parts.Add(textElement.GetString() ?? string.Empty);
+                }
+            }
+
+            return parts.Count == 0
+                ? null
+                : string.Concat(parts);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string? TryReadCompletedResponseText(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+
+            if (!root.TryGetProperty("type", out var typeElement) ||
+                typeElement.GetString() != "response.completed")
+            {
+                return null;
+            }
+
+            if (!root.TryGetProperty("response", out var responseElement))
+            {
+                return null;
+            }
+
+            return TryReadOutputText(responseElement.GetRawText());
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string? TryReadCompletedText(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+
+            if (!root.TryGetProperty("type", out var typeElement))
+            {
+                return null;
+            }
+
+            var eventType = typeElement.GetString();
+
+            if (string.Equals(eventType, "response.output_text.done", StringComparison.Ordinal) &&
+                root.TryGetProperty("text", out var textElement))
+            {
+                return textElement.GetString();
+            }
+
+            if (string.Equals(eventType, "response.content_part.done", StringComparison.Ordinal) &&
+                root.TryGetProperty("part", out var partElement) &&
+                partElement.ValueKind == JsonValueKind.Object &&
+                partElement.TryGetProperty("type", out var partTypeElement) &&
+                partTypeElement.GetString() == "output_text" &&
+                partElement.TryGetProperty("text", out var partTextElement))
+            {
+                return partTextElement.GetString();
+            }
+
+            return null;
         }
         catch (JsonException)
         {
@@ -788,10 +1041,38 @@ public sealed class OpenAIResponsesClient
             : instructions;
     }
 
+    private static string NormalizeToolOutputJson(string? outputJson)
+    {
+        return string.IsNullOrWhiteSpace(outputJson)
+            ? "{}"
+            : outputJson;
+    }
+
+    private static string CreateToolErrorOutputJson(
+        string? errorCode,
+        string errorMessage)
+    {
+        return JsonSerializer.Serialize(
+            new
+            {
+                isSuccess = false,
+                errorCode = string.IsNullOrWhiteSpace(errorCode)
+                    ? "ToolExecutionFailed"
+                    : errorCode,
+                errorMessage
+            },
+            JsonOptions);
+    }
+
     private sealed record OpenAIFunctionCall(
         string ToolCallId,
         string ToolName,
         string ArgumentsJson);
+
+    private sealed record OpenAIToolOutputSubmission(
+        string ToolCallId,
+        string ToolName,
+        string OutputJson);
 
     private sealed record OpenAIFunctionCallOutputInput(
     string Type,

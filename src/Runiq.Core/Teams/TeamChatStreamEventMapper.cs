@@ -32,7 +32,39 @@ internal static class TeamChatStreamEventMapper
                 Content: executionEvent.Content,
                 TeamId: executionEvent.TeamId,
                 MemberAgentId: executionEvent.MemberAgentId,
-                MemberRole: executionEvent.MemberRole),
+                MemberRole: executionEvent.MemberRole,
+                IsFinalMember: executionEvent.IsFinalMember),
+
+            TeamExecutionEventType.MemberToolCallStarted => new TeamChatStreamEvent(
+                Type: "member_tool_call_started",
+                Content: null,
+                TeamId: executionEvent.TeamId,
+                MemberAgentId: executionEvent.MemberAgentId,
+                MemberRole: executionEvent.MemberRole,
+                ToolCallId: executionEvent.ToolCallId,
+                ToolName: executionEvent.ToolName,
+                ArgumentsJson: executionEvent.ArgumentsJson),
+
+            TeamExecutionEventType.MemberToolCallCompleted => new TeamChatStreamEvent(
+                Type: "member_tool_call_completed",
+                Content: null,
+                TeamId: executionEvent.TeamId,
+                MemberAgentId: executionEvent.MemberAgentId,
+                MemberRole: executionEvent.MemberRole,
+                ToolCallId: executionEvent.ToolCallId,
+                ToolName: executionEvent.ToolName,
+                OutputJson: executionEvent.OutputJson),
+
+            TeamExecutionEventType.MemberToolCallFailed => new TeamChatStreamEvent(
+                Type: "member_tool_call_failed",
+                Content: null,
+                TeamId: executionEvent.TeamId,
+                MemberAgentId: executionEvent.MemberAgentId,
+                MemberRole: executionEvent.MemberRole,
+                ToolCallId: executionEvent.ToolCallId,
+                ToolName: executionEvent.ToolName,
+                ErrorCode: executionEvent.ErrorCode,
+                ErrorMessage: executionEvent.ErrorMessage),
 
             TeamExecutionEventType.MemberCompleted => new TeamChatStreamEvent(
                 Type: "member_completed",

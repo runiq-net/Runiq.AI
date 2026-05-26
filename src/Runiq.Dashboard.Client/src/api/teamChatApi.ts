@@ -3,6 +3,9 @@ export type TeamChatStreamEvent = {
     | 'team_started'
     | 'member_started'
     | 'member_delta'
+    | 'member_tool_call_started'
+    | 'member_tool_call_completed'
+    | 'member_tool_call_failed'
     | 'member_completed'
     | 'member_failed'
     | 'team_completed'
@@ -12,8 +15,13 @@ export type TeamChatStreamEvent = {
   teamName?: string | null;
   memberAgentId?: string | null;
   memberRole?: string | null;
+  toolCallId?: string | null;
+  toolName?: string | null;
+  argumentsJson?: string | null;
+  outputJson?: string | null;
   errorCode?: string | null;
   errorMessage?: string | null;
+  isFinalMember?: boolean | null;
 };
 
 type StreamTeamMessageRequest = {

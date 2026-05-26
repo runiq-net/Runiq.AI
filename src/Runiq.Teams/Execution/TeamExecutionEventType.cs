@@ -38,5 +38,20 @@ public enum TeamExecutionEventType
     /// <summary>
     /// Takım yürütmesinin hata aldığını belirtir.
     /// </summary>
-    TeamFailed = 6
+    TeamFailed = 6,
+
+    /// <summary>
+    /// Takım üyesi agent tarafından bir tool çağrısının başlatıldığını belirtir.
+    /// </summary>
+    MemberToolCallStarted = 7,
+
+    /// <summary>
+    /// Takım üyesi agent tarafından bir tool çağrısının tamamlandığını belirtir.
+    /// </summary>
+    MemberToolCallCompleted = 8,
+
+    /// <summary>
+    /// Takım üyesi agent tarafından bir tool çağrısının hata aldığını belirtir.
+    /// </summary>
+    MemberToolCallFailed = 9
 }

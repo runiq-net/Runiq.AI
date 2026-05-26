@@ -124,16 +124,16 @@ export function resolveDashboardRouteFromUrl(
   }
 
   if (
-  firstSegment === 'teams' &&
-  segments.length === 4 &&
-  segments[2].toLowerCase() === 'chat' &&
-  segments[3].toLowerCase() === 'new'
-) {
-  return {
-    page: 'team-chat',
-    teamId: decodeURIComponent(segments[1]),
-  };
-}
+    firstSegment === 'teams' &&
+    segments.length === 4 &&
+    segments[2].toLowerCase() === 'chat' &&
+    segments[3].toLowerCase() === 'new'
+  ) {
+    return {
+      page: 'team-chat',
+      teamId: decodeURIComponent(segments[1]),
+    };
+  }
 
   if (firstSegment === 'tools' && segments.length === 2) {
     return {
@@ -151,8 +151,8 @@ export function resolveDashboardRouteFromUrl(
   }
 
   if (firstSegment === 'teams') {
-  return { page: 'teams' };
-}
+    return { page: 'teams' };
+  }
 
   if (firstSegment === 'context-spaces') {
     if (segments[1]) {

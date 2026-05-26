@@ -95,15 +95,15 @@ function ChatMessageItem({ message }: { message: AgentChatMessage }) {
   const isAssistantStreaming =
     message.role === 'assistant' && message.isStreaming === true;
 
-const showInitialThinking =
-  message.role === 'assistant' &&
-  isAssistantStreaming &&
-  !hasContext &&
-  !hasLoadedSkills &&
-  !hasContextSearch &&
-  !hasSourceSearchResults &&
-  !hasToolCalls &&
-  !hasTeamSteps;
+  const showInitialThinking =
+    message.role === 'assistant' &&
+    isAssistantStreaming &&
+    !hasContext &&
+    !hasLoadedSkills &&
+    !hasContextSearch &&
+    !hasSourceSearchResults &&
+    !hasToolCalls &&
+    !hasTeamSteps;
 
   const showContextWaiting =
     message.role === 'assistant' &&
@@ -112,12 +112,12 @@ const showInitialThinking =
     !hasContent &&
     !hasToolCalls;
 
-const showToolWaiting =
-  message.role === 'assistant' &&
-  isAssistantStreaming &&
-  !hasContent &&
-  hasToolCalls &&
-  !hasTeamSteps;
+  const showToolWaiting =
+    message.role === 'assistant' &&
+    isAssistantStreaming &&
+    !hasContent &&
+    hasToolCalls &&
+    !hasTeamSteps;
 
   const showCopy =
     message.role === 'assistant' &&
@@ -194,12 +194,12 @@ const showToolWaiting =
       )}
 
       {hasTeamSteps && (
-  <div className="mb-4 flex flex-col gap-2">
-    {message.teamSteps?.map((step) => (
-      <TeamStepCard key={step.id} step={step} />
-    ))}
-  </div>
-)}
+        <div className="mb-4 flex flex-col gap-2">
+          {message.teamSteps?.map((step) => (
+            <TeamStepCard key={step.id} step={step} />
+          ))}
+        </div>
+      )}
 
       {hasToolCalls && (
         <div className="mb-4 flex flex-col gap-2">

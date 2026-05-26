@@ -1,0 +1,11 @@
+@Runiq_TeamTravelPlanner_HostAddress = http://localhost:5127
+
+GET {{Runiq_TeamTravelPlanner_HostAddress}}/dashboard/metadata/agents
+Accept: application/json
+
+###
+
+GET {{Runiq_TeamTravelPlanner_HostAddress}}/dashboard/metadata/teams
+Accept: application/json
+
+###

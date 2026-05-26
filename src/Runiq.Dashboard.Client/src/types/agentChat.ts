@@ -24,6 +24,7 @@ export type AgentTeamStep = {
   content?: string;
   errorCode?: string;
   errorMessage?: string;
+  toolCalls?: AgentToolCall[];
 };
 
 export type AgentProvidedContextSpace = {

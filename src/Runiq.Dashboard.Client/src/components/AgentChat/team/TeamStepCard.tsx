@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CheckCircle2, LoaderCircle,  XCircle } from 'lucide-react';
 
 import type { AgentTeamStep } from '../../../types/agentChat';
+import { ToolCallCard } from '../tool/ToolCallCard';
 
 type TeamStepCardProps = {
   step: AgentTeamStep;
@@ -14,7 +15,10 @@ export function TeamStepCard({ step }: TeamStepCardProps) {
   const isCompleted = step.status === 'completed';
   const isFailed = step.status === 'failed';
 
-  const hasDetails = Boolean(step.content?.trim() || step.errorMessage?.trim());
+  const hasToolCalls = Boolean(step.toolCalls?.length);
+  const hasDetails = Boolean(
+    hasToolCalls || step.content?.trim() || step.errorMessage?.trim(),
+  );
 
   return (
     <div className="w-full min-w-0 overflow-hidden rounded-xl border border-zinc-200 bg-white text-xs shadow-sm dark:border-zinc-800 dark:bg-zinc-950/60 dark:shadow-none">
@@ -79,10 +83,24 @@ export function TeamStepCard({ step }: TeamStepCardProps) {
 
       {isOpen && hasDetails && (
         <div className="space-y-3 border-t border-zinc-200 bg-zinc-50/70 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-950">
+          {hasToolCalls && (
+            <div>
+              <div className="mb-2 text-sm font-semibold text-zinc-950 dark:text-zinc-100">
+                Tool calls
+              </div>
+
+              <div className="space-y-2">
+                {step.toolCalls?.map((toolCall) => (
+                  <ToolCallCard key={toolCall.id} toolCall={toolCall} />
+                ))}
+              </div>
+            </div>
+          )}
+
           {step.content && (
             <div>
               <div className="mb-2 text-sm font-semibold text-zinc-950 dark:text-zinc-100">
-                Member output
+                Agent contribution
               </div>
 
               <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-zinc-200 bg-white p-3 text-xs leading-6 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950/70 dark:text-zinc-300">

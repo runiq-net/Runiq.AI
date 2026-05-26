@@ -2,6 +2,8 @@
 using Runiq.Agents.Providers.OpenAI;
 using Runiq.Agents.Runtime;
 using Runiq.Agents.Tools;
+using Runiq.ContextSpaces.Models.Sources;
+using Runiq.ContextSpaces.Services;
 using Runiq.Teams.Execution;
 using Runiq.Teams.Models.Execution;
 using Runiq.Teams.Models.Teams;
@@ -64,8 +66,134 @@ public sealed class TeamExecutionRuntimeTests
                 Assert.Equal(TeamExecutionEventType.TeamFailed, fourth.Type);
                 Assert.Equal("travel-team", fourth.TeamId);
                 Assert.Equal("TeamMemberFailed", fourth.ErrorCode);
-                Assert.Equal("Agent team member 'missing-agent' failed.", fourth.ErrorMessage);
+                Assert.Equal(
+                    "Agent team member 'missing-agent' failed: Agent 'missing-agent' was not found.",
+                    fourth.ErrorMessage);
             });
+    }
+
+    /// <summary>
+    /// Takım üyesi stream yürütmesi beklenmeyen exception ürettiğinde member ve team hata eventlerinin ayrıntılı mesajla üretildiğini doğrular.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteStreamAsync_ShouldEmitMemberAndTeamFailure_WhenMemberExecutionThrows()
+    {
+        var contextSpace = new ContextSpace(
+                id: "travel-context",
+                name: "Travel Context")
+            .AddSource(new ContextSpaceSource(
+                id: "travel-source",
+                name: "Travel Source",
+                kind: ContextSpaceSourceKind.Database));
+
+        var agent = new Agent(
+                id: "planner-agent",
+                name: "Planner Agent",
+                instructions: "Create a plan.",
+                model: "openai/gpt-5")
+            .UseContextSpace("travel-context");
+
+        var team = new AgentTeam(
+                id: "travel-team",
+                name: "Travel Planning Team",
+                instructions: "Create travel plans.")
+            .AddMember(
+                agentId: "planner-agent",
+                role: "Travel Planner");
+
+        var runtime = CreateRuntime(
+            teams: [team],
+            agents: [agent],
+            contextSpaces: [contextSpace],
+            sourceSearchService: new ThrowingContextSpaceSourceSearchService(
+                "Search index unavailable."));
+
+        var events = await runtime.ExecuteStreamAsync(
+                teamId: "travel-team",
+                input: "Create a one day travel plan.")
+            .ToListAsync();
+
+        Assert.Collection(
+            events,
+            first =>
+            {
+                Assert.Equal(TeamExecutionEventType.TeamStarted, first.Type);
+                Assert.Equal("travel-team", first.TeamId);
+            },
+            second =>
+            {
+                Assert.Equal(TeamExecutionEventType.MemberStarted, second.Type);
+                Assert.Equal("planner-agent", second.MemberAgentId);
+                Assert.Equal("Travel Planner", second.MemberRole);
+            },
+            third =>
+            {
+                Assert.Equal(TeamExecutionEventType.MemberFailed, third.Type);
+                Assert.Equal("planner-agent", third.MemberAgentId);
+                Assert.Equal("Travel Planner", third.MemberRole);
+                Assert.Equal("MemberExecutionException", third.ErrorCode);
+                Assert.Equal("Search index unavailable.", third.ErrorMessage);
+            },
+            fourth =>
+            {
+                Assert.Equal(TeamExecutionEventType.TeamFailed, fourth.Type);
+                Assert.Equal("travel-team", fourth.TeamId);
+                Assert.Equal("TeamMemberFailed", fourth.ErrorCode);
+                Assert.Equal(
+                    "Agent team member 'planner-agent' failed: Search index unavailable.",
+                    fourth.ErrorMessage);
+            });
+    }
+
+    /// <summary>
+    /// Sıralı takım yürütmesinde yalnızca son üyenin delta event'lerinin final üye olarak işaretlendiğini doğrular.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteStreamAsync_ShouldMarkOnlyFinalMemberDeltasAsFinal()
+    {
+        var weatherAgent = new Agent(
+            id: "weather-agent",
+            name: "Weather Agent",
+            instructions: "Provide weather findings.",
+            model: "ollama/demo");
+
+        var plannerAgent = new Agent(
+            id: "planner-agent",
+            name: "Planner Agent",
+            instructions: "Create the final plan.",
+            model: "ollama/demo");
+
+        var team = new AgentTeam(
+                id: "travel-team",
+                name: "Travel Planning Team",
+                instructions: "Create travel plans.")
+            .AddMember(
+                agentId: "weather-agent",
+                role: "Weather Analyst")
+            .AddMember(
+                agentId: "planner-agent",
+                role: "Travel Planner");
+
+        var runtime = CreateRuntime(
+            teams: [team],
+            agents: [weatherAgent, plannerAgent]);
+
+        var events = await runtime.ExecuteStreamAsync(
+                teamId: "travel-team",
+                input: "Create a one day travel plan.")
+            .ToListAsync();
+
+        var deltas = events
+            .Where(executionEvent => executionEvent.Type == TeamExecutionEventType.MemberDelta)
+            .ToArray();
+
+        Assert.Contains(deltas, executionEvent =>
+            executionEvent.MemberAgentId == "weather-agent" &&
+            !executionEvent.IsFinalMember);
+
+        Assert.Contains(deltas, executionEvent =>
+            executionEvent.MemberAgentId == "planner-agent" &&
+            executionEvent.IsFinalMember);
     }
 
     /// <summary>
@@ -144,7 +272,9 @@ public sealed class TeamExecutionRuntimeTests
 
     private static TeamExecutionRuntime CreateRuntime(
         IReadOnlyList<AgentTeam> teams,
-        IReadOnlyList<Agent> agents)
+        IReadOnlyList<Agent> agents,
+        IReadOnlyList<ContextSpace>? contextSpaces = null,
+        IContextSpaceSourceSearchService? sourceSearchService = null)
     {
 
         var serviceProvider = new ServiceCollection().BuildServiceProvider();
@@ -154,7 +284,9 @@ public sealed class TeamExecutionRuntimeTests
             agents,
             CreateOpenAIResponsesClient(),
             CreateOpenAICompatibleClient(),
-            toolInvoker);
+            toolInvoker,
+            contextSpaces,
+            sourceSearchService: sourceSearchService);
 
         return new TeamExecutionRuntime(
             teams,
@@ -180,5 +312,33 @@ public sealed class TeamExecutionRuntimeTests
         };
 
         return new OpenAICompatibleClient(httpClient);
+    }
+
+    private sealed class ThrowingContextSpaceSourceSearchService : IContextSpaceSourceSearchService
+    {
+        private readonly string message;
+
+        public ThrowingContextSpaceSourceSearchService(string message)
+        {
+            this.message = message;
+        }
+
+        public Task<IReadOnlyList<ContextSpaceSourceSearchResult>> SearchAsync(
+            ContextSpace contextSpace,
+            string query,
+            int maxResults = 5,
+            CancellationToken cancellationToken = default)
+        {
+            throw new InvalidOperationException(message);
+        }
+
+        public Task<ContextSpaceSourceSearchResponse> SearchWithSummaryAsync(
+            ContextSpace contextSpace,
+            string query,
+            int maxResults = 5,
+            CancellationToken cancellationToken = default)
+        {
+            throw new InvalidOperationException(message);
+        }
     }
 }
