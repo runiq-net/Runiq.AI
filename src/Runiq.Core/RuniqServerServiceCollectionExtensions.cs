@@ -9,6 +9,7 @@ using Runiq.Core.Agents;
 using Runiq.Core.Configuration;
 using Runiq.Core.ContextSpaces;
 using Runiq.Core.Metadata;
+using Runiq.Core.Teams;
 using Runiq.Core.Tools;
 using Runiq.Core.Validation;
 using Runiq.Teams.Execution;
@@ -37,12 +38,16 @@ public static class RuniqServerServiceCollectionExtensions
         services.AddHttpClient<OpenAICompatibleClient>();
         services.AddSingleton<AgentToolInvoker>();
 
+        // Tools
         services.AddScoped<ToolRunApiHandler>();
         services.AddScoped<AgentExecutionRuntime>();
         services.AddScoped<AgentChatApiHandler>();
 
+        // Agent Teams 
         services.AddScoped<TeamExecutionRuntime>();
+        services.AddScoped<TeamChatApiHandler>();
 
+        // Source context
         services.AddScoped<ContextSpaceSourceDocumentApiHandler>();
         services.AddScoped<ContextSpaceSkillDocumentApiHandler>();
 

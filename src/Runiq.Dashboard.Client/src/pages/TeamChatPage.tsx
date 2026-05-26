@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { getTeams, type TeamMetadata } from '../api/agentMetadataApi';
+import { streamTeamMessage, type TeamChatStreamEvent } from '../api/teamChatApi';
 import { ChatComposer } from '../components/AgentChat/ChatComposer';
 import { ChatThread } from '../components/AgentChat/ChatThread';
 import { TeamInspectorPanel } from '../components/TeamChat/TeamInspectorPanel';
@@ -11,7 +12,10 @@ type TeamChatPageProps = {
   teamId: string;
 };
 
-function createMessage(role: AgentChatMessage['role'], content: string): AgentChatMessage {
+function createMessage(
+  role: AgentChatMessage['role'],
+  content: string,
+): AgentChatMessage {
   return {
     id:
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -26,12 +30,8 @@ export function TeamChatPage({ teamId }: TeamChatPageProps) {
   const [team, setTeam] = useState<TeamMetadata | null>(null);
   const [isLoading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [messages] = useState<AgentChatMessage[]>([
-    createMessage(
-      'assistant',
-      'Team playground is ready. Multi-agent execution endpoint will be connected next.',
-    ),
-  ]);
+  const [messages, setMessages] = useState<AgentChatMessage[]>([]);
+  const [isExecuting, setExecuting] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -82,6 +82,65 @@ export function TeamChatPage({ teamId }: TeamChatPageProps) {
     };
   }, [teamId]);
 
+  async function handleSubmit(message: string) {
+    const basePath = getDashboardBasePath();
+
+    const userMessage = createMessage('user', message);
+    const assistantMessage: AgentChatMessage = {
+      ...createMessage('assistant', ''),
+      isStreaming: true,
+      toolCalls: [],
+    };
+
+    setMessages((current) => [...current, userMessage, assistantMessage]);
+    setExecuting(true);
+
+    try {
+      await streamTeamMessage(
+        {
+          basePath,
+          teamId,
+          message,
+        },
+        (event) => {
+          setMessages((current) =>
+            current.map((item) =>
+              item.id === assistantMessage.id
+                ? applyTeamStreamEvent(item, event)
+                : item,
+            ),
+          );
+        },
+      );
+
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === assistantMessage.id
+            ? { ...item, isStreaming: false }
+            : item,
+        ),
+      );
+    } catch (error) {
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === assistantMessage.id
+            ? {
+                ...item,
+                role: 'error',
+                content:
+                  error instanceof Error
+                    ? error.message
+                    : 'Agent team execution failed.',
+                isStreaming: false,
+              }
+            : item,
+        ),
+      );
+    } finally {
+      setExecuting(false);
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex h-full min-h-0 w-full items-center justify-center rounded-lg border border-zinc-200 bg-white text-sm text-zinc-500 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40 dark:text-zinc-500 dark:shadow-none">
@@ -103,10 +162,60 @@ export function TeamChatPage({ teamId }: TeamChatPageProps) {
       <section className="flex min-w-0 flex-1 flex-col gap-2.5">
         <ChatThread messages={messages} isWaiting={false} />
 
-        <ChatComposer disabled onSubmit={() => {}} />
+        <ChatComposer disabled={isExecuting} onSubmit={handleSubmit} />
       </section>
 
       <TeamInspectorPanel team={team} />
     </div>
   );
+}
+
+function applyTeamStreamEvent(
+  message: AgentChatMessage,
+  event: TeamChatStreamEvent,
+): AgentChatMessage {
+  if (event.type === 'member_delta') {
+    return {
+      ...message,
+      content: message.content + (event.content ?? ''),
+      isStreaming: true,
+    };
+  }
+
+  if (event.type === 'team_completed') {
+    return {
+      ...message,
+      content: event.content?.trim() ? event.content : message.content,
+      isStreaming: false,
+    };
+  }
+
+  if (event.type === 'team_failed') {
+    return {
+      ...message,
+      role: 'error',
+      content:
+        event.errorMessage ??
+        event.content ??
+        'Agent team execution failed.',
+      isStreaming: false,
+    };
+  }
+
+  if (event.type === 'member_failed') {
+    return {
+      ...message,
+      role: 'error',
+      content:
+        event.errorMessage ??
+        event.content ??
+        `Team member '${event.memberAgentId ?? event.memberRole ?? 'unknown'}' failed.`,
+      isStreaming: false,
+    };
+  }
+
+  return {
+    ...message,
+    isStreaming: true,
+  };
 }

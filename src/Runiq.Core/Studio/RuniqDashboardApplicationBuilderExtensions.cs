@@ -1,13 +1,14 @@
-﻿using System.Text.Encodings.Web;
-using System.Text.Json;
-using Microsoft.AspNetCore.Builder;
+﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Runiq.Core.Agents;
 using Runiq.Core.ContextSpaces;
 using Runiq.Core.Dashboard;
 using Runiq.Core.Metadata;
 using Runiq.Core.Studio;
+using Runiq.Core.Teams;
 using Runiq.Core.Tools;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 
 namespace Runiq.Core;
 
@@ -45,6 +46,7 @@ public static class RuniqDashboardApplicationBuilderExtensions
         {
             endpoints.MapRuniqMetadataApi($"{basePath}/metadata");
             endpoints.MapRuniqAgentApi($"{basePath}/api");
+            endpoints.MapRuniqTeamApi($"{basePath}/api");
             endpoints.MapRuniqContextSpaceApi($"{basePath}/api");
             endpoints.MapRuniqToolApi($"{basePath}/api");
         });
