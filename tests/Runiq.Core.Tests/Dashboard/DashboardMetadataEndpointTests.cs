@@ -7,7 +7,6 @@ using Runiq.Agents.Tools;
 using Runiq.ContextSpaces.Models.Sources;
 using Runiq.Core;
 using Runiq.Core.Configuration;
-using Runiq.Teams.Models.Teams;
 using System.Net;
 using System.Text.Json;
 
@@ -168,51 +167,15 @@ public sealed class DashboardMetadataEndpointTests
     }
 
     [Fact]
-public async Task MetadataTeamsEndpoint_ShouldReturnRegisteredTeams()
-{
-    // Dashboard metadata endpoint'inin kayıtlı agent team bilgisini JSON olarak döndürdüğünü doğrular.
-    using var server = CreateServer();
+    public async Task MetadataTeamsEndpoint_ShouldReturnNotFound()
+    {
+        // Agent Team metadata endpoint'inin aktif dashboard metadata yüzeyinden kaldırıldığını doğrular.
+        using var server = CreateServer();
 
-    var response = await server.CreateClient().GetAsync("/dashboard/metadata/teams");
+        var response = await server.CreateClient().GetAsync("/dashboard/metadata/teams");
 
-    response.EnsureSuccessStatusCode();
-
-    var json = await response.Content.ReadAsStringAsync();
-    using var document = JsonDocument.Parse(json);
-
-    var teams = document.RootElement;
-
-    Assert.Equal(JsonValueKind.Array, teams.ValueKind);
-    Assert.Single(teams.EnumerateArray());
-
-    var team = teams[0];
-
-    Assert.Equal("travel-team", team.GetProperty("id").GetString());
-    Assert.Equal("Travel Planning Team", team.GetProperty("name").GetString());
-    Assert.Equal(
-        "Create travel plans with multiple specialized agents.",
-        team.GetProperty("instructions").GetString());
-    Assert.Equal("Sequential", team.GetProperty("executionMode").GetString());
-
-    var members = team.GetProperty("members");
-
-    Assert.Equal(JsonValueKind.Array, members.ValueKind);
-    Assert.Equal(2, members.GetArrayLength());
-
-    var researcher = members[0];
-
-    Assert.Equal("test-agent", researcher.GetProperty("agentId").GetString());
-    Assert.Equal("Researcher", researcher.GetProperty("role").GetString());
-    Assert.Equal(
-        "Find relevant information from registered context spaces.",
-        researcher.GetProperty("instructions").GetString());
-
-    var planner = members[1];
-
-    Assert.Equal("planner-agent", planner.GetProperty("agentId").GetString());
-    Assert.Equal("Planner", planner.GetProperty("role").GetString());
-    Assert.Equal(JsonValueKind.Null, planner.GetProperty("instructions").ValueKind);
-}
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
 
     private static TestServer CreateServer()
     {
@@ -252,17 +215,6 @@ public async Task MetadataTeamsEndpoint_ShouldReturnRegisteredTeams()
                         model: "openai/gpt-5",
                         apiKey: "test-key"));
 
-                    options.AddTeam(new AgentTeam(
-                            id: "travel-team",
-                            name: "Travel Planning Team",
-                            instructions: "Create travel plans with multiple specialized agents.")
-                        .AddMember(
-                            agentId: "test-agent",
-                            role: "Researcher",
-                            instructions: "Find relevant information from registered context spaces.")
-                        .AddMember(
-                            agentId: "planner-agent",
-                            role: "Planner"));
                 });
             })
             .Configure(app =>

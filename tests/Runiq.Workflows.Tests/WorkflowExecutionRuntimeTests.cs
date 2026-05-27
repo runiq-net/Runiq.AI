@@ -87,6 +87,90 @@ public sealed class WorkflowExecutionRuntimeTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_ShouldIncludeToolCalls_WhenAgentStepUsesTools()
+    {
+        // Agent adımı içindeki gerçek tool trace bilgisinin workflow step sonucuna taşındığını doğrular.
+        var startedAt = DateTimeOffset.UtcNow;
+        var completedAt = startedAt.AddMilliseconds(42);
+        var executor = new FakeWorkflowAgentExecutor()
+            .WithToolCalls(
+                "test-agent",
+                [
+                    new WorkflowToolCallExecutionResult(
+                        toolCallId: "call-1",
+                        toolName: "weather.lookup",
+                        status: WorkflowToolCallExecutionStatus.Completed,
+                        argumentsJson: """{"city":"Istanbul"}""",
+                        outputJson: """{"condition":"Cloudy"}""",
+                        startedAt: startedAt,
+                        completedAt: completedAt)
+                ]);
+
+        var runtime = new WorkflowExecutionRuntime(
+            new WorkflowAgentResolver([new TestAgent()]),
+            executor);
+
+        var workflow = new Workflow("valid", "Valid")
+            .Step<TestAgent>("weather")
+                .OnFailureStop()
+            .Build();
+
+        var result = await runtime.ExecuteAsync(
+            workflow,
+            input: "hello");
+
+        var stepResult = Assert.Single(result.StepResults);
+        var toolCall = Assert.Single(stepResult.ToolCalls);
+
+        Assert.Equal("call-1", toolCall.ToolCallId);
+        Assert.Equal("weather.lookup", toolCall.ToolName);
+        Assert.Equal(WorkflowToolCallExecutionStatus.Completed, toolCall.Status);
+        Assert.Equal("""{"city":"Istanbul"}""", toolCall.ArgumentsJson);
+        Assert.Equal("""{"condition":"Cloudy"}""", toolCall.OutputJson);
+        Assert.Equal(42, toolCall.DurationMs);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ShouldIncludeFailedToolCalls_WhenAgentStepFails()
+    {
+        // Agent başarısız olsa bile tool hata trace bilgisinin kaybolmadığını doğrular.
+        var executor = new FakeWorkflowAgentExecutor()
+            .WithFailure("test-agent")
+            .WithToolCalls(
+                "test-agent",
+                [
+                    new WorkflowToolCallExecutionResult(
+                        toolCallId: "call-1",
+                        toolName: "places.search",
+                        status: WorkflowToolCallExecutionStatus.Failed,
+                        argumentsJson: """{"query":"museum"}""",
+                        errorCode: "ToolFailed",
+                        errorMessage: "Search failed.")
+                ]);
+
+        var runtime = new WorkflowExecutionRuntime(
+            new WorkflowAgentResolver([new TestAgent()]),
+            executor);
+
+        var workflow = new Workflow("valid", "Valid")
+            .Step<TestAgent>("places")
+                .OnFailureStop()
+            .Build();
+
+        var result = await runtime.ExecuteAsync(
+            workflow,
+            input: "hello");
+
+        var stepResult = Assert.Single(result.StepResults);
+        var toolCall = Assert.Single(stepResult.ToolCalls);
+
+        Assert.Equal(WorkflowExecutionStatus.Failed, result.Status);
+        Assert.Equal(WorkflowToolCallExecutionStatus.Failed, toolCall.Status);
+        Assert.Equal("ToolFailed", toolCall.ErrorCode);
+        Assert.Equal("Search failed.", toolCall.ErrorMessage);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_ShouldStop_WhenFailureBehaviorIsStop()
     {
         var runtime = new WorkflowExecutionRuntime(

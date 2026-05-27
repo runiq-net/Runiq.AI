@@ -10,7 +10,7 @@ public interface IWorkflowAgentExecutor
     /// <summary>
     /// Verilen agent'ı workflow adımı girdisiyle çalıştırır.
     /// </summary>
-    Task<string> ExecuteAsync(
+    Task<WorkflowAgentExecutionResult> ExecuteAsync(
         Agent agent,
         string input,
         CancellationToken cancellationToken = default);

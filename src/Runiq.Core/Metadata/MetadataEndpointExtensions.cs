@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 
@@ -31,11 +31,6 @@ public static class MetadataEndpointExtensions
         group.MapGet("/context-spaces", (IRuntimeMetadataService metadataService) =>
         {
             return Results.Ok(metadataService.GetContextSpaces());
-        });
-
-        group.MapGet("/teams", (IRuntimeMetadataService metadataService) =>
-        {
-            return Results.Ok(metadataService.GetTeams());
         });
 
         return endpoints;

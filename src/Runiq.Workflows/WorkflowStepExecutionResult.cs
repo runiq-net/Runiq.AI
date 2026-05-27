@@ -9,8 +9,10 @@ public sealed class WorkflowStepExecutionResult
         string stepId,
         Type agentType,
         WorkflowStepExecutionStatus status,
+        string? input = null,
         string? output = null,
-        string? errorMessage = null)
+        string? errorMessage = null,
+        IReadOnlyList<WorkflowToolCallExecutionResult>? toolCalls = null)
     {
         if (string.IsNullOrWhiteSpace(stepId))
         {
@@ -20,8 +22,10 @@ public sealed class WorkflowStepExecutionResult
         StepId = stepId.Trim();
         AgentType = agentType ?? throw new ArgumentNullException(nameof(agentType));
         Status = status;
+        Input = input;
         Output = output;
         ErrorMessage = errorMessage;
+        ToolCalls = toolCalls ?? [];
     }
 
     /// <summary>
@@ -40,6 +44,11 @@ public sealed class WorkflowStepExecutionResult
     public WorkflowStepExecutionStatus Status { get; }
 
     /// <summary>
+    /// Adıma verilen girdiyi döner.
+    /// </summary>
+    public string? Input { get; }
+
+    /// <summary>
     /// Agent tarafından üretilen metinsel çıktıyı döner.
     /// </summary>
     public string? Output { get; }
@@ -48,4 +57,9 @@ public sealed class WorkflowStepExecutionResult
     /// Adım hata verdiyse hata mesajını döner.
     /// </summary>
     public string? ErrorMessage { get; }
+
+    /// <summary>
+    /// Adım içinde çalıştırılan tool çağrılarını döner.
+    /// </summary>
+    public IReadOnlyList<WorkflowToolCallExecutionResult> ToolCalls { get; }
 }

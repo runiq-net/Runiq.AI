@@ -1,7 +1,6 @@
 ﻿using Runiq.Agents;
 using Runiq.Agents.Tools;
 using Runiq.ContextSpaces.Models.Sources;
-using Runiq.Teams.Models.Teams;
 
 namespace Runiq.Core.Configuration;
 
@@ -13,7 +12,6 @@ public sealed class RuniqServerOptions
     private readonly List<Agent> _agents = [];
     private readonly List<AgentToolRegistration> _tools = [];
     private readonly List<ContextSpace> _contextSpaces = [];
-    private readonly List<AgentTeam> _teams = [];
 
     /// <summary>
     /// Host uygulamada tanımlanan agent kayıtlarını döndürür.
@@ -31,11 +29,6 @@ public sealed class RuniqServerOptions
     public IReadOnlyList<ContextSpace> ContextSpaces => _contextSpaces;
 
     /// <summary>
-    /// Host uygulamada tanımlanan agent team kayıtlarını döndürür.
-    /// </summary>
-    public IReadOnlyList<AgentTeam> Teams => _teams;
-
-    /// <summary>
     /// Runtime'a yeni bir agent kaydı ekler.
     /// </summary>
     public RuniqServerOptions AddAgent(Agent agent)
@@ -43,25 +36,6 @@ public sealed class RuniqServerOptions
         ArgumentNullException.ThrowIfNull(agent);
 
         _agents.Add(agent);
-
-        return this;
-    }
-
-    /// <summary>
-    /// Runtime'a yeni bir agent team kaydı ekler.
-    /// </summary>
-    public RuniqServerOptions AddTeam(AgentTeam team)
-    {
-        ArgumentNullException.ThrowIfNull(team);
-
-        if (_teams.Any(existing =>
-                string.Equals(existing.Id, team.Id, StringComparison.OrdinalIgnoreCase)))
-        {
-            throw new InvalidOperationException(
-                $"An agent team with id '{team.Id}' is already registered.");
-        }
-
-        _teams.Add(team);
 
         return this;
     }

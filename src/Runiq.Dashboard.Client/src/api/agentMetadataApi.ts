@@ -104,18 +104,53 @@ export type ToolRunResponse = {
   errorMessage?: string | null;
 };
 
-export type TeamMemberMetadata = {
-  agentId: string;
-  role: string;
-  instructions?: string | null;
+export type WorkflowStepMetadata = {
+  id: string;
+  agentType: string;
+  agentName: string;
+  successStepId?: string | null;
+  failureBehavior: string;
+  failureStepId?: string | null;
 };
 
-export type TeamMetadata = {
+export type WorkflowMetadata = {
   id: string;
   name: string;
-  instructions: string;
-  executionMode: string;
-  members: TeamMemberMetadata[];
+  startStepId?: string | null;
+  stepCount: number;
+  steps: WorkflowStepMetadata[];
+};
+
+export type WorkflowStepRunResult = {
+  stepId: string;
+  agentName: string;
+  agentType: string;
+  status: string;
+  input?: string | null;
+  output?: string | null;
+  errorMessage?: string | null;
+  toolCalls: WorkflowToolCallRunResult[];
+};
+
+export type WorkflowToolCallRunResult = {
+  toolCallId?: string | null;
+  toolName?: string | null;
+  status: string;
+  argumentsJson?: string | null;
+  outputJson?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  durationMs?: number | null;
+};
+
+export type WorkflowRunResponse = {
+  workflowId: string;
+  status: string;
+  finalOutput?: string | null;
+  errorMessage?: string | null;
+  steps: WorkflowStepRunResult[];
 };
 
 export async function runTool(
@@ -176,12 +211,52 @@ export async function getContextSpaces(
 }
 
 
-export async function getTeams(basePath: string): Promise<TeamMetadata[]> {
-  const response = await fetch(`${basePath}/metadata/teams`);
+export async function getWorkflows(
+  basePath: string,
+): Promise<WorkflowMetadata[]> {
+  const response = await fetch(`${basePath}/api/workflows`);
 
   if (!response.ok) {
-    throw new Error('Teams metadata could not be loaded.');
+    throw new Error('Workflows metadata could not be loaded.');
   }
 
-  return response.json() as Promise<TeamMetadata[]>;
+  return response.json() as Promise<WorkflowMetadata[]>;
+}
+
+export async function getWorkflow(
+  basePath: string,
+  workflowId: string,
+): Promise<WorkflowMetadata> {
+  const response = await fetch(
+    `${basePath}/api/workflows/${encodeURIComponent(workflowId)}`,
+  );
+
+  if (!response.ok) {
+    throw new Error('Workflow metadata could not be loaded.');
+  }
+
+  return response.json() as Promise<WorkflowMetadata>;
+}
+
+export async function runWorkflow(
+  basePath: string,
+  workflowId: string,
+  input: string,
+): Promise<WorkflowRunResponse> {
+  const response = await fetch(
+    `${basePath}/api/workflows/${encodeURIComponent(workflowId)}/run`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ input }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Workflow run failed with status ${response.status}.`);
+  }
+
+  return response.json() as Promise<WorkflowRunResponse>;
 }

@@ -1,0 +1,11 @@
+@Runiq_WorkflowTravelPlanner_HostAddress = http://localhost:5127
+
+GET {{Runiq_WorkflowTravelPlanner_HostAddress}}/dashboard/metadata/agents
+Accept: application/json
+
+###
+
+GET {{Runiq_WorkflowTravelPlanner_HostAddress}}/dashboard/api/workflows
+Accept: application/json
+
+###

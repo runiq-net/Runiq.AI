@@ -1,6 +1,5 @@
-﻿using Runiq.ContextSpaces.Models.Sources;
+using Runiq.ContextSpaces.Models.Sources;
 using Runiq.Core.Configuration;
-using Runiq.Teams.Models.Teams;
 
 namespace Runiq.Core.Tests.Configuration;
 
@@ -52,60 +51,4 @@ public sealed class RuniqServerOptionsTests
 
         Assert.Same(options, result);
     }
-
-    /// <summary>
-    /// Geçerli bir agent team kaydının runtime seçeneklerine eklenebildiğini doğrular.
-    /// </summary>
-    [Fact]
-    public void AddTeam_ShouldRegisterTeam_WhenTeamIsValid()
-    {
-        var options = new RuniqServerOptions();
-
-        var team = new AgentTeam(
-            id: "travel-team",
-            name: "Travel Planning Team",
-            instructions: "Create travel plans with multiple specialized agents.");
-
-        var returnedOptions = options.AddTeam(team);
-
-        Assert.Same(options, returnedOptions);
-        Assert.Single(options.Teams);
-        Assert.Same(team, options.Teams[0]);
-    }
-
-    /// <summary>
-    /// Aynı kimliğe sahip ikinci bir agent team kaydı eklendiğinde hata fırlatıldığını doğrular.
-    /// </summary>
-    [Fact]
-    public void AddTeam_ShouldThrow_WhenTeamIdAlreadyExists()
-    {
-        var options = new RuniqServerOptions();
-
-        options.AddTeam(new AgentTeam(
-            id: "travel-team",
-            name: "Travel Planning Team",
-            instructions: "Create travel plans."));
-
-        var exception = Assert.Throws<InvalidOperationException>(() =>
-            options.AddTeam(new AgentTeam(
-                id: "TRAVEL-TEAM",
-                name: "Another Travel Team",
-                instructions: "Create another travel plan.")));
-
-        Assert.Equal(
-            "An agent team with id 'TRAVEL-TEAM' is already registered.",
-            exception.Message);
-    }
-
-    /// <summary>
-    /// Null agent team kaydı eklendiğinde hata fırlatıldığını doğrular.
-    /// </summary>
-    [Fact]
-    public void AddTeam_ShouldThrow_WhenTeamIsNull()
-    {
-        var options = new RuniqServerOptions();
-
-        Assert.Throws<ArgumentNullException>(() => options.AddTeam(null!));
-    }
-
 }

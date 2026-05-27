@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Database, Users, Wrench } from 'lucide-react';
+import { Database, Wrench } from 'lucide-react';
 
 import type {
   AgentContextSpaceMetadata,
@@ -42,13 +42,6 @@ export function AgentOverviewTab({
 
       <InspectorCard title="Context Space">
         <ContextSpaceSummary contextSpaces={contextSpaces} />
-      </InspectorCard>
-
-      <InspectorCard title="Multi-Agent Teams">
-        <div className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">
-          <Users className="size-3.5 shrink-0 text-zinc-500 dark:text-zinc-500" />
-          <span className="truncate">No team members</span>
-        </div>
       </InspectorCard>
 
       <InspectorCard title="Memory">

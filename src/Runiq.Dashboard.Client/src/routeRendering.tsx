@@ -2,7 +2,7 @@ import type { DashboardBreadcrumb } from './layouts/DashboardLayout';
 import { AgentChatPage } from './pages/AgentChatPage';
 import { ContextSpaceDetailPage } from './pages/ContextSpaceDetailPage';
 import { ToolDetailPage } from './pages/ToolDetailPage';
-import { TeamChatPage } from './pages/TeamChatPage';
+import { WorkflowDetailPage } from './pages/WorkflowDetailPage';
 
 import {
   getDashboardRouteByPage,
@@ -19,12 +19,12 @@ export function renderDashboardRoute(route: DashboardRoute) {
     return <ToolDetailPage toolName={route.toolName} />;
   }
 
-  if (route.page === 'team-chat') {
-    return <TeamChatPage teamId={route.teamId} />;
-  }
-
   if (route.page === 'context-space-detail') {
     return <ContextSpaceDetailPage contextSpaceId={route.contextSpaceId} />;
+  }
+
+  if (route.page === 'workflow-detail') {
+    return <WorkflowDetailPage workflowId={route.workflowId} />;
   }
 
   const PageComponent = getDashboardRouteByPage(route.page);
@@ -41,12 +41,12 @@ export function getActivePage(route: DashboardRoute): DashboardPage {
     return 'tools';
   }
 
-  if (route.page === 'team-chat') {
-    return 'teams';
-  }
-
   if (route.page === 'context-space-detail') {
     return 'context-spaces';
+  }
+
+  if (route.page === 'workflow-detail') {
+    return 'workflows';
   }
 
   return route.page;
@@ -57,16 +57,16 @@ export function getRouteTitle(route: DashboardRoute): string {
     return 'Playground';
   }
 
-  if (route.page === 'team-chat') {
-  return 'Playground';
-}
-
   if (route.page === 'tool-detail') {
     return 'Tool Playground';
   }
 
   if (route.page === 'context-space-detail') {
     return 'Context Space';
+  }
+
+  if (route.page === 'workflow-detail') {
+    return 'Workflow Execution';
   }
 
   return getDashboardRouteByPage(route.page).title;
@@ -88,18 +88,6 @@ export function getRouteBreadcrumbs(
     ];
   }
 
-  if (route.page === 'team-chat') {
-  return [
-    {
-      label: 'Agent Teams',
-      onClick: () => navigateTo('teams'),
-    },
-    {
-      label: formatRouteDisplayName(route.teamId),
-    },
-  ];
-}
-
   if (route.page === 'tool-detail') {
     return [
       {
@@ -120,6 +108,18 @@ export function getRouteBreadcrumbs(
       },
       {
         label: formatRouteDisplayName(route.contextSpaceId),
+      },
+    ];
+  }
+
+  if (route.page === 'workflow-detail') {
+    return [
+      {
+        label: 'Workflows',
+        onClick: () => navigateTo('workflows'),
+      },
+      {
+        label: formatRouteDisplayName(route.workflowId),
       },
     ];
   }

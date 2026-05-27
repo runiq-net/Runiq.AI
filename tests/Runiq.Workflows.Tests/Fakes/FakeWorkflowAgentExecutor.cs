@@ -6,6 +6,7 @@ internal sealed class FakeWorkflowAgentExecutor : IWorkflowAgentExecutor
 {
     private readonly Dictionary<string, string> outputsByAgentId = [];
     private readonly HashSet<string> failingAgentIds = [];
+    private readonly Dictionary<string, IReadOnlyList<WorkflowToolCallExecutionResult>> toolCallsByAgentId = [];
 
     public FakeWorkflowAgentExecutor WithOutput(string agentId, string output)
     {
@@ -19,22 +20,37 @@ internal sealed class FakeWorkflowAgentExecutor : IWorkflowAgentExecutor
         return this;
     }
 
-    public Task<string> ExecuteAsync(
+    public FakeWorkflowAgentExecutor WithToolCalls(
+        string agentId,
+        IReadOnlyList<WorkflowToolCallExecutionResult> toolCalls)
+    {
+        toolCallsByAgentId[agentId] = toolCalls;
+        return this;
+    }
+
+    public Task<WorkflowAgentExecutionResult> ExecuteAsync(
         Agent agent,
         string input,
         CancellationToken cancellationToken = default)
     {
+        var toolCalls = toolCallsByAgentId.GetValueOrDefault(agent.Id, []);
+
         if (failingAgentIds.Contains(agent.Id))
         {
-            throw new InvalidOperationException(
-                $"Fake failure for agent '{agent.Id}'.");
+            return Task.FromResult(WorkflowAgentExecutionResult.Failure(
+                $"Fake failure for agent '{agent.Id}'.",
+                toolCalls));
         }
 
         if (outputsByAgentId.TryGetValue(agent.Id, out var output))
         {
-            return Task.FromResult(output);
+            return Task.FromResult(WorkflowAgentExecutionResult.Success(
+                output,
+                toolCalls));
         }
 
-        return Task.FromResult(input);
+        return Task.FromResult(WorkflowAgentExecutionResult.Success(
+            input,
+            toolCalls));
     }
 }

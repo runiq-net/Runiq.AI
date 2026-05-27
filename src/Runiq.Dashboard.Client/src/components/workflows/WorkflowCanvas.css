@@ -1,0 +1,32 @@
+.runiq-workflow-canvas .react-flow__pane {
+  cursor: grab;
+}
+
+.runiq-workflow-canvas .react-flow__pane:active {
+  cursor: grabbing;
+}
+
+.runiq-workflow-canvas .react-flow__attribution {
+  display: none;
+}
+
+.runiq-workflow-canvas .react-flow__controls {
+  border: 1px solid rgb(228 228 231);
+  box-shadow: none;
+}
+
+.runiq-workflow-canvas .react-flow__controls-button {
+  border-color: rgb(228 228 231);
+  background: rgb(255 255 255);
+  color: rgb(63 63 70);
+}
+
+.dark .runiq-workflow-canvas .react-flow__controls {
+  border-color: rgb(39 39 42);
+}
+
+.dark .runiq-workflow-canvas .react-flow__controls-button {
+  border-color: rgb(39 39 42);
+  background: rgb(9 9 11);
+  color: rgb(212 212 216);
+}

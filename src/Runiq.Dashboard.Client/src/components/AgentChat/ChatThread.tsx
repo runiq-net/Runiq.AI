@@ -12,7 +12,6 @@ import {
 import './ChatThread.css';
 
 import { ToolCallCard } from './tool/ToolCallCard';
-import { TeamStepCard } from './team/TeamStepCard';
 
 import type {
   AgentChatMessage,
@@ -86,7 +85,6 @@ function ChatMessageItem({ message }: { message: AgentChatMessage }) {
   const hasContext = Boolean(message.context);
   const hasLoadedSkills = Boolean(message.loadedSkills?.length);
   const hasToolCalls = Boolean(message.toolCalls?.length);
-  const hasTeamSteps = Boolean(message.teamSteps?.length);
 
   const hasContent = Boolean(message.content.trim());
   const hasContextSearch = Boolean(message.contextSearchSummary);
@@ -102,8 +100,7 @@ function ChatMessageItem({ message }: { message: AgentChatMessage }) {
     !hasLoadedSkills &&
     !hasContextSearch &&
     !hasSourceSearchResults &&
-    !hasToolCalls &&
-    !hasTeamSteps;
+    !hasToolCalls;
 
   const showContextWaiting =
     message.role === 'assistant' &&
@@ -116,8 +113,7 @@ function ChatMessageItem({ message }: { message: AgentChatMessage }) {
     message.role === 'assistant' &&
     isAssistantStreaming &&
     !hasContent &&
-    hasToolCalls &&
-    !hasTeamSteps;
+    hasToolCalls;
 
   const showCopy =
     message.role === 'assistant' &&
@@ -190,14 +186,6 @@ function ChatMessageItem({ message }: { message: AgentChatMessage }) {
               <DotsOnlyIndicator />
             </div>
           )}
-        </div>
-      )}
-
-      {hasTeamSteps && (
-        <div className="mb-4 flex flex-col gap-2">
-          {message.teamSteps?.map((step) => (
-            <TeamStepCard key={step.id} step={step} />
-          ))}
         </div>
       )}
 

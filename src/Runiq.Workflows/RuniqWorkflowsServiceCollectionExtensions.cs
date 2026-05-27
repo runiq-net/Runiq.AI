@@ -37,8 +37,8 @@ public static class RuniqWorkflowsServiceCollectionExtensions
 
         services.AddSingleton(registry);
         services.AddSingleton<IWorkflowAgentResolver, WorkflowAgentResolver>();
-        services.AddSingleton<IWorkflowAgentExecutor, WorkflowAgentExecutor>();
-        services.AddSingleton<IWorkflowExecutionRuntime, WorkflowExecutionRuntime>();
+        services.AddScoped<IWorkflowAgentExecutor, WorkflowAgentExecutor>();
+        services.AddScoped<IWorkflowExecutionRuntime, WorkflowExecutionRuntime>();
 
         return services;
     }

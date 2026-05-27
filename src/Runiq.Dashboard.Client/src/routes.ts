@@ -2,16 +2,16 @@ import type { ComponentType } from 'react';
 import { AgentsPage } from './pages/AgentsPage';
 import { ToolsPage } from './pages/ToolsPage';
 import { ContextSpacesPage } from './pages/ContextSpacesPage';
-import { TeamsPage } from './pages/TeamsPage';
+import { WorkflowsPage } from './pages/WorkflowsPage';
 
-export type DashboardPage = 'agents' | 'tools' | 'teams' | 'context-spaces';
+export type DashboardPage = 'agents' | 'tools' | 'workflows' | 'context-spaces';
 
 export type DashboardRoute =
   | { page: 'agents' }
   | { page: 'tools' }
-  | { page: 'teams' }
+  | { page: 'workflows' }
+  | { page: 'workflow-detail'; workflowId: string }
   | { page: 'agent-chat'; agentId: string }
-  | { page: 'team-chat'; teamId: string }
   | { page: 'tool-detail'; toolName: string }
   | { page: 'context-spaces' }
   | { page: 'context-space-detail'; contextSpaceId: string };
@@ -43,12 +43,12 @@ export const dashboardRoutes: DashboardRouteDefinition[] = [
     component: ToolsPage,
   },
   {
-    page: 'teams',
-    path: 'teams',
-    title: 'Agent Teams',
-    navLabel: 'Agent Teams',
+    page: 'workflows',
+    path: 'workflows',
+    title: 'Workflows',
+    navLabel: 'Workflows',
     showInNavigation: true,
-    component: TeamsPage,
+    component: WorkflowsPage,
   },
   {
     page: 'context-spaces',
@@ -123,18 +123,6 @@ export function resolveDashboardRouteFromUrl(
     };
   }
 
-  if (
-    firstSegment === 'teams' &&
-    segments.length === 4 &&
-    segments[2].toLowerCase() === 'chat' &&
-    segments[3].toLowerCase() === 'new'
-  ) {
-    return {
-      page: 'team-chat',
-      teamId: decodeURIComponent(segments[1]),
-    };
-  }
-
   if (firstSegment === 'tools' && segments.length === 2) {
     return {
       page: 'tool-detail',
@@ -150,8 +138,15 @@ export function resolveDashboardRouteFromUrl(
     return { page: 'tools' };
   }
 
-  if (firstSegment === 'teams') {
-    return { page: 'teams' };
+  if (firstSegment === 'workflows') {
+    if (segments[1]) {
+      return {
+        page: 'workflow-detail',
+        workflowId: decodeURIComponent(segments[1]),
+      };
+    }
+
+    return { page: 'workflows' };
   }
 
   if (firstSegment === 'context-spaces') {

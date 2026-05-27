@@ -4,8 +4,6 @@ export type AgentChatMessageRole = 'user' | 'assistant' | 'error';
 
 export type AgentToolCallStatus = 'running' | 'completed' | 'failed';
 
-export type AgentTeamStepStatus = 'running' | 'completed' | 'failed';
-
 export type AgentToolCall = {
   id: string;
   name: string;
@@ -14,17 +12,6 @@ export type AgentToolCall = {
   outputJson?: string;
   errorCode?: string;
   errorMessage?: string;
-};
-
-export type AgentTeamStep = {
-  id: string;
-  agentId: string;
-  role: string;
-  status: AgentTeamStepStatus;
-  content?: string;
-  errorCode?: string;
-  errorMessage?: string;
-  toolCalls?: AgentToolCall[];
 };
 
 export type AgentProvidedContextSpace = {
@@ -88,7 +75,6 @@ export type AgentChatMessage = {
   contextSearchSummary?: AgentContextSearchSummary;
   sourceSearchResults?: AgentSourceSearchResult[];
   toolCalls?: AgentToolCall[];
-  teamSteps?: AgentTeamStep[];
   isStreaming?: boolean;
 };
 

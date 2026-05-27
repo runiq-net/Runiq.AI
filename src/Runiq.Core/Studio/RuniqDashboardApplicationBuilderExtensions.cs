@@ -5,8 +5,8 @@ using Runiq.Core.ContextSpaces;
 using Runiq.Core.Dashboard;
 using Runiq.Core.Metadata;
 using Runiq.Core.Studio;
-using Runiq.Core.Teams;
 using Runiq.Core.Tools;
+using Runiq.Core.Workflows;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 
@@ -46,9 +46,9 @@ public static class RuniqDashboardApplicationBuilderExtensions
         {
             endpoints.MapRuniqMetadataApi($"{basePath}/metadata");
             endpoints.MapRuniqAgentApi($"{basePath}/api");
-            endpoints.MapRuniqTeamApi($"{basePath}/api");
             endpoints.MapRuniqContextSpaceApi($"{basePath}/api");
             endpoints.MapRuniqToolApi($"{basePath}/api");
+            endpoints.MapRuniqWorkflowApi($"{basePath}/api");
         });
 
         app.Use(async (context, next) =>

@@ -45,6 +45,10 @@ function App() {
     setRoute({ page: targetDefinition.page });
   };
 
+  if (route.page === 'workflow-detail') {
+    return renderDashboardRoute(route);
+  }
+
   return (
     <DashboardLayout
       title={getRouteTitle(route)}

@@ -2,8 +2,6 @@
 using Runiq.Agents.Tools;
 using Runiq.ContextSpaces.Models.Sources;
 using Runiq.ContextSpaces.Services;
-using Runiq.Core.Teams;
-using Runiq.Teams.Models.Teams;
 
 namespace Runiq.Core.Metadata;
 
@@ -16,19 +14,16 @@ internal sealed class RuntimeMetadataService : IRuntimeMetadataService
     private readonly IReadOnlyList<AgentToolRegistration> _registeredTools;
     private readonly IReadOnlyList<ContextSpace> _contextSpaces;
     private readonly IContextSpaceSkillDiscoveryService _skillDiscoveryService;
-    private readonly IReadOnlyList<AgentTeam> _teams;
 
     public RuntimeMetadataService(
         IEnumerable<Agent> agents,
         IReadOnlyList<AgentToolRegistration>? registeredTools = null,
         IReadOnlyList<ContextSpace>? contextSpaces = null,
-        IReadOnlyList<AgentTeam>? teams = null,
         IContextSpaceSkillDiscoveryService? skillDiscoveryService = null)
     {
         _agents = agents;
         _registeredTools = registeredTools ?? [];
         _contextSpaces = contextSpaces ?? [];
-        _teams = teams ?? [];
         _skillDiscoveryService = skillDiscoveryService ?? new ContextSpaceSkillDiscoveryService();
     }
 
@@ -146,23 +141,6 @@ internal sealed class RuntimeMetadataService : IRuntimeMetadataService
             SourceCount: contextSpace.Sources.Count,
             DocumentCount: CountReadableSourceDocuments(contextSpace),
             SkillCount: skills.Count);
-    }
-
-    public IReadOnlyList<TeamMetadataDto> GetTeams()
-    {
-        return _teams
-            .Select(team => new TeamMetadataDto(
-                Id: team.Id,
-                Name: team.Name,
-                Instructions: team.Instructions,
-                ExecutionMode: team.ExecutionMode.ToString(),
-                Members: team.Members
-                    .Select(member => new TeamMemberMetadataDto(
-                        AgentId: member.AgentId,
-                        Role: member.Role,
-                        Instructions: member.Instructions))
-                    .ToList()))
-            .ToList();
     }
 
     private static AgentToolMetadataDto MapAgentTool(AgentToolRegistration tool)

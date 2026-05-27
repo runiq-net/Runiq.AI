@@ -41,21 +41,50 @@ public sealed class WorkflowExecutionRuntime : IWorkflowExecutionRuntime
         while (currentStep is not null)
         {
             var step = currentStep;
+            var stepInput = input;
             var agent = agentResolver.Resolve(step.ExecutableType);
 
             try
             {
-                var output = await agentExecutor.ExecuteAsync(
+                var agentResult = await agentExecutor.ExecuteAsync(
                     agent,
                     input,
                     cancellationToken);
+
+                if (!agentResult.IsSuccess)
+                {
+                    stepResults.Add(
+                        new WorkflowStepExecutionResult(
+                            stepId: step.Id,
+                            agentType: agent.GetType(),
+                            status: WorkflowStepExecutionStatus.Failed,
+                            input: stepInput,
+                            errorMessage: agentResult.ErrorMessage,
+                            toolCalls: agentResult.ToolCalls));
+
+                    currentStep = ResolveFailureStep(workflow, step);
+
+                    if (currentStep is not null)
+                    {
+                        continue;
+                    }
+
+                    return new WorkflowExecutionResult(
+                        status: WorkflowExecutionStatus.Failed,
+                        stepResults: stepResults,
+                        errorMessage: agentResult.ErrorMessage);
+                }
+
+                var output = agentResult.Output ?? string.Empty;
 
                 stepResults.Add(
                     new WorkflowStepExecutionResult(
                         stepId: step.Id,
                         agentType: agent.GetType(),
                         status: WorkflowStepExecutionStatus.Completed,
-                        output: output));
+                        input: stepInput,
+                        output: output,
+                        toolCalls: agentResult.ToolCalls));
 
                 input = output;
 
@@ -77,27 +106,13 @@ public sealed class WorkflowExecutionRuntime : IWorkflowExecutionRuntime
                         stepId: step.Id,
                         agentType: agent.GetType(),
                         status: WorkflowStepExecutionStatus.Failed,
+                        input: stepInput,
                         errorMessage: ex.Message));
 
-                if (step.FailureBehavior is WorkflowFailureBehavior.Continue)
+                currentStep = ResolveFailureStep(workflow, step);
+
+                if (currentStep is not null)
                 {
-                    currentStep = workflow.Steps.FirstOrDefault(
-                        x => string.Equals(
-                            x.Id,
-                            step.FailureStepId,
-                            StringComparison.OrdinalIgnoreCase));
-
-                    continue;
-                }
-
-                if (step.FailureBehavior is WorkflowFailureBehavior.GoTo)
-                {
-                    currentStep = workflow.Steps.FirstOrDefault(
-                        x => string.Equals(
-                            x.Id,
-                            step.FailureStepId,
-                            StringComparison.OrdinalIgnoreCase));
-
                     continue;
                 }
 
@@ -113,5 +128,22 @@ public sealed class WorkflowExecutionRuntime : IWorkflowExecutionRuntime
              stepResults: stepResults,
              finalOutput: input);
 
+    }
+
+    private static WorkflowStep? ResolveFailureStep(
+        Workflow workflow,
+        WorkflowStep step)
+    {
+        if (step.FailureBehavior is not WorkflowFailureBehavior.Continue &&
+            step.FailureBehavior is not WorkflowFailureBehavior.GoTo)
+        {
+            return null;
+        }
+
+        return workflow.Steps.FirstOrDefault(
+            x => string.Equals(
+                x.Id,
+                step.FailureStepId,
+                StringComparison.OrdinalIgnoreCase));
     }
 }

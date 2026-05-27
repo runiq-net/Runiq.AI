@@ -1,5 +1,4 @@
 ﻿using System.Runtime.CompilerServices;
-using System.Text;
 using Runiq.Agents.Providers;
 using Runiq.Agents.Providers.OpenAI;
 using Runiq.Agents.Tools;
@@ -153,7 +152,7 @@ public sealed class AgentExecutionRuntime
                 errorMessage: "Agent input cannot be empty.");
         }
 
-        var messageBuilder = new StringBuilder();
+        var resultBuilder = new AgentExecutionResultBuilder();
 
         await foreach (var executionEvent in ExecuteAgentStreamAsync(
                            agent,
@@ -161,35 +160,17 @@ public sealed class AgentExecutionRuntime
                            toolInvoker,
                            cancellationToken))
         {
-            switch (executionEvent.Kind)
-            {
-                case AgentExecutionEventKind.AssistantDelta:
-                    messageBuilder.Append(executionEvent.Content);
-                    break;
-
-                case AgentExecutionEventKind.Failed:
-                    return AgentExecutionResult.Failure(
-                        errorCode: executionEvent.ErrorCode ?? "AgentExecutionFailed",
-                        errorMessage: executionEvent.ErrorMessage ?? "Agent execution failed.");
-
-                case AgentExecutionEventKind.Completed:
-                    var message = messageBuilder.ToString();
-
-                    return string.IsNullOrWhiteSpace(message)
-                        ? AgentExecutionResult.Failure(
-                            errorCode: "AgentExecutionEmptyMessage",
-                            errorMessage: "Agent execution completed without producing a message.")
-                        : AgentExecutionResult.Success(message);
-            }
+            resultBuilder.Apply(executionEvent);
         }
 
-        var fallbackMessage = messageBuilder.ToString();
+        var result = resultBuilder.Build();
 
-        return string.IsNullOrWhiteSpace(fallbackMessage)
+        return result.IsSuccess && string.IsNullOrWhiteSpace(result.Message)
             ? AgentExecutionResult.Failure(
                 errorCode: "AgentExecutionEmptyMessage",
-                errorMessage: "Agent execution completed without producing a message.")
-            : AgentExecutionResult.Success(fallbackMessage);
+                errorMessage: "Agent execution completed without producing a message.",
+                steps: result.Steps)
+            : result;
     }
 
     /// <summary>

@@ -17,7 +17,7 @@ public sealed class WorkflowAgentExecutor : IWorkflowAgentExecutor
     }
 
     /// <inheritdoc />
-    public async Task<string> ExecuteAsync(
+    public async Task<WorkflowAgentExecutionResult> ExecuteAsync(
         Agent agent,
         string input,
         CancellationToken cancellationToken = default)
@@ -27,12 +27,43 @@ public sealed class WorkflowAgentExecutor : IWorkflowAgentExecutor
             input,
             cancellationToken);
 
+        var toolCalls = result.Steps
+            .Where(step => step.Kind == AgentExecutionStepKind.ToolCall)
+            .Select(MapToolCall)
+            .ToArray();
+
         if (result.IsSuccess && !string.IsNullOrWhiteSpace(result.Message))
         {
-            return result.Message;
+            return WorkflowAgentExecutionResult.Success(result.Message, toolCalls);
         }
 
-        throw new InvalidOperationException(
-            result.ErrorMessage ?? "Agent execution failed.");
+        return WorkflowAgentExecutionResult.Failure(
+            result.ErrorMessage ?? "Agent execution failed.",
+            toolCalls);
+    }
+
+    private static WorkflowToolCallExecutionResult MapToolCall(AgentExecutionStep step)
+    {
+        return new WorkflowToolCallExecutionResult(
+            toolCallId: step.ToolCallId,
+            toolName: step.ToolName,
+            status: MapToolCallStatus(step.Status),
+            argumentsJson: step.ArgumentsJson,
+            outputJson: step.OutputJson,
+            errorCode: step.ErrorCode,
+            errorMessage: step.ErrorMessage,
+            startedAt: step.StartedAt,
+            completedAt: step.CompletedAt);
+    }
+
+    private static WorkflowToolCallExecutionStatus MapToolCallStatus(
+        AgentExecutionStepStatus status)
+    {
+        return status switch
+        {
+            AgentExecutionStepStatus.Completed => WorkflowToolCallExecutionStatus.Completed,
+            AgentExecutionStepStatus.Failed => WorkflowToolCallExecutionStatus.Failed,
+            _ => WorkflowToolCallExecutionStatus.Running
+        };
     }
 }

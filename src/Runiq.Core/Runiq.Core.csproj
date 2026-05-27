@@ -24,7 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Runiq.Agent\Runiq.Agents.csproj" />
     <ProjectReference Include="..\Runiq.ContextSpaces\Runiq.ContextSpaces.csproj" />
-    <ProjectReference Include="..\Runiq.Teams\Runiq.Teams.csproj" />
+    <ProjectReference Include="..\Runiq.Workflows\Runiq.Workflows.csproj" />
   </ItemGroup>
 
 </Project>

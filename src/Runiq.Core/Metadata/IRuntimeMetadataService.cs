@@ -1,5 +1,3 @@
-﻿using Runiq.Core.Teams;
-
 namespace Runiq.Core.Metadata;
 
 /// <summary>
@@ -21,9 +19,4 @@ public interface IRuntimeMetadataService
     /// Host uygulamada register edilmiş context space listesini döndürür.
     /// </summary>
     IReadOnlyList<ContextSpaceMetadataDto> GetContextSpaces();
-
-    /// <summary>
-    /// Host uygulamada register edilmiş agent team listesini döndürür.
-    /// </summary>
-    IReadOnlyList<TeamMetadataDto> GetTeams();
 }
