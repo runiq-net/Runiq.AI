@@ -1,23 +1,24 @@
 ﻿using Runiq.Agents;
 using Runiq.Agents.Runtime;
+using Runiq.Workflows.Models;
+using Runiq.Workflows.Interfaces;
 
-namespace Runiq.Workflows;
+namespace Runiq.Workflows.Services;
 
 /// <summary>
-/// Workflow adımlarındaki agent'ları Runiq agent execution runtime üzerinden çalıştırır.
+/// Executes agent-backed flow steps through the Runiq agent runtime.
 /// </summary>
-public sealed class WorkflowAgentExecutor : IWorkflowAgentExecutor
+public sealed class RuniqAgentStepExecutor : IAgentStepExecutor
 {
     private readonly AgentExecutionRuntime agentExecutionRuntime;
 
-    public WorkflowAgentExecutor(AgentExecutionRuntime agentExecutionRuntime)
+    public RuniqAgentStepExecutor(AgentExecutionRuntime agentExecutionRuntime)
     {
         this.agentExecutionRuntime = agentExecutionRuntime
             ?? throw new ArgumentNullException(nameof(agentExecutionRuntime));
     }
 
-    /// <inheritdoc />
-    public async Task<WorkflowAgentExecutionResult> ExecuteAsync(
+    public async Task<AgentStepResult> ExecuteAsync(
         Agent agent,
         string input,
         CancellationToken cancellationToken = default)
@@ -34,17 +35,17 @@ public sealed class WorkflowAgentExecutor : IWorkflowAgentExecutor
 
         if (result.IsSuccess && !string.IsNullOrWhiteSpace(result.Message))
         {
-            return WorkflowAgentExecutionResult.Success(result.Message, toolCalls);
+            return AgentStepResult.Success(result.Message, toolCalls);
         }
 
-        return WorkflowAgentExecutionResult.Failure(
+        return AgentStepResult.Failure(
             result.ErrorMessage ?? "Agent execution failed.",
             toolCalls);
     }
 
-    private static WorkflowToolCallExecutionResult MapToolCall(AgentExecutionStep step)
+    private static ToolCallRunResult MapToolCall(AgentExecutionStep step)
     {
-        return new WorkflowToolCallExecutionResult(
+        return new ToolCallRunResult(
             toolCallId: step.ToolCallId,
             toolName: step.ToolName,
             status: MapToolCallStatus(step.Status),
@@ -56,14 +57,14 @@ public sealed class WorkflowAgentExecutor : IWorkflowAgentExecutor
             completedAt: step.CompletedAt);
     }
 
-    private static WorkflowToolCallExecutionStatus MapToolCallStatus(
+    private static ToolCallRunStatus MapToolCallStatus(
         AgentExecutionStepStatus status)
     {
         return status switch
         {
-            AgentExecutionStepStatus.Completed => WorkflowToolCallExecutionStatus.Completed,
-            AgentExecutionStepStatus.Failed => WorkflowToolCallExecutionStatus.Failed,
-            _ => WorkflowToolCallExecutionStatus.Running
+            AgentExecutionStepStatus.Completed => ToolCallRunStatus.Completed,
+            AgentExecutionStepStatus.Failed => ToolCallRunStatus.Failed,
+            _ => ToolCallRunStatus.Running
         };
     }
 }

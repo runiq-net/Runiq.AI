@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using Microsoft.AspNetCore.Http;
 using Runiq.ContextSpaces.Models;
 using Runiq.ContextSpaces.Models.Skills;
@@ -8,7 +8,7 @@ using Runiq.ContextSpaces.Services;
 namespace Runiq.Core.ContextSpaces;
 
 /// <summary>
-/// Dashboard context space skill dokümanlarını read-only olarak sunan API handler'ıdır.
+/// Dashboard context space skill dokÃ¼manlarÄ±nÄ± read-only olarak sunan API handler'Ä±dÄ±r.
 /// </summary>
 internal sealed class ContextSpaceSkillDocumentApiHandler
 {

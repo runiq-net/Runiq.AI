@@ -1,34 +1,37 @@
-﻿using Runiq.Agents;
+﻿using Runiq.Workflows.Infrastructure;
+using Runiq.Workflows.Domain;
+using Runiq.Workflows.Models;
+using Runiq.Agents;
 
 namespace Runiq.Workflows.Tests;
 
-public sealed class WorkflowRegistryTests
+public sealed class FlowCatalogTests
 {
     /// <summary>
-    /// Registry'ye eklenen workflow tanımının listede yer aldığını doğrular.
+    /// Registry'ye eklenen workflow taniminin listede yer aldigini dogrular.
     /// </summary>
     [Fact]
-    public void AddWorkflow_ShouldRegisterWorkflow()
+    public void AddFlow_ShouldRegisterFlow()
     {
-        var workflow = CreateWorkflow("travel");
-        var registry = new WorkflowRegistry();
+        var workflow = CreateFlow("travel");
+        var registry = new FlowCatalog();
 
-        registry.AddWorkflow(workflow);
+        registry.AddFlow(workflow);
 
-        var registeredWorkflow = Assert.Single(registry.Workflows);
+        var registeredFlow = Assert.Single(registry.Flows);
 
-        Assert.Same(workflow, registeredWorkflow);
+        Assert.Same(workflow, registeredFlow);
     }
 
     /// <summary>
-    /// Registry'nin workflow tanımını id değerine göre bulduğunu doğrular.
+    /// Registry'nin workflow tanimini id degerine göre buldugunu dogrular.
     /// </summary>
     [Fact]
-    public void FindById_ShouldReturnWorkflow_WhenWorkflowExists()
+    public void FindById_ShouldReturnFlow_WhenFlowExists()
     {
-        var workflow = CreateWorkflow("travel");
-        var registry = new WorkflowRegistry()
-            .AddWorkflow(workflow);
+        var workflow = CreateFlow("travel");
+        var registry = new FlowCatalog()
+            .AddFlow(workflow);
 
         var result = registry.FindById("travel");
 
@@ -36,23 +39,23 @@ public sealed class WorkflowRegistryTests
     }
 
     /// <summary>
-    /// Registry'nin aynı workflow id ile ikinci kayıt eklenmesini engellediğini doğrular.
+    /// Registry'nin ayni workflow id ile ikinci kayit eklenmesini engelledigini dogrular.
     /// </summary>
     [Fact]
-    public void AddWorkflow_ShouldThrow_WhenWorkflowIdAlreadyExists()
+    public void AddFlow_ShouldThrow_WhenFlowIdAlreadyExists()
     {
-        var registry = new WorkflowRegistry()
-            .AddWorkflow(CreateWorkflow("travel"));
+        var registry = new FlowCatalog()
+            .AddFlow(CreateFlow("travel"));
 
         var exception = Assert.Throws<InvalidOperationException>(
-            () => registry.AddWorkflow(CreateWorkflow("TRAVEL")));
+            () => registry.AddFlow(CreateFlow("TRAVEL")));
 
-        Assert.Contains("Workflow with id 'TRAVEL' is already registered.", exception.Message);
+        Assert.Contains("Flow with id 'TRAVEL' is already registered.", exception.Message);
     }
 
-    private static Workflow CreateWorkflow(string id)
+    private static Flow CreateFlow(string id)
     {
-        return new Workflow(id, "Test Workflow")
+        return new Flow(id, "Test Flow")
             .Step<TestAgent>("begin")
                 .OnFailureStop()
             .Build();

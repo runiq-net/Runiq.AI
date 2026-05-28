@@ -1,0 +1,26 @@
+﻿using Runiq.WorkflowTravelPlanner.Agents;
+using Runiq.Workflows.Domain;
+
+namespace Runiq.WorkflowTravelPlanner.Flows;
+
+/// <summary>
+/// Creates the deterministic travel planning flow definition.
+/// </summary>
+public static class TravelPlanningFlow
+{
+    public static Flow Create()
+    {
+        return new Flow(
+                id: "travel-planning-workflow",
+                name: "Travel Planning Flow")
+            .Step<WeatherAgent>("weather")
+                .OnSuccess("places")
+                .OnFailureContinue("places")
+            .Step<PlacesAgent>("places")
+                .OnSuccess("planner")
+                .OnFailureContinue("planner")
+            .Step<PlannerAgent>("planner")
+                .OnFailureStop()
+            .Build();
+    }
+}

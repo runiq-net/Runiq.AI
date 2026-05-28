@@ -1,42 +1,45 @@
-﻿namespace Runiq.Workflows;
+﻿using Runiq.Workflows.Models;
+using Runiq.Workflows.Validations;
+using Runiq.Workflows.Interfaces;
+using Runiq.Workflows.Domain;
+
+namespace Runiq.Workflows.Services;
 
 /// <summary>
-/// Workflow tanımlarını doğrulayıp çalıştıran varsayılan runtime'dır.
+/// Default use case for validating and running a flow definition.
 /// </summary>
-public sealed class WorkflowExecutionRuntime : IWorkflowExecutionRuntime
+public sealed class FlowRunner : IFlowRunner
 {
-    private readonly IWorkflowAgentResolver agentResolver;
-    private readonly IWorkflowAgentExecutor agentExecutor;
+    private readonly IAgentStepResolver agentResolver;
+    private readonly IAgentStepExecutor agentExecutor;
 
-    public WorkflowExecutionRuntime(
-        IWorkflowAgentResolver agentResolver,
-        IWorkflowAgentExecutor agentExecutor)
+    public FlowRunner(
+        IAgentStepResolver agentResolver,
+        IAgentStepExecutor agentExecutor)
     {
         this.agentResolver = agentResolver ?? throw new ArgumentNullException(nameof(agentResolver));
         this.agentExecutor = agentExecutor ?? throw new ArgumentNullException(nameof(agentExecutor));
     }
 
-    /// <inheritdoc />
-    public async Task<WorkflowExecutionResult> ExecuteAsync(
-        Workflow workflow,
+    public async Task<RunResult> ExecuteAsync(
+        Flow flow,
         string input,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(workflow);
+        ArgumentNullException.ThrowIfNull(flow);
 
-        var validationResult = WorkflowValidator.Validate(workflow);
+        var validationResult = FlowDefinitionValidator.Validate(flow);
 
         if (!validationResult.IsValid)
         {
-            return new WorkflowExecutionResult(
-                    status: WorkflowExecutionStatus.Failed,
-                    stepResults: [],
-                    errorMessage: string.Join(Environment.NewLine, validationResult.Errors));
+            return new RunResult(
+                status: RunStatus.Failed,
+                stepResults: [],
+                errorMessage: string.Join(Environment.NewLine, validationResult.Errors));
         }
 
-        var currentStep = workflow.Steps[0];
-
-        var stepResults = new List<WorkflowStepExecutionResult>();
+        var currentStep = flow.Steps[0];
+        var stepResults = new List<StepRunResult>();
 
         while (currentStep is not null)
         {
@@ -54,23 +57,23 @@ public sealed class WorkflowExecutionRuntime : IWorkflowExecutionRuntime
                 if (!agentResult.IsSuccess)
                 {
                     stepResults.Add(
-                        new WorkflowStepExecutionResult(
+                        new StepRunResult(
                             stepId: step.Id,
                             agentType: agent.GetType(),
-                            status: WorkflowStepExecutionStatus.Failed,
+                            status: StepRunStatus.Failed,
                             input: stepInput,
                             errorMessage: agentResult.ErrorMessage,
                             toolCalls: agentResult.ToolCalls));
 
-                    currentStep = ResolveFailureStep(workflow, step);
+                    currentStep = ResolveFailureStep(flow, step);
 
                     if (currentStep is not null)
                     {
                         continue;
                     }
 
-                    return new WorkflowExecutionResult(
-                        status: WorkflowExecutionStatus.Failed,
+                    return new RunResult(
+                        status: RunStatus.Failed,
                         stepResults: stepResults,
                         errorMessage: agentResult.ErrorMessage);
                 }
@@ -78,10 +81,10 @@ public sealed class WorkflowExecutionRuntime : IWorkflowExecutionRuntime
                 var output = agentResult.Output ?? string.Empty;
 
                 stepResults.Add(
-                    new WorkflowStepExecutionResult(
+                    new StepRunResult(
                         stepId: step.Id,
                         agentType: agent.GetType(),
-                        status: WorkflowStepExecutionStatus.Completed,
+                        status: StepRunStatus.Completed,
                         input: stepInput,
                         output: output,
                         toolCalls: agentResult.ToolCalls));
@@ -93,7 +96,7 @@ public sealed class WorkflowExecutionRuntime : IWorkflowExecutionRuntime
                     break;
                 }
 
-                currentStep = workflow.Steps.FirstOrDefault(
+                currentStep = flow.Steps.FirstOrDefault(
                     x => string.Equals(
                         x.Id,
                         step.SuccessStepId,
@@ -102,45 +105,44 @@ public sealed class WorkflowExecutionRuntime : IWorkflowExecutionRuntime
             catch (Exception ex)
             {
                 stepResults.Add(
-                    new WorkflowStepExecutionResult(
+                    new StepRunResult(
                         stepId: step.Id,
                         agentType: agent.GetType(),
-                        status: WorkflowStepExecutionStatus.Failed,
+                        status: StepRunStatus.Failed,
                         input: stepInput,
                         errorMessage: ex.Message));
 
-                currentStep = ResolveFailureStep(workflow, step);
+                currentStep = ResolveFailureStep(flow, step);
 
                 if (currentStep is not null)
                 {
                     continue;
                 }
 
-                return new WorkflowExecutionResult(
-                    status: WorkflowExecutionStatus.Failed,
+                return new RunResult(
+                    status: RunStatus.Failed,
                     stepResults: stepResults,
                     errorMessage: ex.Message);
             }
         }
 
-        return new WorkflowExecutionResult(
-             status: WorkflowExecutionStatus.Completed,
-             stepResults: stepResults,
-             finalOutput: input);
-
+        return new RunResult(
+            status: RunStatus.Completed,
+            stepResults: stepResults,
+            finalOutput: input);
     }
 
-    private static WorkflowStep? ResolveFailureStep(
-        Workflow workflow,
-        WorkflowStep step)
+    private static FlowStep? ResolveFailureStep(
+        Flow flow,
+        FlowStep step)
     {
-        if (step.FailureBehavior is not WorkflowFailureBehavior.Continue &&
-            step.FailureBehavior is not WorkflowFailureBehavior.GoTo)
+        if (step.FailureBehavior is not FailureBehavior.Continue &&
+            step.FailureBehavior is not FailureBehavior.GoTo)
         {
             return null;
         }
 
-        return workflow.Steps.FirstOrDefault(
+        return flow.Steps.FirstOrDefault(
             x => string.Equals(
                 x.Id,
                 step.FailureStepId,

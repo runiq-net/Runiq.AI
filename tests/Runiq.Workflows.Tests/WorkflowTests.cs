@@ -1,34 +1,37 @@
-﻿using Runiq.Agents;
+﻿using Runiq.Workflows.Infrastructure;
+using Runiq.Workflows.Domain;
+using Runiq.Workflows.Models;
+using Runiq.Agents;
 using Runiq.Workflows;
 
 namespace Runiq.Workflows.Tests;
 
-public sealed class WorkflowTests
+public sealed class FlowTests
 {
     /// <summary>
-    /// Workflow oluşturulurken id ve ad bilgilerinin doğru saklandığını doğrular.
+    /// Flow olusturulurken id ve ad bilgilerinin dogru saklandigini dogrular.
     /// </summary>
     [Fact]
-    public void Constructor_ShouldStoreWorkflowMetadata()
+    public void Constructor_ShouldStoreFlowMetadata()
     {
-        var workflow = new Workflow(
+        var workflow = new Flow(
             id: "travel-planning-workflow",
-            name: "Travel Planning Workflow",
+            name: "Travel Planning Flow",
             instructions: "Creates practical travel plans.");
 
         Assert.Equal("travel-planning-workflow", workflow.Id);
-        Assert.Equal("Travel Planning Workflow", workflow.Name);
+        Assert.Equal("Travel Planning Flow", workflow.Name);
         Assert.Equal("Creates practical travel plans.", workflow.Instructions);
     }
 
     /// <summary>
-    /// Step<T> çağrısının workflow içine çalıştırılabilir bir adım eklediğini doğrular.
+    /// Step<T> çagrisinin workflow içine çalistirilabilir bir adim ekledigini dogrular.
     /// </summary>
     [Fact]
-    public void Step_ShouldAddWorkflowStep()
+    public void Step_ShouldAddFlowStep()
     {
 
-        var workflow = new Workflow("travel", "Travel")
+        var workflow = new Flow("travel", "Travel")
             .Step<TestAgent>("begin")
                 .OnSuccessEnd()
                 .OnFailureStop()
@@ -39,16 +42,16 @@ public sealed class WorkflowTests
         Assert.Equal("begin", step.Id);
         Assert.Equal(typeof(TestAgent), step.ExecutableType);
  
-        Assert.Equal(WorkflowFailureBehavior.Stop, step.FailureBehavior);
+        Assert.Equal(FailureBehavior.Stop, step.FailureBehavior);
     }
 
     /// <summary>
-    /// Başarı ve hata geçişlerinin fluent API üzerinden doğru tanımlandığını doğrular.
+    /// Basari ve hata geçislerinin fluent API üzerinden dogru tanimlandigini dogrular.
     /// </summary>
     [Fact]
     public void StepBuilder_ShouldStoreSuccessAndFailureTransitions()
     {
-        var workflow = new Workflow("travel", "Travel")
+        var workflow = new Flow("travel", "Travel")
              .Step<TestAgent>("weather")
                  .OnSuccess("places")
                  .OnFailureGoTo("fallback")
@@ -57,7 +60,7 @@ public sealed class WorkflowTests
         var step = Assert.Single(workflow.Steps);
 
         Assert.Equal("places", step.SuccessStepId);
-        Assert.Equal(WorkflowFailureBehavior.GoTo, step.FailureBehavior);
+        Assert.Equal(FailureBehavior.GoTo, step.FailureBehavior);
         Assert.Equal("fallback", step.FailureStepId);
     }
 

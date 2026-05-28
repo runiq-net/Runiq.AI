@@ -1,11 +1,11 @@
-using Runiq.Agents;
+﻿using Runiq.Agents;
 using Runiq.Agents.Tools;
 using Runiq.WorkflowTravelPlanner.Tools;
 
 namespace Runiq.WorkflowTravelPlanner.Agents;
 
 /// <summary>
-/// Seyahat workflow'unda hava durumu analizinden sorumlu agent tanımını içerir.
+/// Seyahat workflow'unda hava durumu analizinden sorumlu agent tanÄ±mÄ±nÄ± iÃ§erir.
 /// </summary>
 public sealed class WeatherAgent : Agent
 {
@@ -41,7 +41,7 @@ public sealed class WeatherAgent : Agent
     }
 
     /// <summary>
-    /// Hava durumu agent tanımını tool bağlantılarıyla birlikte oluşturur.
+    /// Hava durumu agent tanÄ±mÄ±nÄ± tool baÄŸlantÄ±larÄ±yla birlikte oluÅŸturur.
     /// </summary>
     public static Agent Create(string? apiKey)
     {

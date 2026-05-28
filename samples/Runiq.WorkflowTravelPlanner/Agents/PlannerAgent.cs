@@ -1,11 +1,11 @@
-using Runiq.Agents;
+﻿using Runiq.Agents;
 using Runiq.Agents.Tools;
 using Runiq.WorkflowTravelPlanner.Tools;
 
 namespace Runiq.WorkflowTravelPlanner.Agents;
 
 /// <summary>
-/// Seyahat workflow'unda nihai seyahat planını oluşturan agent tanımını içerir.
+/// Seyahat workflow'unda nihai seyahat planÄ±nÄ± oluÅŸturan agent tanÄ±mÄ±nÄ± iÃ§erir.
 /// </summary>
 public sealed class PlannerAgent : Agent
 {
@@ -41,7 +41,7 @@ public sealed class PlannerAgent : Agent
     }
 
     /// <summary>
-    /// Final planlama agent tanımını tool bağlantılarıyla birlikte oluşturur.
+    /// Final planlama agent tanÄ±mÄ±nÄ± tool baÄŸlantÄ±larÄ±yla birlikte oluÅŸturur.
     /// </summary>
     public static Agent Create(string? apiKey)
     {

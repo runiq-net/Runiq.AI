@@ -1,3 +1,8 @@
+﻿using Runiq.Workflows.Services;
+using Runiq.Workflows.Interfaces;
+using Runiq.Workflows.Infrastructure;
+using Runiq.Workflows.Domain;
+using Runiq.Workflows.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Runiq.Agents;
 using Runiq.Workflows.Tests.Fakes;
@@ -7,7 +12,7 @@ namespace Runiq.Workflows.Tests;
 public sealed class RuniqWorkflowsServiceCollectionExtensionsTests
 {
     /// <summary>
-    /// AddRuniqWorkflows çağrısının boş workflow registry kaydettiğini doğrular.
+    /// AddRuniqWorkflows Ã§aÄŸrÄ±sÄ±nÄ±n boÅŸ workflow registry kaydettiÄŸini doÄŸrular.
     /// </summary>
     [Fact]
     public void AddRuniqWorkflows_ShouldRegisterEmptyRegistry()
@@ -18,39 +23,39 @@ public sealed class RuniqWorkflowsServiceCollectionExtensionsTests
 
         using var serviceProvider = services.BuildServiceProvider();
 
-        var registry = serviceProvider.GetRequiredService<WorkflowRegistry>();
+        var registry = serviceProvider.GetRequiredService<FlowCatalog>();
 
-        Assert.Empty(registry.Workflows);
+        Assert.Empty(registry.Flows);
     }
 
     /// <summary>
-    /// Options üzerinden eklenen workflow tanımının registry'ye taşındığını doğrular.
+    /// Options Ã¼zerinden eklenen workflow tanÄ±mÄ±nÄ±n registry'ye taÅŸÄ±ndÄ±ÄŸÄ±nÄ± doÄŸrular.
     /// </summary>
     [Fact]
-    public void AddRuniqWorkflows_ShouldRegisterConfiguredWorkflow()
+    public void AddRuniqWorkflows_ShouldRegisterConfiguredFlow()
     {
-        var workflow = CreateWorkflow("travel");
+        var workflow = CreateFlow("travel");
         var services = new ServiceCollection();
 
         services.AddRuniqWorkflows(options =>
         {
-            options.AddWorkflow(workflow);
+            options.AddFlow(workflow);
         });
 
         using var serviceProvider = services.BuildServiceProvider();
 
-        var registry = serviceProvider.GetRequiredService<WorkflowRegistry>();
-        var registeredWorkflow = Assert.Single(registry.Workflows);
+        var registry = serviceProvider.GetRequiredService<FlowCatalog>();
+        var registeredFlow = Assert.Single(registry.Flows);
 
-        Assert.Same(workflow, registeredWorkflow);
+        Assert.Same(workflow, registeredFlow);
         Assert.Same(workflow, registry.FindById("travel"));
     }
 
     /// <summary>
-    /// Aynı workflow id ile ikinci kayıt eklendiğinde yapılandırmanın hata verdiğini doğrular.
+    /// AynÄ± workflow id ile ikinci kayÄ±t eklendiÄŸinde yapÄ±landÄ±rmanÄ±n hata verdiÄŸini doÄŸrular.
     /// </summary>
     [Fact]
-    public void AddRuniqWorkflows_ShouldThrow_WhenWorkflowIdAlreadyExists()
+    public void AddRuniqWorkflows_ShouldThrow_WhenFlowIdAlreadyExists()
     {
         var services = new ServiceCollection();
 
@@ -58,19 +63,19 @@ public sealed class RuniqWorkflowsServiceCollectionExtensionsTests
         {
             services.AddRuniqWorkflows(options =>
             {
-                options.AddWorkflow(CreateWorkflow("travel"));
-                options.AddWorkflow(CreateWorkflow("TRAVEL"));
+                options.AddFlow(CreateFlow("travel"));
+                options.AddFlow(CreateFlow("TRAVEL"));
             });
         });
 
-        Assert.Contains("Workflow with id 'TRAVEL' is already registered.", exception.Message);
+        Assert.Contains("Flow with id 'TRAVEL' is already registered.", exception.Message);
     }
 
     /// <summary>
-    /// Geçersiz workflow tanımı options üzerinden kaydedildiğinde doğrulama hatası fırlatıldığını doğrular.
+    /// GeÃ§ersiz workflow tanÄ±mÄ± options Ã¼zerinden kaydedildiÄŸinde doÄŸrulama hatasÄ± fÄ±rlatÄ±ldÄ±ÄŸÄ±nÄ± doÄŸrular.
     /// </summary>
     [Fact]
-    public void AddRuniqWorkflows_ShouldThrow_WhenWorkflowIsInvalid()
+    public void AddRuniqWorkflows_ShouldThrow_WhenFlowIsInvalid()
     {
         var services = new ServiceCollection();
 
@@ -78,38 +83,38 @@ public sealed class RuniqWorkflowsServiceCollectionExtensionsTests
         {
             services.AddRuniqWorkflows(options =>
             {
-                options.AddWorkflow(new Workflow("empty", "Empty"));
+                options.AddFlow(new Flow("empty", "Empty"));
             });
         });
 
-        Assert.Contains("Workflow 'empty' is invalid:", exception.Message);
-        Assert.Contains("Workflow must contain at least one step.", exception.Message);
+        Assert.Contains("Flow 'empty' is invalid:", exception.Message);
+        Assert.Contains("Flow must contain at least one step.", exception.Message);
     }
 
     /// <summary>
-    /// AddRuniqWorkflows çağrısının workflow execution runtime sözleşmesini çözülebilir hale getirdiğini doğrular.
+    /// AddRuniqWorkflows Ã§aÄŸrÄ±sÄ±nÄ±n workflow execution runtime sÃ¶zleÅŸmesini Ã§Ã¶zÃ¼lebilir hale getirdiÄŸini doÄŸrular.
     /// </summary>
     [Fact]
-    public void AddRuniqWorkflows_ShouldResolveWorkflowExecutionRuntime()
+    public void AddRuniqWorkflows_ShouldResolveFlowRunner()
     {
         var services = new ServiceCollection();
 
         services.AddSingleton<Agent>(new TestAgent());
         services.AddRuniqWorkflows();
-        services.AddSingleton<IWorkflowAgentExecutor, FakeWorkflowAgentExecutor>();
+        services.AddSingleton<IAgentStepExecutor, FakeRuniqAgentStepExecutor>();
 
         using var serviceProvider = services.BuildServiceProvider();
 
-        var runtime = serviceProvider.GetRequiredService<IWorkflowExecutionRuntime>();
+        var runtime = serviceProvider.GetRequiredService<IFlowRunner>();
 
-        Assert.IsType<WorkflowExecutionRuntime>(runtime);
+        Assert.IsType<FlowRunner>(runtime);
     }
 
     /// <summary>
-    /// AddRuniqWorkflows çağrısının workflow registry servisini çözülebilir hale getirdiğini doğrular.
+    /// AddRuniqWorkflows Ã§aÄŸrÄ±sÄ±nÄ±n workflow registry servisini Ã§Ã¶zÃ¼lebilir hale getirdiÄŸini doÄŸrular.
     /// </summary>
     [Fact]
-    public void AddRuniqWorkflows_ShouldResolveWorkflowRegistry()
+    public void AddRuniqWorkflows_ShouldResolveFlowCatalog()
     {
         var services = new ServiceCollection();
 
@@ -117,14 +122,14 @@ public sealed class RuniqWorkflowsServiceCollectionExtensionsTests
 
         using var serviceProvider = services.BuildServiceProvider();
 
-        var registry = serviceProvider.GetRequiredService<WorkflowRegistry>();
+        var registry = serviceProvider.GetRequiredService<FlowCatalog>();
 
         Assert.NotNull(registry);
     }
 
-    private static Workflow CreateWorkflow(string id)
+    private static Flow CreateFlow(string id)
     {
-        return new Workflow(id, "Test Workflow")
+        return new Flow(id, "Test Flow")
             .Step<TestAgent>("begin")
                 .OnFailureStop()
             .Build();

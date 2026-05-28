@@ -1,26 +1,25 @@
-﻿namespace Runiq.Workflows;
+﻿using Runiq.Workflows.Domain;
+
+namespace Runiq.Workflows.Validations;
 
 /// <summary>
-/// Workflow tanımlarının temel yapısal kurallarını doğrular.
+/// Validates structural rules of a flow definition.
 /// </summary>
-public static class WorkflowValidator
+public static class FlowDefinitionValidator
 {
-    /// <summary>
-    /// Verilen workflow tanımını doğrular.
-    /// </summary>
-    public static WorkflowValidationResult Validate(Workflow workflow)
+    public static FlowValidationResult Validate(Flow flow)
     {
-        ArgumentNullException.ThrowIfNull(workflow);
+        ArgumentNullException.ThrowIfNull(flow);
 
         var errors = new List<string>();
 
-        if (workflow.Steps.Count == 0)
+        if (flow.Steps.Count == 0)
         {
-            errors.Add("Workflow must contain at least one step.");
-            return WorkflowValidationResult.Failure(errors);
+            errors.Add("Flow must contain at least one step.");
+            return FlowValidationResult.Failure(errors);
         }
 
-        var duplicateStepIds = workflow.Steps
+        var duplicateStepIds = flow.Steps
             .GroupBy(step => step.Id, StringComparer.OrdinalIgnoreCase)
             .Where(group => group.Count() > 1)
             .Select(group => group.Key)
@@ -28,14 +27,14 @@ public static class WorkflowValidator
 
         foreach (var duplicateStepId in duplicateStepIds)
         {
-            errors.Add($"Workflow contains duplicate step id '{duplicateStepId}'.");
+            errors.Add($"Flow contains duplicate step id '{duplicateStepId}'.");
         }
 
-        var stepIds = workflow.Steps
+        var stepIds = flow.Steps
             .Select(step => step.Id)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var step in workflow.Steps)
+        foreach (var step in flow.Steps)
         {
             if (!string.IsNullOrWhiteSpace(step.SuccessStepId) && !stepIds.Contains(step.SuccessStepId))
             {
@@ -48,9 +47,8 @@ public static class WorkflowValidator
             }
         }
 
-
         return errors.Count == 0
-            ? WorkflowValidationResult.Success()
-            : WorkflowValidationResult.Failure(errors);
+            ? FlowValidationResult.Success()
+            : FlowValidationResult.Failure(errors);
     }
 }

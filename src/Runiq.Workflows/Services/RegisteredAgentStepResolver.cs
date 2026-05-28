@@ -1,15 +1,17 @@
 ﻿using Runiq.Agents;
+using Runiq.Workflows.Models;
+using Runiq.Workflows.Interfaces;
 
-namespace Runiq.Workflows;
+namespace Runiq.Workflows.Services;
 
 /// <summary>
-/// Kayıtlı agent listesinden workflow adımı için uygun agent instance'ını çözer.
+/// Resolves flow steps from the registered agent collection.
 /// </summary>
-public sealed class WorkflowAgentResolver : IWorkflowAgentResolver
+public sealed class RegisteredAgentStepResolver : IAgentStepResolver
 {
     private readonly IReadOnlyDictionary<Type, Agent> agentsByType;
 
-    public WorkflowAgentResolver(IEnumerable<Agent> agents)
+    public RegisteredAgentStepResolver(IEnumerable<Agent> agents)
     {
         ArgumentNullException.ThrowIfNull(agents);
 
@@ -18,7 +20,6 @@ public sealed class WorkflowAgentResolver : IWorkflowAgentResolver
             agent => agent);
     }
 
-    /// <inheritdoc />
     public Agent Resolve(Type agentType)
     {
         ArgumentNullException.ThrowIfNull(agentType);
@@ -29,6 +30,6 @@ public sealed class WorkflowAgentResolver : IWorkflowAgentResolver
         }
 
         throw new InvalidOperationException(
-            $"No registered workflow agent found for type '{agentType.FullName}'.");
+            $"No registered flow agent found for type '{agentType.FullName}'.");
     }
 }

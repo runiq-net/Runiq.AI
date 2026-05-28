@@ -1,34 +1,39 @@
-﻿using Runiq.Agents;
+﻿using Runiq.Workflows.Services;
+using Runiq.Workflows.Interfaces;
+using Runiq.Workflows.Infrastructure;
+using Runiq.Workflows.Domain;
+using Runiq.Workflows.Models;
+using Runiq.Agents;
 
 namespace Runiq.Workflows.Tests.Fakes;
 
-internal sealed class FakeWorkflowAgentExecutor : IWorkflowAgentExecutor
+internal sealed class FakeRuniqAgentStepExecutor : IAgentStepExecutor
 {
     private readonly Dictionary<string, string> outputsByAgentId = [];
     private readonly HashSet<string> failingAgentIds = [];
-    private readonly Dictionary<string, IReadOnlyList<WorkflowToolCallExecutionResult>> toolCallsByAgentId = [];
+    private readonly Dictionary<string, IReadOnlyList<ToolCallRunResult>> toolCallsByAgentId = [];
 
-    public FakeWorkflowAgentExecutor WithOutput(string agentId, string output)
+    public FakeRuniqAgentStepExecutor WithOutput(string agentId, string output)
     {
         outputsByAgentId[agentId] = output;
         return this;
     }
 
-    public FakeWorkflowAgentExecutor WithFailure(string agentId)
+    public FakeRuniqAgentStepExecutor WithFailure(string agentId)
     {
         failingAgentIds.Add(agentId);
         return this;
     }
 
-    public FakeWorkflowAgentExecutor WithToolCalls(
+    public FakeRuniqAgentStepExecutor WithToolCalls(
         string agentId,
-        IReadOnlyList<WorkflowToolCallExecutionResult> toolCalls)
+        IReadOnlyList<ToolCallRunResult> toolCalls)
     {
         toolCallsByAgentId[agentId] = toolCalls;
         return this;
     }
 
-    public Task<WorkflowAgentExecutionResult> ExecuteAsync(
+    public Task<AgentStepResult> ExecuteAsync(
         Agent agent,
         string input,
         CancellationToken cancellationToken = default)
@@ -37,19 +42,19 @@ internal sealed class FakeWorkflowAgentExecutor : IWorkflowAgentExecutor
 
         if (failingAgentIds.Contains(agent.Id))
         {
-            return Task.FromResult(WorkflowAgentExecutionResult.Failure(
+            return Task.FromResult(AgentStepResult.Failure(
                 $"Fake failure for agent '{agent.Id}'.",
                 toolCalls));
         }
 
         if (outputsByAgentId.TryGetValue(agent.Id, out var output))
         {
-            return Task.FromResult(WorkflowAgentExecutionResult.Success(
+            return Task.FromResult(AgentStepResult.Success(
                 output,
                 toolCalls));
         }
 
-        return Task.FromResult(WorkflowAgentExecutionResult.Success(
+        return Task.FromResult(AgentStepResult.Success(
             input,
             toolCalls));
     }

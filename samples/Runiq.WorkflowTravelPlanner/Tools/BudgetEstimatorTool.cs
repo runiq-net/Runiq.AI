@@ -1,9 +1,9 @@
-using Runiq.Agents.Tools;
+﻿using Runiq.Agents.Tools;
 
 namespace Runiq.WorkflowTravelPlanner.Tools;
 
 /// <summary>
-/// Seyahat planlaması için basit ve deterministik TRY bütçe tahmini üretir.
+/// Seyahat planlamasÄ± iÃ§in basit ve deterministik TRY bÃ¼tÃ§e tahmini Ã¼retir.
 /// </summary>
 [RuniqTool(
     name: "budget_estimator",
@@ -36,7 +36,7 @@ public sealed class BudgetEstimatorTool : IRuniqTool<BudgetEstimatorInput, Budge
             Transport: transport,
             Tickets: tickets,
             EstimatedTotal: estimatedTotal,
-            Summary: $"{peopleCount} kişi ve {durationDays} gün için yaklaşık demo bütçe {estimatedTotal} TRY.");
+            Summary: $"{peopleCount} kiÅŸi ve {durationDays} gÃ¼n iÃ§in yaklaÅŸÄ±k demo bÃ¼tÃ§e {estimatedTotal} TRY.");
 
         return Task.FromResult(output);
     }
@@ -55,17 +55,17 @@ public sealed class BudgetEstimatorTool : IRuniqTool<BudgetEstimatorInput, Budge
     private static string NormalizeCity(string city)
     {
         return city
-            .Trim()
-            .Replace('İ', 'I')
-            .Replace('ı', 'i')
-            .ToUpperInvariant();
+        .Trim()
+        .Replace('İ', 'I')
+        .Replace('ı', 'i')
+        .ToUpperInvariant();
     }
 
     private sealed record DailyBudget(int Food, int Transport, int Tickets);
 }
 
 /// <summary>
-/// BudgetEstimatorTool için şehir, kişi sayısı ve süre bilgisini taşıyan girdi modelidir.
+/// BudgetEstimatorTool iÃ§in ÅŸehir, kiÅŸi sayÄ±sÄ± ve sÃ¼re bilgisini taÅŸÄ±yan girdi modelidir.
 /// </summary>
 public sealed record BudgetEstimatorInput(
     string City,
@@ -73,7 +73,7 @@ public sealed record BudgetEstimatorInput(
     int? DurationDays);
 
 /// <summary>
-/// BudgetEstimatorTool tarafından üretilen deterministik bütçe sonucudur.
+/// BudgetEstimatorTool tarafÄ±ndan Ã¼retilen deterministik bÃ¼tÃ§e sonucudur.
 /// </summary>
 public sealed record BudgetEstimatorOutput(
     string City,
