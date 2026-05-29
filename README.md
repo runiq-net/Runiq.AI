@@ -1,66 +1,58 @@
-# Runiq
+# Runiq.Net
 
-## Code-first AI agents for .NET.
+[![CI](https://github.com/kkaradag2/Runiq.Net/actions/workflows/ci.yml/badge.svg)](https://github.com/kkaradag2/Runiq.Net/actions/workflows/ci.yml)
+![.NET](https://img.shields.io/badge/.NET-10.0-512BD4)
+![Version](https://img.shields.io/badge/version-0.1.0--preview.1-orange)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
-Runiq is a .NET framework for building AI agents with strongly typed tools, provider-based model execution, streaming responses, and an embedded runtime Dashboard.
-It is designed for .NET teams who want to add agentic capabilities to real ASP.NET Core applications without introducing a separate low-code platform or leaving the C# ecosystem.
-Runiq lets you define agents in code, attach typed tools, stream model responses, inspect tool calls, and test agent behavior through a dashboard served by your own application.
+Runiq.Net is a code-first agent runtime for .NET applications.
 
-## Why Runiq?
+It gives ASP.NET Core teams a native way to define AI agents in C#, attach strongly typed tools, stream model responses, connect reusable context sources, orchestrate workflows, and inspect runtime activity through an embedded dashboard.
 
-Modern AI agent frameworks are often designed around JavaScript, external runtimes, or low-code platforms. Runiq takes a different path.
-Runiq is built for teams that already use .NET, ASP.NET Core, dependency injection, strongly typed models, and production-oriented backend architecture.
-With Runiq, agents are not created through YAML files, JSON configuration, or a visual designer. They are defined in C# and registered at application startup.
+> Preview package: APIs may evolve before the first stable release.
 
-Runiq focuses on:
-- Code-first agent definitions
-- Strongly typed C# tools
-- ASP.NET Core native hosting
-- Provider-based model execution
-- Streaming responses
-- Tool-call visibility
-- Embedded runtime Dashboard
-- Production-oriented developer experience
+## Packages
 
-Runiq is not a no-code agent builder.
-It is a developer-first framework for building, running, and observing AI agents inside .NET applications.
+| Package | Purpose |
+| --- | --- |
+| `Runiq.Agents` | Agent definitions, tool execution, provider integration, streaming events, and execution results. |
+| `Runiq.ContextSpaces` | Context spaces, source readers, skill discovery, and document preview primitives. |
+| `Runiq.Core` | ASP.NET Core hosting extensions, runtime endpoints, and the embedded dashboard. |
+| `Runiq.Workflows` | Code-first workflow orchestration primitives for agent runtime and dashboard scenarios. |
 
-## What you can build
-### Product agents
-Embed AI agents into SaaS products, admin panels, internal platforms, or customer-facing applications.
+## Installation
 
-### Internal copilots
-Build assistants that understand your business domain and help teams work with internal data, APIs, and processes.
+Install the packages you need:
 
-### Tool-using agents
-Let agents call strongly typed C# tools such as weather services, CRM clients, document processors, search services, or internal business APIs.
+```powershell
+dotnet add package Runiq.Core --version 0.1.0-preview.1
+dotnet add package Runiq.Agents --version 0.1.0-preview.1
+dotnet add package Runiq.ContextSpaces --version 0.1.0-preview.1
+dotnet add package Runiq.Workflows --version 0.1.0-preview.1
+```
 
-### Agent playgrounds
-Test agent behavior, stream model responses, inspect tool calls, and review runtime metadata through the embedded Dashboard.
-
-### Workflow-driven AI processes
-Coordinate agents, tools, and business logic through code-first workflows as the framework evolves.
+For most ASP.NET Core applications, start with `Runiq.Core`; it references the runtime pieces needed to host agents and the dashboard.
 
 ## Quickstart
-Register Runiq in your ASP.NET Core application:
+
+Register Runiq and define an agent:
 
 ```csharp
+using Runiq.Agents;
+using Runiq.Core;
+
 builder.Services.AddRuniqServer(options =>
 {
     options.AddAgent(new Agent(
         id: "weather-agent",
         name: "Weather Agent",
-        instructions: """
-        You are a weather assistant.
-
-        When the user asks for weather information,
-        use the available weather tool and answer clearly.
-        """,
+        instructions: "Answer weather questions using the available tools.",
         model: "openai/gpt-5",
         apiKey: builder.Configuration["OpenAI:ApiKey"]));
 });
 ```
-Map the Dashboard and runtime endpoints:
+
+Map the dashboard:
 
 ```csharp
 app.UseRuniqDashboard(options =>
@@ -69,10 +61,52 @@ app.UseRuniqDashboard(options =>
     options.Title = "Runiq Dashboard";
 });
 ```
-Run the application and open:
+
+Run the application and open `/dashboard` to inspect registered agents, test conversations, and review runtime activity.
+
+## Tool Example
+
+Tools are plain C# types with strongly typed input and output:
 
 ```csharp
-/dashboard
-```
-From the Dashboard, you can inspect registered agents, open the agent playground, send messages, stream responses, and view tool calls.
+using Runiq.Agents.Tools;
 
+[RuniqTool("get_weather", "Gets the current weather for a city.")]
+public sealed class WeatherTool : IRuniqTool<WeatherInput, WeatherOutput>
+{
+    public Task<WeatherOutput> ExecuteAsync(
+        WeatherInput input,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(new WeatherOutput(input.City, "Clear"));
+    }
+}
+
+public sealed record WeatherInput(string City);
+
+public sealed record WeatherOutput(string City, string Condition);
+```
+
+Attach the tool to an agent:
+
+```csharp
+options.AddAgent(new Agent(
+        id: "weather-agent",
+        name: "Weather Agent",
+        instructions: "Use tools when weather data is requested.",
+        model: "openai/gpt-5",
+        apiKey: builder.Configuration["OpenAI:ApiKey"])
+    .AddTool<WeatherTool>());
+```
+
+## Documentation
+
+Full documentation, guides, and examples are available at [runiq.net/docs](https://runiq.net/docs).
+
+## Repository
+
+Source code and issue tracking are available on [GitHub](https://github.com/kkaradag2/Runiq.Net).
+
+## License
+
+Runiq.Net is licensed under the [MIT License](LICENSE).

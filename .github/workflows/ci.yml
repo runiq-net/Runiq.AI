@@ -33,3 +33,9 @@ jobs:
 
       - name: Pack
         run: dotnet pack Runiq.Net.slnx --no-build -c Release -o artifacts/packages
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: runiq-packages
+          path: artifacts/packages/*.nupkg
