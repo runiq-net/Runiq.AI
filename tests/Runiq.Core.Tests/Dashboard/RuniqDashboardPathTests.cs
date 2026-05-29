@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Runiq.Core;
 using Runiq.Core.Configuration;
 
@@ -19,7 +20,7 @@ public sealed class RuniqDashboardPathTests
         // Dashboard path değeri slash ile verildiğinde base path'in index.html içine doğru enjekte edildiğini doğrular.
         using var server = CreateServer("/dashboard");
 
-        var response = await server.CreateClient().GetAsync("/dashboard/agents/travel-agent/chat/new");
+        var response = await server.GetTestClient().GetAsync("/dashboard/agents/travel-agent/chat/new");
 
         response.EnsureSuccessStatusCode();
 
@@ -39,7 +40,7 @@ public sealed class RuniqDashboardPathTests
         // Dashboard path değeri slash olmadan verildiğinde başına slash eklenerek normalize edildiğini doğrular.
         using var server = CreateServer("dashboard");
 
-        var response = await server.CreateClient().GetAsync("/dashboard/agents");
+        var response = await server.GetTestClient().GetAsync("/dashboard/agents");
 
         response.EnsureSuccessStatusCode();
 
@@ -54,7 +55,7 @@ public sealed class RuniqDashboardPathTests
         // Dashboard path değeri trailing slash ile verildiğinde canonical base path'in slash olmadan kullanıldığını doğrular.
         using var server = CreateServer("/dashboard/");
 
-        var response = await server.CreateClient().GetAsync("/dashboard/agents");
+        var response = await server.GetTestClient().GetAsync("/dashboard/agents");
 
         response.EnsureSuccessStatusCode();
 
@@ -70,7 +71,7 @@ public sealed class RuniqDashboardPathTests
         // Dashboard base path'e slash olmadan gelindiğinde canonical slash'lı adrese yönlendirme yapıldığını doğrular.
         using var server = CreateServer("/dashboard");
 
-        var client = server.CreateClient();
+        var client = server.GetTestClient();
         client.DefaultRequestHeaders.Clear();
 
         var response = await client.GetAsync("/dashboard");
@@ -101,7 +102,7 @@ public sealed class RuniqDashboardPathTests
 
         using var server = CreateServer("/dashboard", maliciousTitle);
 
-        var response = await server.CreateClient().GetAsync("/dashboard/agents");
+        var response = await server.GetTestClient().GetAsync("/dashboard/agents");
 
         response.EnsureSuccessStatusCode();
 
@@ -147,29 +148,33 @@ public sealed class RuniqDashboardPathTests
         return AppContext.BaseDirectory;
     }
 
-    private static TestServer CreateServer(
+    private static IHost CreateServer(
      string dashboardPath,
      string dashboardTitle = "Test Dashboard")
     {
         var dashboardRoot = PrepareDashboardAssets();
 
-        var builder = new WebHostBuilder()
-            .UseContentRoot(dashboardRoot)
-              .ConfigureServices(services =>
-              {
-                  services.AddRouting();
-                  services.AddRuniqServer();
-              })
-            .Configure(app =>
+        return new HostBuilder()
+            .ConfigureWebHost(webBuilder =>
             {
-                app.UseRuniqDashboard(options =>
-                {
-                    options.Path = dashboardPath;
-                    options.Title = dashboardTitle;
-                });
-            });
-
-        return new TestServer(builder);
+                webBuilder
+                    .UseContentRoot(dashboardRoot)
+                    .UseTestServer()
+                    .ConfigureServices(services =>
+                    {
+                        services.AddRouting();
+                        services.AddRuniqServer();
+                    })
+                    .Configure(app =>
+                    {
+                        app.UseRuniqDashboard(options =>
+                        {
+                            options.Path = dashboardPath;
+                            options.Title = dashboardTitle;
+                        });
+                    });
+            })
+            .Start();
     }
 
 

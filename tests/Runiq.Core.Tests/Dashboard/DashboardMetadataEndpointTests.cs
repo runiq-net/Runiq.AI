@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Runiq.Agents;
 using Runiq.Agents.Tools;
 using Runiq.ContextSpaces.Models.Sources;
@@ -24,7 +25,7 @@ public sealed class DashboardMetadataEndpointTests
         // Dashboard metadata endpoint'inin kayıtlı agent bilgisini JSON olarak döndürdüğünü doğrular.
         using var server = CreateServer();
 
-        var response = await server.CreateClient().GetAsync("/dashboard/metadata/agents");
+        var response = await server.GetTestClient().GetAsync("/dashboard/metadata/agents");
 
         response.EnsureSuccessStatusCode();
 
@@ -78,7 +79,7 @@ public sealed class DashboardMetadataEndpointTests
         // Dashboard metadata endpoint'inin kayıtlı context space bilgisini JSON olarak döndürdüğünü doğrular.
         using var server = CreateServer();
 
-        var response = await server.CreateClient().GetAsync("/dashboard/metadata/context-spaces");
+        var response = await server.GetTestClient().GetAsync("/dashboard/metadata/context-spaces");
 
         response.EnsureSuccessStatusCode();
 
@@ -125,7 +126,7 @@ public sealed class DashboardMetadataEndpointTests
         // Metadata endpoint path karşılaştırmasının case-insensitive çalıştığını doğrular.
         using var server = CreateServer();
 
-        var response = await server.CreateClient().GetAsync("/dashboard/METADATA/AGENTS");
+        var response = await server.GetTestClient().GetAsync("/dashboard/METADATA/AGENTS");
 
         response.EnsureSuccessStatusCode();
 
@@ -142,7 +143,7 @@ public sealed class DashboardMetadataEndpointTests
         // Dashboard API altında tanımlı olmayan endpoint'lerin SPA fallback'e düşmeden 404 döndüğünü doğrular.
         using var server = CreateServer();
 
-        var response = await server.CreateClient().GetAsync("/dashboard/api/unknown");
+        var response = await server.GetTestClient().GetAsync("/dashboard/api/unknown");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
 
@@ -157,7 +158,7 @@ public sealed class DashboardMetadataEndpointTests
         // Dashboard metadata altında tanımlı olmayan endpoint'lerin SPA fallback'e düşmeden 404 döndüğünü doğrular.
         using var server = CreateServer();
 
-        var response = await server.CreateClient().GetAsync("/dashboard/metadata/unknown");
+        var response = await server.GetTestClient().GetAsync("/dashboard/metadata/unknown");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
 
@@ -172,61 +173,65 @@ public sealed class DashboardMetadataEndpointTests
         // Agent Team metadata endpoint'inin aktif dashboard metadata yüzeyinden kaldırıldığını doğrular.
         using var server = CreateServer();
 
-        var response = await server.CreateClient().GetAsync("/dashboard/metadata/teams");
+        var response = await server.GetTestClient().GetAsync("/dashboard/metadata/teams");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    private static TestServer CreateServer()
+    private static IHost CreateServer()
     {
         PrepareDashboardAssets();
 
-        var builder = new WebHostBuilder()
-            .UseContentRoot(AppContext.BaseDirectory)
-            .ConfigureServices(services =>
+        return new HostBuilder()
+            .ConfigureWebHost(webBuilder =>
             {
-                services.AddRouting();
+                webBuilder
+                    .UseContentRoot(AppContext.BaseDirectory)
+                    .UseTestServer()
+                    .ConfigureServices(services =>
+                    {
+                        services.AddRouting();
 
-                services.AddRuniqServer(options =>
-                {
-                    options.AddContextSpace(new ContextSpace(
-                            id: "test-context",
-                            name: "Test Context",
-                            description: "Test context description.")
-                        .AddSource(new ContextSpaceSource(
-                            id: "test-source",
-                            name: "Test Source",
-                            kind: ContextSpaceSourceKind.UploadedDocuments,
-                            description: "Test source description.")));
+                        services.AddRuniqServer(options =>
+                        {
+                            options.AddContextSpace(new ContextSpace(
+                                    id: "test-context",
+                                    name: "Test Context",
+                                    description: "Test context description.")
+                                .AddSource(new ContextSpaceSource(
+                                    id: "test-source",
+                                    name: "Test Source",
+                                    kind: ContextSpaceSourceKind.UploadedDocuments,
+                                    description: "Test source description.")));
 
-                    options.AddAgent(new Agent(
-                            id: "test-agent",
-                            name: "Test Agent",
-                            instructions: "Test instructions.",
-                            model: "openai/gpt-5",
-                            apiKey: "test-key")
-                        .AddTool<TestTool>()
-                        .UseContextSpace("test-context"));
+                            options.AddAgent(new Agent(
+                                    id: "test-agent",
+                                    name: "Test Agent",
+                                    instructions: "Test instructions.",
+                                    model: "openai/gpt-5",
+                                    apiKey: "test-key")
+                                .AddTool<TestTool>()
+                                .UseContextSpace("test-context"));
 
-                    options.AddAgent(new Agent(
-                        id: "planner-agent",
-                        name: "Planner Agent",
-                        instructions: "Create practical plans from provided research.",
-                        model: "openai/gpt-5",
-                        apiKey: "test-key"));
+                            options.AddAgent(new Agent(
+                                id: "planner-agent",
+                                name: "Planner Agent",
+                                instructions: "Create practical plans from provided research.",
+                                model: "openai/gpt-5",
+                                apiKey: "test-key"));
 
-                });
+                        });
+                    })
+                    .Configure(app =>
+                    {
+                        app.UseRuniqDashboard(options =>
+                        {
+                            options.Path = "/dashboard";
+                            options.Title = "Test Dashboard";
+                        });
+                    });
             })
-            .Configure(app =>
-            {
-                app.UseRuniqDashboard(options =>
-                {
-                    options.Path = "/dashboard";
-                    options.Title = "Test Dashboard";
-                });
-            });
-
-        return new TestServer(builder);
+            .Start();
     }
 
     private static void PrepareDashboardAssets()

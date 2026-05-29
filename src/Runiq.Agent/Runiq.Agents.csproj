@@ -7,11 +7,18 @@
 
     <IsPackable>true</IsPackable>
     <PackageId>Runiq.Agents</PackageId>
-    <Version>0.1.0-alpha.1</Version>
+    <Version>0.1.0-preview.1</Version>
     <Title>Runiq Agents</Title>
-    <Description>Core agent runtime for building AI agents and typed tools in .NET applications.</Description>
-    <PackageTags>ai;agents;tools;dotnet;openai;llm</PackageTags>
+    <Description>Agent runtime, tool execution, provider integration, and streaming primitives for Runiq.Net.</Description>
+    <PackageTags>ai;agents;tools;llm;dotnet;runiq</PackageTags>
+    <PackageIcon>runiq-icon.png</PackageIcon>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="README.md" />
+    <None Include="..\..\assets\nuget\runiq-icon.png" Pack="true" PackagePath="runiq-icon.png" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.8" />

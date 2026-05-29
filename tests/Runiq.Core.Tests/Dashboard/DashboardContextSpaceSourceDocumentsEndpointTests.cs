@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Runiq.ContextSpaces.Models.Sources;
 using Runiq.Core;
 
@@ -24,7 +25,7 @@ public sealed class DashboardContextSpaceSourceDocumentsEndpointTests
 
         using var server = CreateServer(directory.Path);
 
-        var response = await server.CreateClient().GetAsync(
+        var response = await server.GetTestClient().GetAsync(
             "/dashboard/api/context-spaces/travel-planning/source-documents");
 
         response.EnsureSuccessStatusCode();
@@ -63,7 +64,7 @@ public sealed class DashboardContextSpaceSourceDocumentsEndpointTests
 
         using var server = CreateServer(directory.Path);
 
-        var response = await server.CreateClient().GetAsync(
+        var response = await server.GetTestClient().GetAsync(
             $"/dashboard/api/context-spaces/travel-planning/source-documents/preview?sourceId=travel-documents&path={Uri.EscapeDataString(fileName)}");
 
         response.EnsureSuccessStatusCode();
@@ -87,7 +88,7 @@ public sealed class DashboardContextSpaceSourceDocumentsEndpointTests
 
         using var server = CreateServer(directory.Path);
 
-        var response = await server.CreateClient().GetAsync(
+        var response = await server.GetTestClient().GetAsync(
             "/dashboard/api/context-spaces/travel-planning/source-documents/preview?sourceId=travel-documents&path=../safe.md");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -104,7 +105,7 @@ public sealed class DashboardContextSpaceSourceDocumentsEndpointTests
         {
             using var server = CreateServer(directory.Path);
 
-            var response = await server.CreateClient().GetAsync(
+            var response = await server.GetTestClient().GetAsync(
                 $"/dashboard/api/context-spaces/travel-planning/source-documents/preview?sourceId=travel-documents&path={Uri.EscapeDataString("../" + Path.GetFileName(outsidePath))}");
 
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -126,7 +127,7 @@ public sealed class DashboardContextSpaceSourceDocumentsEndpointTests
 
         using var server = CreateServer(directory.Path);
 
-        var response = await server.CreateClient().GetAsync(
+        var response = await server.GetTestClient().GetAsync(
             "/dashboard/api/context-spaces/travel-planning/source-documents/preview?sourceId=travel-documents&path=image.png");
 
         Assert.Equal(HttpStatusCode.UnsupportedMediaType, response.StatusCode);
@@ -138,7 +139,7 @@ public sealed class DashboardContextSpaceSourceDocumentsEndpointTests
         using var directory = TemporaryDirectory.Create();
         using var server = CreateServer(directory.Path);
 
-        var response = await server.CreateClient().GetAsync(
+        var response = await server.GetTestClient().GetAsync(
             "/dashboard/api/context-spaces/travel-planning/source-documents");
 
         response.EnsureSuccessStatusCode();
@@ -152,38 +153,42 @@ public sealed class DashboardContextSpaceSourceDocumentsEndpointTests
         Assert.Empty(sourceGroup.GetProperty("documents").EnumerateArray());
     }
 
-    private static TestServer CreateServer(string sourcePath)
+    private static IHost CreateServer(string sourcePath)
     {
         PrepareDashboardAssets();
 
-        var builder = new WebHostBuilder()
-            .UseContentRoot(AppContext.BaseDirectory)
-            .ConfigureServices(services =>
+        return new HostBuilder()
+            .ConfigureWebHost(webBuilder =>
             {
-                services.AddRouting();
+                webBuilder
+                    .UseContentRoot(AppContext.BaseDirectory)
+                    .UseTestServer()
+                    .ConfigureServices(services =>
+                    {
+                        services.AddRouting();
 
-                services.AddRuniqServer(options =>
-                {
-                    options.AddContextSpace(new ContextSpace(
-                            id: "travel-planning",
-                            name: "Travel Planning",
-                            description: "Shared read-only travel context.")
-                        .AddSources(sources => sources.FromFileSystem(
-                            id: "travel-documents",
-                            name: "Travel Documents",
-                            path: sourcePath)));
-                });
+                        services.AddRuniqServer(options =>
+                        {
+                            options.AddContextSpace(new ContextSpace(
+                                    id: "travel-planning",
+                                    name: "Travel Planning",
+                                    description: "Shared read-only travel context.")
+                                .AddSources(sources => sources.FromFileSystem(
+                                    id: "travel-documents",
+                                    name: "Travel Documents",
+                                    path: sourcePath)));
+                        });
+                    })
+                    .Configure(app =>
+                    {
+                        app.UseRuniqDashboard(options =>
+                        {
+                            options.Path = "/dashboard";
+                            options.Title = "Test Dashboard";
+                        });
+                    });
             })
-            .Configure(app =>
-            {
-                app.UseRuniqDashboard(options =>
-                {
-                    options.Path = "/dashboard";
-                    options.Title = "Test Dashboard";
-                });
-            });
-
-        return new TestServer(builder);
+            .Start();
     }
 
     private static void PrepareDashboardAssets()

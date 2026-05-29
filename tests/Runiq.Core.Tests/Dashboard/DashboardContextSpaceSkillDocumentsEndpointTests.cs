@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Runiq.ContextSpaces.Models.Sources;
 using Runiq.Core;
 
@@ -23,7 +24,7 @@ public sealed class DashboardContextSpaceSkillDocumentsEndpointTests
 
         using var server = CreateServer(directory.Path);
 
-        var response = await server.CreateClient().GetAsync(
+        var response = await server.GetTestClient().GetAsync(
             "/dashboard/api/context-spaces/travel-planning/skill-documents");
 
         response.EnsureSuccessStatusCode();
@@ -55,7 +56,7 @@ public sealed class DashboardContextSpaceSkillDocumentsEndpointTests
 
         using var server = CreateServer(directory.Path);
 
-        var response = await server.CreateClient().GetAsync(
+        var response = await server.GetTestClient().GetAsync(
             "/dashboard/api/context-spaces/travel-planning/skill-documents/preview?skillId=travel-planning");
 
         response.EnsureSuccessStatusCode();
@@ -79,7 +80,7 @@ public sealed class DashboardContextSpaceSkillDocumentsEndpointTests
 
         using var server = CreateServer(directory.Path);
 
-        var response = await server.CreateClient().GetAsync(
+        var response = await server.GetTestClient().GetAsync(
             "/dashboard/api/context-spaces/travel-planning/skill-documents/preview?skillId=missing");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
@@ -94,43 +95,47 @@ public sealed class DashboardContextSpaceSkillDocumentsEndpointTests
 
         using var server = CreateServer(directory.Path);
 
-        var response = await server.CreateClient().GetAsync(
+        var response = await server.GetTestClient().GetAsync(
             "/dashboard/api/context-spaces/travel-planning/skill-documents/preview?skillId=../outside.md");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    private static TestServer CreateServer(string skillSourcePath)
+    private static IHost CreateServer(string skillSourcePath)
     {
         PrepareDashboardAssets();
 
-        var builder = new WebHostBuilder()
-            .UseContentRoot(AppContext.BaseDirectory)
-            .ConfigureServices(services =>
+        return new HostBuilder()
+            .ConfigureWebHost(webBuilder =>
             {
-                services.AddRouting();
+                webBuilder
+                    .UseContentRoot(AppContext.BaseDirectory)
+                    .UseTestServer()
+                    .ConfigureServices(services =>
+                    {
+                        services.AddRouting();
 
-                services.AddRuniqServer(options =>
-                {
-                    options.AddContextSpace(new ContextSpace(
-                            id: "travel-planning",
-                            name: "Travel Planning")
-                        .AddSkills(skills => skills.FromFileSystem(
-                            id: "travel-skills",
-                            name: "Travel Skills",
-                            path: skillSourcePath)));
-                });
+                        services.AddRuniqServer(options =>
+                        {
+                            options.AddContextSpace(new ContextSpace(
+                                    id: "travel-planning",
+                                    name: "Travel Planning")
+                                .AddSkills(skills => skills.FromFileSystem(
+                                    id: "travel-skills",
+                                    name: "Travel Skills",
+                                    path: skillSourcePath)));
+                        });
+                    })
+                    .Configure(app =>
+                    {
+                        app.UseRuniqDashboard(options =>
+                        {
+                            options.Path = "/dashboard";
+                            options.Title = "Test Dashboard";
+                        });
+                    });
             })
-            .Configure(app =>
-            {
-                app.UseRuniqDashboard(options =>
-                {
-                    options.Path = "/dashboard";
-                    options.Title = "Test Dashboard";
-                });
-            });
-
-        return new TestServer(builder);
+            .Start();
     }
 
     private static void WriteSkill(

@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Runiq.Agents;
 using Runiq.Core;
 using Runiq.Workflows;
@@ -26,7 +27,7 @@ public sealed class DashboardFlowEndpointTests
         // Flow liste endpoint'inin registry'deki workflow tanÄ±mlarÄ±nÄ± dÃ¶ndÃ¼rdÃ¼ÄŸÃ¼nÃ¼ doÄŸrular.
         using var server = CreateServer();
 
-        var response = await server.CreateClient().GetAsync("/dashboard/api/workflows");
+        var response = await server.GetTestClient().GetAsync("/dashboard/api/workflows");
 
         response.EnsureSuccessStatusCode();
 
@@ -59,7 +60,7 @@ public sealed class DashboardFlowEndpointTests
         using var server = CreateServer();
 
         var response = await server
-            .CreateClient()
+            .GetTestClient()
             .GetAsync("/dashboard/api/workflows/travel-planning-workflow");
 
         response.EnsureSuccessStatusCode();
@@ -81,7 +82,7 @@ public sealed class DashboardFlowEndpointTests
         using var server = CreateServer();
 
         var response = await server
-            .CreateClient()
+            .GetTestClient()
             .GetAsync("/dashboard/api/workflows/missing-workflow");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
@@ -95,7 +96,7 @@ public sealed class DashboardFlowEndpointTests
         using var server = CreateServer(runtime);
 
         var response = await server
-            .CreateClient()
+            .GetTestClient()
             .PostAsJsonAsync(
                 "/dashboard/api/workflows/travel-planning-workflow/run",
                 new { input = "Istanbul trip" });
@@ -133,7 +134,7 @@ public sealed class DashboardFlowEndpointTests
         using var server = CreateServer(new DashboardTestFlowRuntime());
 
         var response = await server
-            .CreateClient()
+            .GetTestClient()
             .PostAsJsonAsync(
                 "/dashboard/api/workflows/missing-workflow/run",
                 new { input = "Istanbul trip" });
@@ -149,7 +150,7 @@ public sealed class DashboardFlowEndpointTests
         using var server = CreateServer(runtime);
 
         var response = await server
-            .CreateClient()
+            .GetTestClient()
             .PostAsJsonAsync(
                 "/dashboard/api/workflows/travel-planning-workflow/run",
                 new { input = "   " });
@@ -165,7 +166,7 @@ public sealed class DashboardFlowEndpointTests
         using var server = CreateServer();
 
         var response = await server
-            .CreateClient()
+            .GetTestClient()
             .PostAsync("/dashboard/api/teams/travel-team/chat", null);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
@@ -199,37 +200,41 @@ public sealed class DashboardFlowEndpointTests
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<IFlowRunner>());
     }
 
-    private static TestServer CreateServer(
+    private static IHost CreateServer(
         IFlowRunner? workflowExecutionRuntime = null)
     {
         PrepareDashboardAssets();
 
-        var builder = new WebHostBuilder()
-            .UseContentRoot(AppContext.BaseDirectory)
-            .ConfigureServices(services =>
+        return new HostBuilder()
+            .ConfigureWebHost(webBuilder =>
             {
-                services.AddRouting();
-                services.AddRuniqServer();
-                services.AddRuniqWorkflows(options =>
-                {
-                    options.AddFlow(CreateFlow());
-                });
+                webBuilder
+                    .UseContentRoot(AppContext.BaseDirectory)
+                    .UseTestServer()
+                    .ConfigureServices(services =>
+                    {
+                        services.AddRouting();
+                        services.AddRuniqServer();
+                        services.AddRuniqWorkflows(options =>
+                        {
+                            options.AddFlow(CreateFlow());
+                        });
 
-                if (workflowExecutionRuntime is not null)
-                {
-                    services.AddScoped(_ => workflowExecutionRuntime);
-                }
+                        if (workflowExecutionRuntime is not null)
+                        {
+                            services.AddScoped(_ => workflowExecutionRuntime);
+                        }
+                    })
+                    .Configure(app =>
+                    {
+                        app.UseRuniqDashboard(options =>
+                        {
+                            options.Path = "/dashboard";
+                            options.Title = "Test Dashboard";
+                        });
+                    });
             })
-            .Configure(app =>
-            {
-                app.UseRuniqDashboard(options =>
-                {
-                    options.Path = "/dashboard";
-                    options.Title = "Test Dashboard";
-                });
-            });
-
-        return new TestServer(builder);
+            .Start();
     }
 
     private static Flow CreateFlow()

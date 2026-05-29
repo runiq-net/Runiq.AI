@@ -4,7 +4,25 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+
+    <IsPackable>true</IsPackable>
+    <PackageId>Runiq.ContextSpaces</PackageId>
+    <Version>0.1.0-preview.1</Version>
+    <Title>Runiq Context Spaces</Title>
+    <Authors>Runiq</Authors>
+    <Company>Runiq</Company>
+    <Description>Context and source reading primitives for Runiq.Net agents.</Description>
+    <PackageTags>ai;agents;context;rag;sources;dotnet;runiq</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryType>git</RepositoryType>
+    <PackageIcon>runiq-icon.png</PackageIcon>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="README.md" />
+    <None Include="..\..\assets\nuget\runiq-icon.png" Pack="true" PackagePath="runiq-icon.png" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="PdfPig" Version="0.1.14" />

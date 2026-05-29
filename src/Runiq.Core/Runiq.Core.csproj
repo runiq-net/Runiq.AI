@@ -7,11 +7,22 @@
 
     <IsPackable>true</IsPackable>
     <PackageId>Runiq.Core</PackageId>
-    <Version>0.1.0-alpha.1</Version>
+    <Version>0.1.0-preview.1</Version>
     <Title>Runiq Core</Title>
+    <Authors>Runiq</Authors>
+    <Company>Runiq</Company>
     <Description>Embedded ASP.NET Core runtime and dashboard hosting layer for Runiq.Net agents.</Description>
     <PackageTags>ai;agents;dashboard;aspnetcore;dotnet;runiq</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryType>git</RepositoryType>
+    <PackageIcon>runiq-icon.png</PackageIcon>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="README.md" />
+    <None Include="..\..\assets\nuget\runiq-icon.png" Pack="true" PackagePath="runiq-icon.png" />
+  </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Studio\wwwroot\**\*" />
