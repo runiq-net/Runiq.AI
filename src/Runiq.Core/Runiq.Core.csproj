@@ -7,7 +7,7 @@
 
     <IsPackable>true</IsPackable>
     <PackageId>Runiq.Core</PackageId>
-    <Version>0.1.0-preview.1</Version>
+    <Version>0.1.0-preview.2</Version>
     <Title>Runiq Core</Title>
     <Authors>Runiq</Authors>
     <Company>Runiq</Company>
@@ -15,13 +15,12 @@
     <PackageTags>ai;agents;dashboard;aspnetcore;dotnet;runiq</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryType>git</RepositoryType>
-    <PackageIcon>runiq-icon.png</PackageIcon>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="..\..\README.md" Pack="true" PackagePath="README.md" />
-    <None Include="..\..\assets\nuget\runiq-icon.png" Pack="true" PackagePath="runiq-icon.png" />
+    <None Update="README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\assets\nuget\runiq-icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>

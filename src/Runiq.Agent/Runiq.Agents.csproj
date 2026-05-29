@@ -7,17 +7,16 @@
 
     <IsPackable>true</IsPackable>
     <PackageId>Runiq.Agents</PackageId>
-    <Version>0.1.0-preview.1</Version>
+    <Version>0.1.0-preview.2</Version>
     <Title>Runiq Agents</Title>
     <Description>Agent runtime, tool execution, provider integration, and streaming primitives for Runiq.Net.</Description>
     <PackageTags>ai;agents;tools;llm;dotnet;runiq</PackageTags>
-    <PackageIcon>runiq-icon.png</PackageIcon>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="..\..\README.md" Pack="true" PackagePath="README.md" />
-    <None Include="..\..\assets\nuget\runiq-icon.png" Pack="true" PackagePath="runiq-icon.png" />
+    <None Update="README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\assets\nuget\runiq-icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>

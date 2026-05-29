@@ -6,10 +6,11 @@
     <Copyright>Copyright © Runiq</Copyright>
 
     <RepositoryType>git</RepositoryType>
-    <RepositoryUrl>https://github.com/kkaradag2/Runiq.Net</RepositoryUrl>
-    <PackageProjectUrl>https://github.com/kkaradag2/Runiq.Net</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/runiq-net/Runiq.net</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/runiq-net/Runiq.net</PackageProjectUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>runiq-icon.png</PackageIcon>
 
     <GenerateDocumentationFile Condition="'$(IsPackable)' == 'true'">true</GenerateDocumentationFile>
 
