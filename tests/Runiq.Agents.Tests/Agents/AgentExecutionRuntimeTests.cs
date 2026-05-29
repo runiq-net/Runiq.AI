@@ -10,6 +10,7 @@ namespace Runiq.Agents.Tests.Agents;
 
 public sealed class AgentExecutionRuntimeTests
 {
+    // Verifies that discovered skills are emitted before context search events during streaming execution.
     [Fact]
     public async Task ExecuteStreamAsync_ShouldEmitSkillLoadedBeforeContextSearched_WhenSkillsExist()
     {
@@ -87,6 +88,7 @@ public sealed class AgentExecutionRuntimeTests
         Assert.Equal(1, contextSearchSummary.SelectedCount);
     }
 
+    // Verifies that only source search results above the confidence threshold are selected.
     [Fact]
     public async Task ExecuteStreamAsync_ShouldSelectOnlyHighConfidenceSourceResults()
     {
@@ -109,6 +111,7 @@ public sealed class AgentExecutionRuntimeTests
         Assert.Equal(1, contextSearchedEvent.ContextSearchSummary.SelectedCount);
     }
 
+    // Verifies that no source results are selected when every score is below the minimum threshold.
     [Fact]
     public async Task ExecuteStreamAsync_ShouldSelectNoSourceResults_WhenScoresAreBelowMinimumThreshold()
     {
@@ -131,6 +134,7 @@ public sealed class AgentExecutionRuntimeTests
         Assert.Equal(0, contextSearchedEvent.ContextSearchSummary.SelectedCount);
     }
 
+    // Verifies that rejected source search results are not exposed as selected model context.
     [Fact]
     public async Task ExecuteStreamAsync_ShouldNotSendRejectedSearchResultsToModelContext()
     {
@@ -151,10 +155,10 @@ public sealed class AgentExecutionRuntimeTests
         Assert.Equal(0, contextSearchedEvent.ContextSearchSummary!.SelectedCount);
     }
 
+    // Verifies that a strong Turkish entity match selects the real sample PDF excerpt.
     [Fact]
     public async Task ExecuteStreamAsync_ShouldSelectRealSamplePdf_WhenKemeraltıMatches()
     {
-        // Bu test, gerçek sample PDF kaynağındaki güçlü Türkçe entity eşleşmesinin runtime excerpt seçimine taşındığını doğrular.
         var agent = new Agent(
                 id: "travel-agent",
                 name: "Travel Agent",

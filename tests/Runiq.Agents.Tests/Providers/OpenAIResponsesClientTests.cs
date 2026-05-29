@@ -8,13 +8,14 @@ using Runiq.Agents.Tools;
 namespace Runiq.Agents.Tests.Providers;
 
 /// <summary>
-/// OpenAI Responses istemcisinin tool output devam isteklerini doğrular.
+/// Verifies OpenAI Responses client behavior for tool output continuation requests.
 /// </summary>
 public sealed class OpenAIResponsesClientTests
 {
     /// <summary>
-    /// Function call output devam isteğinde OpenAI tarafından verilen call_id değerinin aynen kullanıldığını doğrular.
+    /// Verifies that function call output continuation uses the exact call_id provided by OpenAI.
     /// </summary>
+    // Verifies that function call output continuation uses the exact call_id provided by OpenAI.
     [Fact]
     public async Task StreamAsync_ShouldSubmitFunctionCallOutputWithExactCallId()
     {
@@ -55,8 +56,9 @@ public sealed class OpenAIResponsesClientTests
     }
 
     /// <summary>
-    /// Lokal tool hata aldığında da Responses API'ye aynı call_id için function_call_output gönderildiğini doğrular.
+    /// Verifies that local tool failures still submit function_call_output for the same call_id.
     /// </summary>
+    // Verifies that local tool failures still submit function_call_output for the same call_id.
     [Fact]
     public async Task StreamAsync_ShouldSubmitFunctionCallOutput_WhenLocalToolFails()
     {
@@ -100,8 +102,9 @@ public sealed class OpenAIResponsesClientTests
     }
 
     /// <summary>
-    /// OpenAI stream'i DONE satırı olmadan kapandığında bekleyen tool output devam isteğinin yine gönderildiğini doğrular.
+    /// Verifies that pending tool outputs continue when the stream closes without a DONE line.
     /// </summary>
+    // Verifies that pending tool outputs continue when the stream closes without a DONE line.
     [Fact]
     public async Task StreamAsync_ShouldContinuePendingToolOutputs_WhenStreamClosesWithoutDone()
     {

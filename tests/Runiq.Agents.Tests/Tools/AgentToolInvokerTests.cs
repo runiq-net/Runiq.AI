@@ -5,10 +5,10 @@ namespace Runiq.Agents.Tests.Tools;
 
 public sealed class AgentToolInvokerTests
 {
+    // Verifies that a registered tool executes with valid JSON input and returns output JSON.
     [Fact]
     public async Task InvokeAsync_ShouldExecuteRegisteredTool_WhenInputJsonIsValid()
     {
-        // Agent üzerinde kayıtlı tool'un geçerli JSON input ile çalıştırıldığını ve output JSON döndüğünü doğrular.
         var agent = CreateAgent()
             .AddTool<TestWeatherTool>();
 
@@ -27,10 +27,10 @@ public sealed class AgentToolInvokerTests
         Assert.Contains("23", result.OutputJson);
     }
 
+    // Verifies that tool names are resolved without casing sensitivity.
     [Fact]
     public async Task InvokeAsync_ShouldResolveToolNameCaseInsensitive_WhenToolNameUsesDifferentCasing()
     {
-        // Tool adının model tarafından farklı casing ile çağrılması durumunda da eşleştiğini doğrular.
         var agent = CreateAgent()
             .AddTool<TestWeatherTool>();
 
@@ -46,10 +46,10 @@ public sealed class AgentToolInvokerTests
         Assert.Contains("Istanbul", result.OutputJson);
     }
 
+    // Verifies that empty argument JSON is treated as an empty JSON object.
     [Fact]
     public async Task InvokeAsync_ShouldUseEmptyObject_WhenArgumentsJsonIsEmpty()
     {
-        // Boş argumentsJson geldiğinde invoker'ın bunu boş JSON object olarak ele aldığını doğrular.
         var agent = CreateAgent()
             .AddTool<DefaultInputTool>();
 
@@ -65,10 +65,10 @@ public sealed class AgentToolInvokerTests
         Assert.Contains("default-city", result.OutputJson);
     }
 
+    // Verifies that empty tool names return a failure result before execution is attempted.
     [Fact]
     public async Task InvokeAsync_ShouldReturnFailure_WhenToolNameIsEmpty()
     {
-        // Boş tool adının çalıştırma denemesi yapılmadan anlamlı failure sonucu ürettiğini doğrular.
         var agent = CreateAgent()
             .AddTool<TestWeatherTool>();
 
@@ -85,10 +85,10 @@ public sealed class AgentToolInvokerTests
         Assert.Null(result.OutputJson);
     }
 
+    // Verifies that calls to tools not registered on the agent return ToolNotFound.
     [Fact]
     public async Task InvokeAsync_ShouldReturnFailure_WhenToolIsNotRegisteredOnAgent()
     {
-        // Agent üzerinde kayıtlı olmayan tool çağrılarının ToolNotFound olarak döndüğünü doğrular.
         var agent = CreateAgent();
         var invoker = CreateInvoker();
 
@@ -103,10 +103,10 @@ public sealed class AgentToolInvokerTests
         Assert.Null(result.OutputJson);
     }
 
+    // Verifies that invalid argument JSON returns a ToolInputInvalid failure.
     [Fact]
     public async Task InvokeAsync_ShouldReturnFailure_WhenArgumentsJsonIsInvalid()
     {
-        // Geçersiz JSON input değerinin ToolInputInvalid failure sonucuna çevrildiğini doğrular.
         var agent = CreateAgent()
             .AddTool<TestWeatherTool>();
 
@@ -123,10 +123,10 @@ public sealed class AgentToolInvokerTests
         Assert.Null(result.OutputJson);
     }
 
+    // Verifies that exceptions thrown by tools are converted into ToolExecutionFailed results.
     [Fact]
     public async Task InvokeAsync_ShouldReturnFailure_WhenToolThrowsException()
     {
-        // Tool çalıştırma sırasında oluşan exception'ın ToolExecutionFailed failure sonucuna çevrildiğini doğrular.
         var agent = CreateAgent()
             .AddTool<FailingTool>();
 

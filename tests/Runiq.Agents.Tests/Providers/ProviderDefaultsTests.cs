@@ -5,10 +5,10 @@ namespace Runiq.Agents.Tests.Providers;
 
 public sealed class ProviderDefaultsTests
 {
+    // Verifies that OpenAI provider defaults include the expected protocol, URL, and API key requirement.
     [Fact]
     public void Get_ShouldReturnOpenAIProviderDefaults_WhenProviderIsOpenAI()
     {
-        // OpenAI provider'ının varsayılan bağlantı bilgilerinin doğru tanımlandığını doğrular.
         var provider = ProviderDefaults.Get("openai");
 
         Assert.Equal("openai", provider.ProviderName);
@@ -17,10 +17,10 @@ public sealed class ProviderDefaultsTests
         Assert.True(provider.RequiresApiKey);
     }
 
+    // Verifies that Ollama provider defaults use the local URL and do not require an API key.
     [Fact]
     public void Get_ShouldReturnOllamaProviderDefaults_WhenProviderIsOllama()
     {
-        // Ollama provider'ının local ve API key gerektirmeyen varsayılanlarla tanımlandığını doğrular.
         var provider = ProviderDefaults.Get("ollama");
 
         Assert.Equal("ollama", provider.ProviderName);
@@ -29,19 +29,19 @@ public sealed class ProviderDefaultsTests
         Assert.False(provider.RequiresApiKey);
     }
 
+    // Verifies that provider names are normalized before default lookup.
     [Fact]
     public void Get_ShouldNormalizeProviderName_WhenProviderContainsUppercaseCharacters()
     {
-        // Provider adının büyük/küçük harften bağımsız çözümlendiğini doğrular.
         var provider = ProviderDefaults.Get("OpenAI");
 
         Assert.Equal("openai", provider.ProviderName);
     }
 
+    // Verifies that unsupported provider names produce a clear argument error.
     [Fact]
     public void Get_ShouldThrowArgumentException_WhenProviderIsUnsupported()
     {
-        // Desteklenmeyen provider adlarının sessizce kabul edilmediğini doğrular.
         var exception = Assert.Throws<ArgumentException>(() => ProviderDefaults.Get("unknown-provider"));
 
         Assert.Contains("Unsupported model provider", exception.Message);
@@ -54,16 +54,16 @@ public sealed class ProviderDefaultsTests
     [InlineData("   ")]
     public void Get_ShouldThrowArgumentException_WhenProviderNameIsEmpty(string providerName)
     {
-        // Boş provider adlarının geçerli kabul edilmediğini doğrular.
+        // Verifies that empty provider names are not accepted.
         var exception = Assert.Throws<ArgumentException>(() => ProviderDefaults.Get(providerName));
 
         Assert.Contains("Provider name cannot be empty", exception.Message);
     }
 
+    // Verifies that the provider default URL is used when the agent has no custom provider URL.
     [Fact]
     public void ResolveUrl_ShouldReturnDefaultUrl_WhenAgentDoesNotHaveCustomProviderUrl()
     {
-        // Agent üzerinde özel URL verilmediğinde provider'ın varsayılan URL değerinin kullanıldığını doğrular.
         var agent = new Agent(
             id: "test-agent",
             name: "Test Agent",
@@ -76,10 +76,10 @@ public sealed class ProviderDefaultsTests
         Assert.Equal(new Uri("https://api.openai.com/v1"), url);
     }
 
+    // Verifies that an agent-level provider URL overrides the provider default URL.
     [Fact]
     public void ResolveUrl_ShouldReturnCustomUrl_WhenAgentHasProviderUrl()
     {
-        // Agent üzerinde özel provider URL verilirse varsayılan URL yerine bu değerin kullanıldığını doğrular.
         var agent = new Agent(
             id: "test-agent",
             name: "Test Agent",
@@ -96,10 +96,10 @@ public sealed class ProviderDefaultsTests
         Assert.Equal(new Uri("https://custom.provider.local/v1"), url);
     }
 
+    // Verifies that providers without default URLs require an explicit agent provider URL.
     [Fact]
     public void ResolveUrl_ShouldThrowInvalidOperationException_WhenProviderRequiresCustomUrlButItIsMissing()
     {
-        // Varsayılan URL tanımlanmayan provider'larda özel URL verilmezse açık hata üretildiğini doğrular.
         var agent = new Agent(
             id: "azure-agent",
             name: "Azure Agent",
