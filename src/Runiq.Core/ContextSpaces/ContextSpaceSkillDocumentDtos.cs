@@ -1,16 +1,16 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
 namespace Runiq.Core.ContextSpaces;
 
 /// <summary>
-/// Context space skill doküman envanteri yanıtını temsil eder.
+/// Context space skill dokÃ¼man envanteri yanÄ±tÄ±nÄ± temsil eder.
 /// </summary>
 public sealed record ContextSpaceSkillDocumentsResponse(
     [property: JsonPropertyName("contextSpaceId")] string ContextSpaceId,
     [property: JsonPropertyName("skillSources")] IReadOnlyList<ContextSpaceSkillSourceDocumentDto> SkillSources);
 
 /// <summary>
-/// Bir skill source grubu ve keşfedilen skill dokümanlarını temsil eder.
+/// Bir skill source grubu ve keÅŸfedilen skill dokÃ¼manlarÄ±nÄ± temsil eder.
 /// </summary>
 public sealed record ContextSpaceSkillSourceDocumentDto(
     [property: JsonPropertyName("sourceId")] string SourceId,
@@ -21,7 +21,7 @@ public sealed record ContextSpaceSkillSourceDocumentDto(
     [property: JsonPropertyName("skills")] IReadOnlyList<ContextSpaceSkillDocumentListItemDto> Skills);
 
 /// <summary>
-/// Keşfedilmiş skill doküman özetini temsil eder.
+/// KeÅŸfedilmiÅŸ skill dokÃ¼man Ã¶zetini temsil eder.
 /// </summary>
 public sealed record ContextSpaceSkillDocumentListItemDto(
     [property: JsonPropertyName("skillId")] string SkillId,
@@ -34,7 +34,7 @@ public sealed record ContextSpaceSkillDocumentListItemDto(
     [property: JsonPropertyName("isPreviewSupported")] bool IsPreviewSupported);
 
 /// <summary>
-/// Skill doküman önizleme yanıtını temsil eder.
+/// Skill dokÃ¼man Ã¶nizleme yanÄ±tÄ±nÄ± temsil eder.
 /// </summary>
 public sealed record ContextSpaceSkillDocumentPreviewDto(
     [property: JsonPropertyName("contextSpaceId")] string ContextSpaceId,

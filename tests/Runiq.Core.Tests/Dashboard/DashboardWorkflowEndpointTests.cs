@@ -1,3 +1,6 @@
+﻿using Runiq.Workflows.Interfaces;
+using Runiq.Workflows.Domain;
+using Runiq.Workflows.Models;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -12,15 +15,15 @@ using Runiq.Workflows;
 namespace Runiq.Core.Tests.Dashboard;
 
 /// <summary>
-/// Dashboard workflow metadata endpoint davranışlarını doğrulayan testleri içerir.
+/// Dashboard workflow metadata endpoint davranÄ±ÅŸlarÄ±nÄ± doÄŸrulayan testleri iÃ§erir.
 /// </summary>
 [Collection("Dashboard assets")]
-public sealed class DashboardWorkflowEndpointTests
+public sealed class DashboardFlowEndpointTests
 {
     [Fact]
-    public async Task WorkflowsEndpoint_ShouldReturnRegisteredWorkflows()
+    public async Task FlowsEndpoint_ShouldReturnRegisteredFlows()
     {
-        // Workflow liste endpoint'inin registry'deki workflow tanımlarını döndürdüğünü doğrular.
+        // Flow liste endpoint'inin registry'deki workflow tanÄ±mlarÄ±nÄ± dÃ¶ndÃ¼rdÃ¼ÄŸÃ¼nÃ¼ doÄŸrular.
         using var server = CreateServer();
 
         var response = await server.CreateClient().GetAsync("/dashboard/api/workflows");
@@ -37,7 +40,7 @@ public sealed class DashboardWorkflowEndpointTests
         var workflow = Assert.Single(workflows.EnumerateArray());
 
         Assert.Equal("travel-planning-workflow", workflow.GetProperty("id").GetString());
-        Assert.Equal("Travel Planning Workflow", workflow.GetProperty("name").GetString());
+        Assert.Equal("Travel Planning Flow", workflow.GetProperty("name").GetString());
 
         var steps = workflow.GetProperty("steps");
 
@@ -50,9 +53,9 @@ public sealed class DashboardWorkflowEndpointTests
     }
 
     [Fact]
-    public async Task WorkflowDetailEndpoint_ShouldReturnWorkflowById()
+    public async Task FlowDetailEndpoint_ShouldReturnFlowById()
     {
-        // Workflow detay endpoint'inin id ile istenen workflow metadata bilgisini döndürdüğünü doğrular.
+        // Flow detay endpoint'inin id ile istenen workflow metadata bilgisini dÃ¶ndÃ¼rdÃ¼ÄŸÃ¼nÃ¼ doÄŸrular.
         using var server = CreateServer();
 
         var response = await server
@@ -72,9 +75,9 @@ public sealed class DashboardWorkflowEndpointTests
     }
 
     [Fact]
-    public async Task WorkflowDetailEndpoint_ShouldReturnNotFound_WhenWorkflowIdIsUnknown()
+    public async Task FlowDetailEndpoint_ShouldReturnNotFound_WhenFlowIdIsUnknown()
     {
-        // Bilinmeyen workflow id için detay endpoint'inin 404 döndürdüğünü doğrular.
+        // Bilinmeyen workflow id iÃ§in detay endpoint'inin 404 dÃ¶ndÃ¼rdÃ¼ÄŸÃ¼nÃ¼ doÄŸrular.
         using var server = CreateServer();
 
         var response = await server
@@ -85,10 +88,10 @@ public sealed class DashboardWorkflowEndpointTests
     }
 
     [Fact]
-    public async Task WorkflowRunEndpoint_ShouldReturnExecutionResult()
+    public async Task FlowRunEndpoint_ShouldReturnExecutionResult()
     {
-        // Workflow run endpoint'inin runtime sonucunu dashboard DTO'suna map ettiğini doğrular.
-        var runtime = new DashboardTestWorkflowRuntime();
+        // Flow run endpoint'inin runtime sonucunu dashboard DTO'suna map ettiÄŸini doÄŸrular.
+        var runtime = new DashboardTestFlowRuntime();
         using var server = CreateServer(runtime);
 
         var response = await server
@@ -105,7 +108,7 @@ public sealed class DashboardWorkflowEndpointTests
         var steps = root.GetProperty("steps");
 
         Assert.True(runtime.WasCalled);
-        Assert.Equal("travel-planning-workflow", runtime.WorkflowId);
+        Assert.Equal("travel-planning-workflow", runtime.FlowId);
         Assert.Equal("Istanbul trip", runtime.Input);
         Assert.Equal("Completed", root.GetProperty("status").GetString());
         Assert.Equal("Planner output", root.GetProperty("finalOutput").GetString());
@@ -124,10 +127,10 @@ public sealed class DashboardWorkflowEndpointTests
     }
 
     [Fact]
-    public async Task WorkflowRunEndpoint_ShouldReturnNotFound_WhenWorkflowIdIsUnknown()
+    public async Task FlowRunEndpoint_ShouldReturnNotFound_WhenFlowIdIsUnknown()
     {
-        // Bilinmeyen workflow id için run endpoint'inin 404 döndürdüğünü doğrular.
-        using var server = CreateServer(new DashboardTestWorkflowRuntime());
+        // Bilinmeyen workflow id iÃ§in run endpoint'inin 404 dÃ¶ndÃ¼rdÃ¼ÄŸÃ¼nÃ¼ doÄŸrular.
+        using var server = CreateServer(new DashboardTestFlowRuntime());
 
         var response = await server
             .CreateClient()
@@ -139,10 +142,10 @@ public sealed class DashboardWorkflowEndpointTests
     }
 
     [Fact]
-    public async Task WorkflowRunEndpoint_ShouldReturnBadRequest_WhenInputIsEmpty()
+    public async Task FlowRunEndpoint_ShouldReturnBadRequest_WhenInputIsEmpty()
     {
-        // Boş workflow girdisinin runtime çalıştırılmadan reddedildiğini doğrular.
-        var runtime = new DashboardTestWorkflowRuntime();
+        // BoÅŸ workflow girdisinin runtime Ã§alÄ±ÅŸtÄ±rÄ±lmadan reddedildiÄŸini doÄŸrular.
+        var runtime = new DashboardTestFlowRuntime();
         using var server = CreateServer(runtime);
 
         var response = await server
@@ -158,7 +161,7 @@ public sealed class DashboardWorkflowEndpointTests
     [Fact]
     public async Task TeamApiEndpoint_ShouldReturnNotFound()
     {
-        // Agent Team API endpoint'inin aktif dashboard API yüzeyinden kaldırıldığını doğrular.
+        // Agent Team API endpoint'inin aktif dashboard API yÃ¼zeyinden kaldÄ±rÄ±ldÄ±ÄŸÄ±nÄ± doÄŸrular.
         using var server = CreateServer();
 
         var response = await server
@@ -169,9 +172,9 @@ public sealed class DashboardWorkflowEndpointTests
     }
 
     [Fact]
-    public void WorkflowServices_ShouldBuildWithScopeValidationEnabled()
+    public void FlowServices_ShouldBuildWithScopeValidationEnabled()
     {
-        // Workflow runtime servislerinin scoped agent runtime ile uyumlu lifetime kullandığını doğrular.
+        // Flow runtime servislerinin scoped agent runtime ile uyumlu lifetime kullandÄ±ÄŸÄ±nÄ± doÄŸrular.
         var services = new ServiceCollection();
 
         services.AddRuniqServer(options =>
@@ -182,7 +185,7 @@ public sealed class DashboardWorkflowEndpointTests
         });
         services.AddRuniqWorkflows(options =>
         {
-            options.AddWorkflow(CreateWorkflow());
+            options.AddFlow(CreateFlow());
         });
 
         using var serviceProvider = services.BuildServiceProvider(new ServiceProviderOptions
@@ -193,11 +196,11 @@ public sealed class DashboardWorkflowEndpointTests
 
         using var scope = serviceProvider.CreateScope();
 
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<IWorkflowExecutionRuntime>());
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<IFlowRunner>());
     }
 
     private static TestServer CreateServer(
-        IWorkflowExecutionRuntime? workflowExecutionRuntime = null)
+        IFlowRunner? workflowExecutionRuntime = null)
     {
         PrepareDashboardAssets();
 
@@ -209,7 +212,7 @@ public sealed class DashboardWorkflowEndpointTests
                 services.AddRuniqServer();
                 services.AddRuniqWorkflows(options =>
                 {
-                    options.AddWorkflow(CreateWorkflow());
+                    options.AddFlow(CreateFlow());
                 });
 
                 if (workflowExecutionRuntime is not null)
@@ -229,11 +232,11 @@ public sealed class DashboardWorkflowEndpointTests
         return new TestServer(builder);
     }
 
-    private static Workflow CreateWorkflow()
+    private static Flow CreateFlow()
     {
-        return new Workflow(
+        return new Flow(
                 id: "travel-planning-workflow",
-                name: "Travel Planning Workflow")
+                name: "Travel Planning Flow")
             .Step<WeatherAgent>("weather")
                 .OnSuccess("places")
                 .OnFailureContinue("places")
@@ -296,40 +299,40 @@ public sealed class DashboardWorkflowEndpointTests
         }
     }
 
-    private sealed class DashboardTestWorkflowRuntime : IWorkflowExecutionRuntime
+    private sealed class DashboardTestFlowRuntime : IFlowRunner
     {
         public bool WasCalled { get; private set; }
 
-        public string? WorkflowId { get; private set; }
+        public string? FlowId { get; private set; }
 
         public string? Input { get; private set; }
 
-        public Task<WorkflowExecutionResult> ExecuteAsync(
-            Workflow workflow,
+        public Task<RunResult> ExecuteAsync(
+            Flow workflow,
             string input,
             CancellationToken cancellationToken = default)
         {
             WasCalled = true;
-            WorkflowId = workflow.Id;
+            FlowId = workflow.Id;
             Input = input;
             var startedAt = DateTimeOffset.Parse("2026-05-27T10:00:00+03:00");
             var completedAt = startedAt.AddMilliseconds(42);
 
-            return Task.FromResult(new WorkflowExecutionResult(
-                WorkflowExecutionStatus.Completed,
+            return Task.FromResult(new RunResult(
+                RunStatus.Completed,
                 [
-                    new WorkflowStepExecutionResult(
+                    new StepRunResult(
                         stepId: "planner",
                         agentType: typeof(PlannerAgent),
-                        status: WorkflowStepExecutionStatus.Completed,
+                        status: StepRunStatus.Completed,
                         input: input,
                         output: "Planner output",
                         toolCalls:
                         [
-                            new WorkflowToolCallExecutionResult(
+                            new ToolCallRunResult(
                                 toolCallId: "call_weather",
                                 toolName: "weather.search",
-                                status: WorkflowToolCallExecutionStatus.Completed,
+                                status: ToolCallRunStatus.Completed,
                                 argumentsJson: """{"city":"Istanbul"}""",
                                 outputJson: """{"condition":"clear"}""",
                                 startedAt: startedAt,

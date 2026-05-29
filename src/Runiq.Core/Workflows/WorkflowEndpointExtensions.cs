@@ -1,20 +1,17 @@
+﻿using Runiq.Workflows.Interfaces;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
-using Runiq.Workflows;
+using Runiq.Workflows.Models;
+using Runiq.Workflows.Domain;
+using Runiq.Workflows.Infrastructure;
 
 namespace Runiq.Core.Workflows;
 
-/// <summary>
-/// Runiq workflow metadata endpoint'lerini ASP.NET Core uygulamasına ekler.
-/// </summary>
 public static class WorkflowEndpointExtensions
 {
-    /// <summary>
-    /// Dashboard tarafından kullanılan workflow metadata endpoint'lerini map eder.
-    /// </summary>
     public static IEndpointRouteBuilder MapRuniqWorkflowApi(
         this IEndpointRouteBuilder endpoints,
         string pathPrefix = "/runiq/api")
@@ -23,9 +20,9 @@ public static class WorkflowEndpointExtensions
 
         group.MapGet("/workflows", (IServiceProvider serviceProvider) =>
         {
-            var registry = serviceProvider.GetService<WorkflowRegistry>();
+            var catalog = serviceProvider.GetService<FlowCatalog>();
 
-            return Results.Ok((registry?.Workflows ?? [])
+            return Results.Ok((catalog?.Flows ?? [])
                 .Select(MapWorkflow)
                 .ToList());
         });
@@ -35,7 +32,7 @@ public static class WorkflowEndpointExtensions
             IServiceProvider serviceProvider) =>
         {
             var workflow = serviceProvider
-                .GetService<WorkflowRegistry>()
+                .GetService<FlowCatalog>()
                 ?.FindById(workflowId);
 
             return workflow is null
@@ -46,7 +43,7 @@ public static class WorkflowEndpointExtensions
         group.MapPost("/workflows/{workflowId}/run", async (
             string workflowId,
             WorkflowRunRequestDto request,
-            [FromServices] IWorkflowExecutionRuntime runtime,
+            [FromServices] IFlowRunner runtime,
             IServiceProvider serviceProvider,
             CancellationToken cancellationToken) =>
         {
@@ -59,7 +56,7 @@ public static class WorkflowEndpointExtensions
             }
 
             var workflow = serviceProvider
-                .GetService<WorkflowRegistry>()
+                .GetService<FlowCatalog>()
                 ?.FindById(workflowId);
 
             if (workflow is null)
@@ -105,7 +102,7 @@ public static class WorkflowEndpointExtensions
         return endpoints;
     }
 
-    private static WorkflowMetadataDto MapWorkflow(Workflow workflow)
+    private static WorkflowMetadataDto MapWorkflow(Flow workflow)
     {
         return new WorkflowMetadataDto(
             Id: workflow.Id,

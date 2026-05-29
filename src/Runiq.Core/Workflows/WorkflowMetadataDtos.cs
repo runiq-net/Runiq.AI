@@ -1,8 +1,5 @@
-namespace Runiq.Core.Workflows;
+﻿namespace Runiq.Core.Workflows;
 
-/// <summary>
-/// Dashboard tarafından görüntülenecek workflow metadata bilgisini taşır.
-/// </summary>
 public sealed record WorkflowMetadataDto(
     string Id,
     string Name,
@@ -10,9 +7,6 @@ public sealed record WorkflowMetadataDto(
     int StepCount,
     IReadOnlyList<WorkflowStepMetadataDto> Steps);
 
-/// <summary>
-/// Dashboard tarafından görüntülenecek workflow step metadata bilgisini taşır.
-/// </summary>
 public sealed record WorkflowStepMetadataDto(
     string Id,
     string AgentType,
@@ -21,14 +15,8 @@ public sealed record WorkflowStepMetadataDto(
     string FailureBehavior,
     string? FailureStepId);
 
-/// <summary>
-/// Dashboard workflow çalıştırma isteğini taşır.
-/// </summary>
 public sealed record WorkflowRunRequestDto(string? Input);
 
-/// <summary>
-/// Dashboard workflow çalıştırma sonucunu taşır.
-/// </summary>
 public sealed record WorkflowRunResponseDto(
     string WorkflowId,
     string Status,
@@ -36,9 +24,6 @@ public sealed record WorkflowRunResponseDto(
     string? ErrorMessage,
     IReadOnlyList<WorkflowStepRunResultDto> Steps);
 
-/// <summary>
-/// Dashboard workflow adım çalıştırma sonucunu taşır.
-/// </summary>
 public sealed record WorkflowStepRunResultDto(
     string StepId,
     string AgentName,
@@ -49,9 +34,6 @@ public sealed record WorkflowStepRunResultDto(
     string? ErrorMessage,
     IReadOnlyList<WorkflowToolCallRunResultDto> ToolCalls);
 
-/// <summary>
-/// Dashboard workflow tool çağrısı sonucunu taşır.
-/// </summary>
 public sealed record WorkflowToolCallRunResultDto(
     string? ToolCallId,
     string? ToolName,

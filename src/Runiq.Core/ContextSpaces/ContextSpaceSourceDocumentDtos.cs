@@ -1,16 +1,16 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
 namespace Runiq.Core.ContextSpaces;
 
 /// <summary>
-/// Context space source doküman envanteri yanıtını temsil eder.
+/// Context space source dokÃ¼man envanteri yanÄ±tÄ±nÄ± temsil eder.
 /// </summary>
 public sealed record ContextSpaceSourceDocumentsResponse(
     [property: JsonPropertyName("contextSpaceId")] string ContextSpaceId,
     [property: JsonPropertyName("sourceGroups")] IReadOnlyList<ContextSpaceSourceGroupDocumentDto> SourceGroups);
 
 /// <summary>
-/// Bir context source grubu ve okunabilir dokümanlarını temsil eder.
+/// Bir context source grubu ve okunabilir dokÃ¼manlarÄ±nÄ± temsil eder.
 /// </summary>
 public sealed record ContextSpaceSourceGroupDocumentDto(
     [property: JsonPropertyName("sourceId")] string SourceId,
@@ -21,7 +21,7 @@ public sealed record ContextSpaceSourceGroupDocumentDto(
     [property: JsonPropertyName("documents")] IReadOnlyList<ContextSpaceSourceDocumentListItemDto> Documents);
 
 /// <summary>
-/// Context source içindeki tekil doküman özet bilgisini temsil eder.
+/// Context source iÃ§indeki tekil dokÃ¼man Ã¶zet bilgisini temsil eder.
 /// </summary>
 public sealed record ContextSpaceSourceDocumentListItemDto(
     [property: JsonPropertyName("relativePath")] string RelativePath,
@@ -31,7 +31,7 @@ public sealed record ContextSpaceSourceDocumentListItemDto(
     [property: JsonPropertyName("isPreviewSupported")] bool IsPreviewSupported);
 
 /// <summary>
-/// Context source doküman önizleme yanıtını temsil eder.
+/// Context source dokÃ¼man Ã¶nizleme yanÄ±tÄ±nÄ± temsil eder.
 /// </summary>
 public sealed record ContextSpaceSourceDocumentPreviewDto(
     [property: JsonPropertyName("contextSpaceId")] string ContextSpaceId,

@@ -1,16 +1,16 @@
-using Microsoft.AspNetCore.Builder;
+﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 
 namespace Runiq.Core.Metadata;
 
 /// <summary>
-/// Runiq runtime metadata endpoint'lerini ASP.NET Core uygulamasına ekler.
+/// Runiq runtime metadata endpoint'lerini ASP.NET Core uygulamasÄ±na ekler.
 /// </summary>
 public static class MetadataEndpointExtensions
 {
     /// <summary>
-    /// Studio tarafından kullanılan runtime metadata endpoint'lerini map eder.
+    /// Studio tarafÄ±ndan kullanÄ±lan runtime metadata endpoint'lerini map eder.
     /// </summary>
     public static IEndpointRouteBuilder MapRuniqMetadataApi(
         this IEndpointRouteBuilder endpoints,

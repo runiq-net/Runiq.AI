@@ -1,9 +1,9 @@
-using Runiq.Agents.Tools;
+﻿using Runiq.Agents.Tools;
 
 namespace Runiq.WorkflowTravelPlanner.Tools;
 
 /// <summary>
-/// Seyahat planlaması için şehir bazlı deterministik hava durumu bilgisi döndürür.
+/// Seyahat planlamasÄ± iÃ§in ÅŸehir bazlÄ± deterministik hava durumu bilgisi dÃ¶ndÃ¼rÃ¼r.
 /// </summary>
 [RuniqTool(
     name: "weather",
@@ -61,12 +61,12 @@ public sealed class WeatherTool : IRuniqTool<WeatherInput, WeatherOutput>
 }
 
 /// <summary>
-/// WeatherTool için şehir bilgisini taşıyan girdi modelidir.
+/// WeatherTool iÃ§in ÅŸehir bilgisini taÅŸÄ±yan girdi modelidir.
 /// </summary>
 public sealed record WeatherInput(string City);
 
 /// <summary>
-/// WeatherTool tarafından üretilen deterministik hava durumu sonucudur.
+/// WeatherTool tarafÄ±ndan Ã¼retilen deterministik hava durumu sonucudur.
 /// </summary>
 public sealed record WeatherOutput(
     string City,

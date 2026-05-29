@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -10,7 +10,7 @@ using Runiq.Core;
 namespace Runiq.Core.Tests.Dashboard;
 
 /// <summary>
-/// Dashboard context space source document endpoint davranışlarını doğrulayan testleri içerir.
+/// Dashboard context space source document endpoint davranÄ±ÅŸlarÄ±nÄ± doÄŸrulayan testleri iÃ§erir.
 /// </summary>
 [Collection("Dashboard assets")]
 public sealed class DashboardContextSpaceSourceDocumentsEndpointTests

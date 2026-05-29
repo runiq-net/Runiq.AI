@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Builder;
+﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 
@@ -10,7 +10,7 @@ namespace Runiq.Core.ContextSpaces;
 public static class ContextSpaceEndpointExtensions
 {
     /// <summary>
-    /// Dashboard context space API endpoint'lerini verilen path prefix altında map eder.
+    /// Dashboard context space API endpoint'lerini verilen path prefix altÄ±nda map eder.
     /// </summary>
     public static IEndpointRouteBuilder MapRuniqContextSpaceApi(
         this IEndpointRouteBuilder endpoints,

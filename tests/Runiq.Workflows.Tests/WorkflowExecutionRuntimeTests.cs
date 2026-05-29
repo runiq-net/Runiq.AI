@@ -1,39 +1,43 @@
-﻿using Runiq.Agents;
+﻿using Runiq.Workflows.Services;
+using Runiq.Workflows.Infrastructure;
+using Runiq.Workflows.Domain;
+using Runiq.Workflows.Models;
+using Runiq.Agents;
 using Runiq.Workflows.Tests.Fakes;
 
 namespace Runiq.Workflows.Tests;
 
-public sealed class WorkflowExecutionRuntimeTests
+public sealed class FlowRunnerTests
 {
     /// <summary>
-    /// Runtime'ın geçersiz workflow tanımında başarısız sonuç döndürdüğünü doğrular.
+    /// Runtime'in geçersiz workflow taniminda basarisiz sonuç döndürdügünü dogrular.
     /// </summary>
     [Fact]
-    public async Task ExecuteAsync_ShouldReturnFailedResult_WhenWorkflowIsInvalid()
+    public async Task ExecuteAsync_ShouldReturnFailedResult_WhenFlowIsInvalid()
     {
-        var runtime = new WorkflowExecutionRuntime(
-            new WorkflowAgentResolver([]),
-            new FakeWorkflowAgentExecutor());
+        var runtime = new FlowRunner(
+            new RegisteredAgentStepResolver([]),
+            new FakeRuniqAgentStepExecutor());
 
-        var workflow = new Workflow("invalid", "Invalid");
+        var workflow = new Flow("invalid", "Invalid");
 
         var result = await runtime.ExecuteAsync(
             workflow,
             input: "test input");
 
-        Assert.Equal(WorkflowExecutionStatus.Failed, result.Status);
-        Assert.Contains("Workflow must contain at least one step.", result.ErrorMessage);
+        Assert.Equal(RunStatus.Failed, result.Status);
+        Assert.Contains("Flow must contain at least one step.", result.ErrorMessage);
         Assert.Empty(result.StepResults);
     }
 
     [Fact]
     public async Task ExecuteAsync_ShouldFollowSuccessPath()
     {
-        var runtime = new WorkflowExecutionRuntime(
-            new WorkflowAgentResolver([new TestAgent()]),
-            new FakeWorkflowAgentExecutor());
+        var runtime = new FlowRunner(
+            new RegisteredAgentStepResolver([new TestAgent()]),
+            new FakeRuniqAgentStepExecutor());
 
-        var workflow = new Workflow("travel", "Travel")
+        var workflow = new Flow("travel", "Travel")
             .Step<TestAgent>("weather")
                 .OnSuccess("places")
                 .OnFailureStop()
@@ -56,16 +60,16 @@ public sealed class WorkflowExecutionRuntimeTests
     }
 
     /// <summary>
-    /// Runtime'ın geçerli workflow tanımında ilk adımı çalıştırma sonucunu döndürdüğünü doğrular.
+    /// Runtime'in geçerli workflow taniminda ilk adimi çalistirma sonucunu döndürdügünü dogrular.
     /// </summary>
     [Fact]
-    public async Task ExecuteAsync_ShouldReturnCompletedResult_WithFirstStepResult_WhenWorkflowIsValid()
+    public async Task ExecuteAsync_ShouldReturnCompletedResult_WithFirstStepResult_WhenFlowIsValid()
     {
-        var runtime = new WorkflowExecutionRuntime(
-            new WorkflowAgentResolver([new TestAgent()]),
-            new FakeWorkflowAgentExecutor());
+        var runtime = new FlowRunner(
+            new RegisteredAgentStepResolver([new TestAgent()]),
+            new FakeRuniqAgentStepExecutor());
 
-        var workflow = new Workflow("valid", "Valid")
+        var workflow = new Flow("valid", "Valid")
             .Step<TestAgent>("begin")
                 .OnFailureStop()
             .Build();
@@ -74,7 +78,7 @@ public sealed class WorkflowExecutionRuntimeTests
             workflow,
             input: "hello");
 
-        Assert.Equal(WorkflowExecutionStatus.Completed, result.Status);
+        Assert.Equal(RunStatus.Completed, result.Status);
 
         Assert.Equal("hello", result.FinalOutput);
 
@@ -82,35 +86,35 @@ public sealed class WorkflowExecutionRuntimeTests
 
         Assert.Equal("begin", stepResult.StepId);
         Assert.Equal(typeof(TestAgent), stepResult.AgentType);
-        Assert.Equal(WorkflowStepExecutionStatus.Completed, stepResult.Status);
+        Assert.Equal(StepRunStatus.Completed, stepResult.Status);
         Assert.Equal("hello", stepResult.Output);
     }
 
     [Fact]
     public async Task ExecuteAsync_ShouldIncludeToolCalls_WhenAgentStepUsesTools()
     {
-        // Agent adımı içindeki gerçek tool trace bilgisinin workflow step sonucuna taşındığını doğrular.
+        // Agent adimi içindeki gerçek tool trace bilgisinin workflow step sonucuna tasindigini dogrular.
         var startedAt = DateTimeOffset.UtcNow;
         var completedAt = startedAt.AddMilliseconds(42);
-        var executor = new FakeWorkflowAgentExecutor()
+        var executor = new FakeRuniqAgentStepExecutor()
             .WithToolCalls(
                 "test-agent",
                 [
-                    new WorkflowToolCallExecutionResult(
+                    new ToolCallRunResult(
                         toolCallId: "call-1",
                         toolName: "weather.lookup",
-                        status: WorkflowToolCallExecutionStatus.Completed,
+                        status: ToolCallRunStatus.Completed,
                         argumentsJson: """{"city":"Istanbul"}""",
                         outputJson: """{"condition":"Cloudy"}""",
                         startedAt: startedAt,
                         completedAt: completedAt)
                 ]);
 
-        var runtime = new WorkflowExecutionRuntime(
-            new WorkflowAgentResolver([new TestAgent()]),
+        var runtime = new FlowRunner(
+            new RegisteredAgentStepResolver([new TestAgent()]),
             executor);
 
-        var workflow = new Workflow("valid", "Valid")
+        var workflow = new Flow("valid", "Valid")
             .Step<TestAgent>("weather")
                 .OnFailureStop()
             .Build();
@@ -124,7 +128,7 @@ public sealed class WorkflowExecutionRuntimeTests
 
         Assert.Equal("call-1", toolCall.ToolCallId);
         Assert.Equal("weather.lookup", toolCall.ToolName);
-        Assert.Equal(WorkflowToolCallExecutionStatus.Completed, toolCall.Status);
+        Assert.Equal(ToolCallRunStatus.Completed, toolCall.Status);
         Assert.Equal("""{"city":"Istanbul"}""", toolCall.ArgumentsJson);
         Assert.Equal("""{"condition":"Cloudy"}""", toolCall.OutputJson);
         Assert.Equal(42, toolCall.DurationMs);
@@ -133,26 +137,26 @@ public sealed class WorkflowExecutionRuntimeTests
     [Fact]
     public async Task ExecuteAsync_ShouldIncludeFailedToolCalls_WhenAgentStepFails()
     {
-        // Agent başarısız olsa bile tool hata trace bilgisinin kaybolmadığını doğrular.
-        var executor = new FakeWorkflowAgentExecutor()
+        // Agent basarisiz olsa bile tool hata trace bilgisinin kaybolmadigini dogrular.
+        var executor = new FakeRuniqAgentStepExecutor()
             .WithFailure("test-agent")
             .WithToolCalls(
                 "test-agent",
                 [
-                    new WorkflowToolCallExecutionResult(
+                    new ToolCallRunResult(
                         toolCallId: "call-1",
                         toolName: "places.search",
-                        status: WorkflowToolCallExecutionStatus.Failed,
+                        status: ToolCallRunStatus.Failed,
                         argumentsJson: """{"query":"museum"}""",
                         errorCode: "ToolFailed",
                         errorMessage: "Search failed.")
                 ]);
 
-        var runtime = new WorkflowExecutionRuntime(
-            new WorkflowAgentResolver([new TestAgent()]),
+        var runtime = new FlowRunner(
+            new RegisteredAgentStepResolver([new TestAgent()]),
             executor);
 
-        var workflow = new Workflow("valid", "Valid")
+        var workflow = new Flow("valid", "Valid")
             .Step<TestAgent>("places")
                 .OnFailureStop()
             .Build();
@@ -164,8 +168,8 @@ public sealed class WorkflowExecutionRuntimeTests
         var stepResult = Assert.Single(result.StepResults);
         var toolCall = Assert.Single(stepResult.ToolCalls);
 
-        Assert.Equal(WorkflowExecutionStatus.Failed, result.Status);
-        Assert.Equal(WorkflowToolCallExecutionStatus.Failed, toolCall.Status);
+        Assert.Equal(RunStatus.Failed, result.Status);
+        Assert.Equal(ToolCallRunStatus.Failed, toolCall.Status);
         Assert.Equal("ToolFailed", toolCall.ErrorCode);
         Assert.Equal("Search failed.", toolCall.ErrorMessage);
     }
@@ -173,11 +177,11 @@ public sealed class WorkflowExecutionRuntimeTests
     [Fact]
     public async Task ExecuteAsync_ShouldStop_WhenFailureBehaviorIsStop()
     {
-        var runtime = new WorkflowExecutionRuntime(
-            new WorkflowAgentResolver([new TestAgent()]),
-            new FakeWorkflowAgentExecutor());
+        var runtime = new FlowRunner(
+            new RegisteredAgentStepResolver([new TestAgent()]),
+            new FakeRuniqAgentStepExecutor());
 
-        var workflow = new Workflow("travel", "Travel")
+        var workflow = new Flow("travel", "Travel")
             .Step<TestAgent>("weather")
                 .OnSuccess("places")
                 .OnFailureStop()
@@ -189,21 +193,21 @@ public sealed class WorkflowExecutionRuntimeTests
             workflow,
             input: "hello");
 
-         Assert.Equal(WorkflowExecutionStatus.Completed, result.Status);
+         Assert.Equal(RunStatus.Completed, result.Status);
 
     }
 
     [Fact]
     public async Task ExecuteAsync_ShouldStop_WhenAgentFails_AndFailureBehaviorIsStop()
     {
-        var executor = new FakeWorkflowAgentExecutor()
+        var executor = new FakeRuniqAgentStepExecutor()
             .WithFailure("test-agent");
 
-        var runtime = new WorkflowExecutionRuntime(
-            new WorkflowAgentResolver([new TestAgent()]),
+        var runtime = new FlowRunner(
+            new RegisteredAgentStepResolver([new TestAgent()]),
             executor);
 
-        var workflow = new Workflow("travel", "Travel")
+        var workflow = new Flow("travel", "Travel")
             .Step<TestAgent>("weather")
                 .OnFailureStop()
             .Build();
@@ -212,30 +216,30 @@ public sealed class WorkflowExecutionRuntimeTests
             workflow,
             input: "hello");
 
-        Assert.Equal(WorkflowExecutionStatus.Failed, result.Status);
+        Assert.Equal(RunStatus.Failed, result.Status);
 
         var stepResult = Assert.Single(result.StepResults);
 
         Assert.Equal("weather", stepResult.StepId);
         Assert.Equal(
-            WorkflowStepExecutionStatus.Failed,
+            StepRunStatus.Failed,
             stepResult.Status);
     }
 
     /// <summary>
-    /// Bir adım hata verdiğinde OnFailureContinue tanımlıysa workflow'un belirtilen adıma devam ettiğini doğrular.
+    /// Bir adim hata verdiginde OnFailureContinue tanimliysa workflow'un belirtilen adima devam ettigini dogrular.
     /// </summary>
     [Fact]
     public async Task ExecuteAsync_ShouldContinueToConfiguredStep_WhenAgentFails_AndFailureBehaviorIsContinue()
     {
-        var executor = new FakeWorkflowAgentExecutor()
+        var executor = new FakeRuniqAgentStepExecutor()
             .WithFailure("test-agent");
 
-        var runtime = new WorkflowExecutionRuntime(
-            new WorkflowAgentResolver([new TestAgent(), new PlannerAgent()]),
+        var runtime = new FlowRunner(
+            new RegisteredAgentStepResolver([new TestAgent(), new PlannerAgent()]),
             executor);
 
-        var workflow = new Workflow("travel", "Travel")
+        var workflow = new Flow("travel", "Travel")
            .Step<TestAgent>("weather")
                .OnFailureContinue("planner")
            .Step<PlannerAgent>("planner")
@@ -246,32 +250,32 @@ public sealed class WorkflowExecutionRuntimeTests
             workflow,
             input: "hello");
 
-        Assert.Equal(WorkflowExecutionStatus.Completed, result.Status);
+        Assert.Equal(RunStatus.Completed, result.Status);
 
        
         Assert.Equal(2, result.StepResults.Count);
 
         Assert.Equal("weather", result.StepResults[0].StepId);
-        Assert.Equal(WorkflowStepExecutionStatus.Failed, result.StepResults[0].Status);
+        Assert.Equal(StepRunStatus.Failed, result.StepResults[0].Status);
 
         Assert.Equal("planner", result.StepResults[1].StepId);
-        Assert.Equal(WorkflowStepExecutionStatus.Completed, result.StepResults[1].Status);
+        Assert.Equal(StepRunStatus.Completed, result.StepResults[1].Status);
     }
 
     /// <summary>
-    /// Bir adım hata verdiğinde OnFailureGoTo tanımlıysa workflow'un fallback adıma yönlendiğini doğrular.
+    /// Bir adim hata verdiginde OnFailureGoTo tanimliysa workflow'un fallback adima yönlendigini dogrular.
     /// </summary>
     [Fact]
     public async Task ExecuteAsync_ShouldGoToConfiguredStep_WhenAgentFails_AndFailureBehaviorIsGoTo()
     {
-        var executor = new FakeWorkflowAgentExecutor()
+        var executor = new FakeRuniqAgentStepExecutor()
             .WithFailure("test-agent");
 
-        var runtime = new WorkflowExecutionRuntime(
-            new WorkflowAgentResolver([new TestAgent(), new FallbackAgent()]),
+        var runtime = new FlowRunner(
+            new RegisteredAgentStepResolver([new TestAgent(), new FallbackAgent()]),
             executor);
 
-        var workflow = new Workflow("travel", "Travel")
+        var workflow = new Flow("travel", "Travel")
             .Step<TestAgent>("weather")
                 .OnFailureGoTo("fallback")
             .Step<FallbackAgent>("fallback")
@@ -282,14 +286,14 @@ public sealed class WorkflowExecutionRuntimeTests
             workflow,
             input: "hello");
 
-        Assert.Equal(WorkflowExecutionStatus.Completed, result.Status);
+        Assert.Equal(RunStatus.Completed, result.Status);
         Assert.Equal(2, result.StepResults.Count);
 
         Assert.Equal("weather", result.StepResults[0].StepId);
-        Assert.Equal(WorkflowStepExecutionStatus.Failed, result.StepResults[0].Status);
+        Assert.Equal(StepRunStatus.Failed, result.StepResults[0].Status);
 
         Assert.Equal("fallback", result.StepResults[1].StepId);
-        Assert.Equal(WorkflowStepExecutionStatus.Completed, result.StepResults[1].Status);
+        Assert.Equal(StepRunStatus.Completed, result.StepResults[1].Status);
     }
 
     private sealed class FallbackAgent : Agent

@@ -1,16 +1,20 @@
-﻿using Runiq.Agents;
+﻿using Runiq.Workflows.Validations;
+using Runiq.Workflows.Infrastructure;
+using Runiq.Workflows.Domain;
+using Runiq.Workflows.Models;
+using Runiq.Agents;
 
 namespace Runiq.Workflows.Tests;
 
-public sealed class WorkflowValidatorTests
+public sealed class FlowDefinitionValidatorTests
 {
     /// <summary>
-    /// En az bir bitiş adımı olan geçerli workflow tanımının başarılı doğrulandığını doğrular.
+    /// En az bir bitis adimi olan geçerli workflow taniminin basarili dogrulandigini dogrular.
     /// </summary>
     [Fact]
-    public void Validate_ShouldReturnSuccess_WhenWorkflowIsValid()
+    public void Validate_ShouldReturnSuccess_WhenFlowIsValid()
     {
-        var workflow = new Workflow("travel", "Travel")
+        var workflow = new Flow("travel", "Travel")
             .Step<TestAgent>("weather")
                 .OnSuccess("planner")
                 .OnFailureStop()
@@ -19,33 +23,33 @@ public sealed class WorkflowValidatorTests
                 .OnFailureStop()
             .Build();
 
-        var result = WorkflowValidator.Validate(workflow);
+        var result = FlowDefinitionValidator.Validate(workflow);
 
         Assert.True(result.IsValid);
         Assert.Empty(result.Errors);
     }
 
     /// <summary>
-    /// Hiç adımı olmayan workflow tanımının geçersiz olduğunu doğrular.
+    /// Hiç adimi olmayan workflow taniminin geçersiz oldugunu dogrular.
     /// </summary>
     [Fact]
-    public void Validate_ShouldReturnFailure_WhenWorkflowHasNoSteps()
+    public void Validate_ShouldReturnFailure_WhenFlowHasNoSteps()
     {
-        var workflow = new Workflow("empty", "Empty");
+        var workflow = new Flow("empty", "Empty");
 
-        var result = WorkflowValidator.Validate(workflow);
+        var result = FlowDefinitionValidator.Validate(workflow);
 
         Assert.False(result.IsValid);
-        Assert.Contains("Workflow must contain at least one step.", result.Errors);
+        Assert.Contains("Flow must contain at least one step.", result.Errors);
     }
 
     /// <summary>
-    /// Aynı step id birden fazla kullanıldığında doğrulamanın hata döndürdüğünü doğrular.
+    /// Ayni step id birden fazla kullanildiginda dogrulamanin hata döndürdügünü dogrular.
     /// </summary>
     [Fact]
-    public void Validate_ShouldReturnFailure_WhenWorkflowHasDuplicateStepIds()
+    public void Validate_ShouldReturnFailure_WhenFlowHasDuplicateStepIds()
     {
-        var workflow = new Workflow("travel", "Travel")
+        var workflow = new Flow("travel", "Travel")
             .Step<TestAgent>("weather")
                 .OnSuccessEnd()
                 .OnFailureStop()
@@ -54,43 +58,43 @@ public sealed class WorkflowValidatorTests
                 .OnFailureStop()
             .Build();
 
-        var result = WorkflowValidator.Validate(workflow);
+        var result = FlowDefinitionValidator.Validate(workflow);
 
         Assert.False(result.IsValid);
-        Assert.Contains("Workflow contains duplicate step id 'weather'.", result.Errors);
+        Assert.Contains("Flow contains duplicate step id 'weather'.", result.Errors);
     }
 
     /// <summary>
-    /// Başarı geçişi bilinmeyen bir adıma işaret ettiğinde doğrulamanın hata döndürdüğünü doğrular.
+    /// Basari geçisi bilinmeyen bir adima isaret ettiginde dogrulamanin hata döndürdügünü dogrular.
     /// </summary>
     [Fact]
     public void Validate_ShouldReturnFailure_WhenSuccessTargetIsUnknown()
     {
-        var workflow = new Workflow("travel", "Travel")
+        var workflow = new Flow("travel", "Travel")
             .Step<TestAgent>("weather")
                 .OnSuccess("missing-step")
                 .OnFailureStop()
             .Build();
 
-        var result = WorkflowValidator.Validate(workflow);
+        var result = FlowDefinitionValidator.Validate(workflow);
 
         Assert.False(result.IsValid);
         Assert.Contains("Step 'weather' has unknown success target 'missing-step'.", result.Errors);
     }
 
     /// <summary>
-    /// Hata geçişi bilinmeyen bir adıma işaret ettiğinde doğrulamanın hata döndürdüğünü doğrular.
+    /// Hata geçisi bilinmeyen bir adima isaret ettiginde dogrulamanin hata döndürdügünü dogrular.
     /// </summary>
     [Fact]
     public void Validate_ShouldReturnFailure_WhenFailureTargetIsUnknown()
     {
-        var workflow = new Workflow("travel", "Travel")
+        var workflow = new Flow("travel", "Travel")
             .Step<TestAgent>("weather")
                 .OnSuccessEnd()
                 .OnFailureGoTo("missing-fallback")
             .Build();
 
-        var result = WorkflowValidator.Validate(workflow);
+        var result = FlowDefinitionValidator.Validate(workflow);
 
         Assert.False(result.IsValid);
         Assert.Contains("Step 'weather' has unknown failure target 'missing-fallback'.", result.Errors);

@@ -1,9 +1,9 @@
-using Runiq.Agents.Tools;
+﻿using Runiq.Agents.Tools;
 
 namespace Runiq.WorkflowTravelPlanner.Tools;
 
 /// <summary>
-/// Seyahat planına uygun deterministik öğle ve akşam yemeği bölgesi önerileri döndürür.
+/// Seyahat planÄ±na uygun deterministik Ã¶ÄŸle ve akÅŸam yemeÄŸi bÃ¶lgesi Ã¶nerileri dÃ¶ndÃ¼rÃ¼r.
 /// </summary>
 [RuniqTool(
     name: "meal_suggestion",
@@ -22,19 +22,19 @@ public sealed class MealSuggestionTool : IRuniqTool<MealSuggestionInput, MealSug
         {
             "ISTANBUL" => new MealSuggestionOutput(
                 City: city,
-                LunchArea: "Sultanahmet or Eminönü",
-                DinnerArea: "Karaköy or Galata",
+                LunchArea: "Sultanahmet or EminÃ¶nÃ¼",
+                DinnerArea: "KarakÃ¶y or Galata",
                 Notes: "Choose lunch near the historic route and finish with a relaxed dinner across the bridge."),
             "IZMIR" => new MealSuggestionOutput(
                 City: city,
-                LunchArea: "Kemeraltı",
+                LunchArea: "KemeraltÄ±",
                 DinnerArea: "Kordon or Alsancak",
                 Notes: "Keep lunch close to the bazaar route and end near the waterfront."),
             "ANKARA" => new MealSuggestionOutput(
                 City: city,
-                LunchArea: "Hamamönü",
-                DinnerArea: "Tunalı or Kızılay",
-                Notes: "Use Hamamönü for a low-pressure midday break and pick a central dinner area."),
+                LunchArea: "HamamÃ¶nÃ¼",
+                DinnerArea: "TunalÄ± or KÄ±zÄ±lay",
+                Notes: "Use HamamÃ¶nÃ¼ for a low-pressure midday break and pick a central dinner area."),
             _ => new MealSuggestionOutput(
                 City: city,
                 LunchArea: "City center",
@@ -48,20 +48,20 @@ public sealed class MealSuggestionTool : IRuniqTool<MealSuggestionInput, MealSug
     private static string NormalizeCity(string city)
     {
         return city
-            .Trim()
-            .Replace('İ', 'I')
-            .Replace('ı', 'i')
-            .ToUpperInvariant();
+              .Trim()
+              .Replace('İ', 'I')
+              .Replace('ı', 'i')
+              .ToUpperInvariant();
     }
 }
 
 /// <summary>
-/// MealSuggestionTool için şehir bilgisini taşıyan girdi modelidir.
+/// MealSuggestionTool iÃ§in ÅŸehir bilgisini taÅŸÄ±yan girdi modelidir.
 /// </summary>
 public sealed record MealSuggestionInput(string City);
 
 /// <summary>
-/// MealSuggestionTool tarafından üretilen yemek bölgesi önerisi sonucudur.
+/// MealSuggestionTool tarafÄ±ndan Ã¼retilen yemek bÃ¶lgesi Ã¶nerisi sonucudur.
 /// </summary>
 public sealed record MealSuggestionOutput(
     string City,

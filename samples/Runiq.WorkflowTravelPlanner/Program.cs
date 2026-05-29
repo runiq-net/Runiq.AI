@@ -1,6 +1,6 @@
-using Runiq.Core;
+﻿using Runiq.Core;
 using Runiq.WorkflowTravelPlanner.Agents;
-using Runiq.WorkflowTravelPlanner.Workflows;
+using Runiq.WorkflowTravelPlanner.Flows;
 using Runiq.Workflows;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,7 +16,7 @@ builder.Services.AddRuniqServer(options =>
 
 builder.Services.AddRuniqWorkflows(options =>
 {
-    options.AddWorkflow(TravelPlanningWorkflow.Create());
+    options.AddFlow(TravelPlanningFlow.Create());
 });
 
 var app = builder.Build();
@@ -31,7 +31,7 @@ app.UseHttpsRedirection();
 app.UseRuniqDashboard(options =>
 {
     options.Path = "/dashboard";
-    options.Title = "Runiq Workflow Travel Planner";
+    options.Title = "Runiq Flow Travel Planner";
 });
 
 app.Run();
