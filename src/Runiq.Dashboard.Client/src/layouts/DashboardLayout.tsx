@@ -4,6 +4,8 @@ import { useState, type ReactNode } from 'react';
 import { SidebarItem } from '../components/Sidebar/SidebarItem';
 import { ThemeToggle } from '../components/ThemeToggle/ThemeToggle';
 import type { DashboardPage, DashboardRouteDefinition } from '../routes';
+import runiqLogoDark from '../../../../assets/runiq-logo-dark.png';
+import runiqLogoLight from '../../../../assets/runiq-logo-light.png';
 
 export type DashboardBreadcrumb = {
   label: string;
@@ -74,13 +76,16 @@ export function DashboardLayout({
               isSidebarCollapsed ? 'lg:hidden' : '',
             ].join(' ')}
           >
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-zinc-950 text-sm font-black text-white dark:bg-white dark:text-black">
-              R
-            </div>
-
-            <div className="truncate text-sm font-semibold tracking-tight text-zinc-950 dark:text-white">
-              RunIQ
-            </div>
+            <img
+              src={runiqLogoLight}
+              alt="RunIQ"
+              className="h-9 w-auto max-w-[150px] object-contain dark:hidden"
+            />
+            <img
+              src={runiqLogoDark}
+              alt="RunIQ"
+              className="hidden h-9 w-auto max-w-[150px] object-contain dark:block"
+            />
           </div>
 
           <button

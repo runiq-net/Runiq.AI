@@ -4,10 +4,10 @@ namespace Runiq.Agents.Tests.Agents;
 
 public sealed class AgentTests
 {
+    // Verifies that an agent can attach a context space id and return itself for chaining.
     [Fact]
     public void UseContextSpace_ShouldAttachContextSpaceId()
     {
-        // Agent'a context space id bağlanabildiğini doğrular.
         var agent = CreateAgent();
 
         var result = agent.UseContextSpace("travel-planning");
@@ -18,10 +18,10 @@ public sealed class AgentTests
         Assert.Equal("travel-planning", contextSpaceId);
     }
 
+    // Verifies that context space ids are trimmed before being stored on the agent.
     [Fact]
     public void UseContextSpace_ShouldTrimContextSpaceId()
     {
-        // Context space id değerinin agent üzerinde normalize edilerek saklandığını doğrular.
         var agent = CreateAgent();
 
         agent.UseContextSpace(" travel-planning ");
@@ -35,7 +35,7 @@ public sealed class AgentTests
     [InlineData(" ")]
     public void UseContextSpace_ShouldThrow_WhenContextSpaceIdIsEmpty(string contextSpaceId)
     {
-        // Boş context space id değerinin agent'a bağlanamayacağını doğrular.
+        // Verifies that empty context space ids cannot be attached to an agent.
         var agent = CreateAgent();
 
         var exception = Assert.Throws<ArgumentException>(() =>
@@ -44,10 +44,10 @@ public sealed class AgentTests
         Assert.Equal("contextSpaceId", exception.ParamName);
     }
 
+    // Verifies that duplicate context space ids are rejected with case-insensitive comparison.
     [Fact]
     public void UseContextSpace_ShouldThrow_WhenContextSpaceIdAlreadyExistsIgnoringCase()
     {
-        // Aynı context space id değerinin case-insensitive olarak ikinci kez bağlanamayacağını doğrular.
         var agent = CreateAgent();
 
         agent.UseContextSpace("travel-planning");

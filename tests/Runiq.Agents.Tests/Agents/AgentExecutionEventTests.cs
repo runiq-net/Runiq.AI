@@ -4,6 +4,7 @@ namespace Runiq.Agents.Tests.Agents;
 
 public sealed class AgentExecutionEventTests
 {
+    // Verifies that the skill loaded factory creates an event with the expected skill metadata.
     [Fact]
     public void SkillLoaded_ShouldCreateSkillLoadedEvent()
     {
