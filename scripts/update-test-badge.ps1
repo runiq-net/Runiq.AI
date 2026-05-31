@@ -6,7 +6,7 @@ param(
 $badge = [ordered]@{
     schemaVersion = 1
     label = "tests"
-    message = "unable to parse"
+    message = "unknown"
     color = "orange"
 }
 
@@ -43,15 +43,14 @@ try {
         $badge.message = "$passed passed, $failed failed"
         $badge.color = "red"
     }
+    elseif ($skipped -gt 0) {
+        $badge.message = "$passed passing, $skipped skipped"
+        $badge.color = "brightgreen"
+    }
     else {
         $badge.message = "$passed passing"
         $badge.color = "brightgreen"
     }
-
-    $badge.total = $total
-    $badge.passed = $passed
-    $badge.failed = $failed
-    $badge.skipped = $skipped
 }
 catch {
     Write-Warning $_
@@ -62,8 +61,8 @@ if ($outputDirectory) {
     New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
 }
 
-$json = $badge | ConvertTo-Json -Depth 3
+$json = ($badge | ConvertTo-Json -Depth 3) -replace ':  +', ': ' -replace '(?m)^    ', '  '
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $resolvedOutputPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputPath)
-[System.IO.File]::WriteAllText($resolvedOutputPath, $json, $utf8NoBom)
+[System.IO.File]::WriteAllText($resolvedOutputPath, $json + [Environment]::NewLine, $utf8NoBom)
 Get-Content -Path $OutputPath

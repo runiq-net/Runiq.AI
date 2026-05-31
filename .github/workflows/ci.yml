@@ -57,7 +57,7 @@ jobs:
           fi
 
           git add badges/tests.json
-          git commit -m "Update test badge [skip ci]"
+          git commit -m "chore: update test badge [skip ci]"
           git push
 
       - name: Fail if tests failed

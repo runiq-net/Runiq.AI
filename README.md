@@ -1,7 +1,7 @@
 # Runiq.Net
 
 [![CI](https://github.com/runiq-net/Runiq.net/actions/workflows/ci.yml/badge.svg)](https://github.com/runiq-net/Runiq.net/actions/workflows/ci.yml)
-![Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/kkaradag2/Runiq.Net/main/badges/tests.json)
+![Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/runiq-net/Runiq.net/main/badges/tests.json)
 ![.NET](https://img.shields.io/badge/.NET-10.0-512BD4)
 ![NuGet Version](https://img.shields.io/nuget/vpre/Runiq.Core?label=nuget)
 ![License](https://img.shields.io/badge/license-MIT-blue)
