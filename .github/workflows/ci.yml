@@ -4,9 +4,14 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - 'badges/tests.json'
   pull_request:
     branches:
       - main
+
+permissions:
+  contents: write
 
 jobs:
   build-test-pack:
@@ -29,7 +34,35 @@ jobs:
         run: dotnet build Runiq.Net.slnx --no-restore -c Release -v:minimal
 
       - name: Test
-        run: dotnet test Runiq.Net.slnx --no-build -c Release -v:minimal
+        id: test
+        continue-on-error: true
+        run: dotnet test Runiq.Net.slnx --no-build -c Release -v:minimal --logger trx --results-directory TestResults
+
+      - name: Update test badge
+        if: always()
+        shell: pwsh
+        run: ./scripts/update-test-badge.ps1 -ResultsDirectory TestResults -OutputPath badges/tests.json
+
+      - name: Commit test badge
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Badge updates only push from main so pull request builds validate the JSON
+          # without trying to write to contributor branches or forks.
+          if git diff --quiet -- badges/tests.json; then
+            echo "Test badge is already up to date."
+            exit 0
+          fi
+
+          git add badges/tests.json
+          git commit -m "Update test badge [skip ci]"
+          git push
+
+      - name: Fail if tests failed
+        if: steps.test.outcome == 'failure'
+        run: exit 1
 
       - name: Pack
         run: dotnet pack Runiq.Net.slnx --no-build -c Release -o artifacts/packages
