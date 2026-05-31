@@ -7,7 +7,7 @@
 
     <IsPackable>true</IsPackable>
     <PackageId>Runiq.Agents</PackageId>
-    <Version>0.1.0-preview.2</Version>
+    <Version>0.1.0-preview.3</Version>
     <Title>Runiq Agents</Title>
     <Description>Agent runtime, tool execution, provider integration, and streaming primitives for Runiq.Net.</Description>
     <PackageTags>ai;agents;tools;llm;dotnet;runiq</PackageTags>

@@ -1,11 +1,26 @@
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import {
+  Bot,
+  Database,
+  GitBranch,
+  PanelLeftOpen,
+  Wrench,
+  type LucideIcon,
+} from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 
 import { SidebarItem } from '../components/Sidebar/SidebarItem';
 import { ThemeToggle } from '../components/ThemeToggle/ThemeToggle';
 import type { DashboardPage, DashboardRouteDefinition } from '../routes';
-import runiqLogoDark from '../../../../assets/runiq-logo-dark.png';
-import runiqLogoLight from '../../../../assets/runiq-logo-light.png';
+
+const navigationIcons: Record<DashboardPage, LucideIcon> = {
+  agents: Bot,
+  tools: Wrench,
+  workflows: GitBranch,
+  'context-spaces': Database,
+};
+
+const publicAsset = (fileName: string) =>
+  `${import.meta.env.BASE_URL}${fileName}`;
 
 export type DashboardBreadcrumb = {
   label: string;
@@ -60,71 +75,46 @@ export function DashboardLayout({
             ? 'translate-x-0'
             : '-translate-x-full lg:translate-x-0',
           isSidebarCollapsed
-            ? 'lg:w-20 lg:px-3'
+            ? 'static z-auto w-20 translate-x-0 px-3 shadow-none'
             : 'w-[320px] max-w-[calc(100vw-48px)] lg:w-[270px]',
         ].join(' ')}
       >
         <div
           className={[
             'flex min-h-10 items-center gap-3',
-            isSidebarCollapsed ? 'lg:justify-center' : 'justify-between',
+            isSidebarCollapsed ? 'justify-center' : '',
           ].join(' ')}
         >
-          <div
-            className={[
-              'flex min-w-0 items-center gap-3',
-              isSidebarCollapsed ? 'lg:hidden' : '',
-            ].join(' ')}
-          >
+          {isSidebarCollapsed ? (
             <img
-              src={runiqLogoLight}
+              src={publicAsset('runiq-icon.png')}
               alt="RunIQ"
-              className="h-9 w-auto max-w-[150px] object-contain dark:hidden"
+              className="size-11 object-contain"
             />
-            <img
-              src={runiqLogoDark}
-              alt="RunIQ"
-              className="hidden h-9 w-auto max-w-[150px] object-contain dark:block"
-            />
-          </div>
-
-          <button
-            type="button"
-            className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100 dark:hover:border-zinc-700 dark:hover:bg-zinc-900"
-            aria-label={
-              isMobileSidebarOpen
-                ? 'Close navigation'
-                : isSidebarCollapsed
-                  ? 'Expand navigation'
-                  : 'Collapse navigation'
-            }
-            aria-expanded={isMobileSidebarOpen ? true : !isSidebarCollapsed}
-            onClick={() => {
-              if (isMobileSidebarOpen) {
-                closeMobileSidebar();
-                return;
-              }
-
-              setSidebarCollapsed((value) => !value);
-            }}
-          >
-            {isSidebarCollapsed && !isMobileSidebarOpen ? (
-              <PanelLeftOpen size={18} strokeWidth={2} aria-hidden="true" />
-            ) : (
-              <PanelLeftClose size={18} strokeWidth={2} aria-hidden="true" />
-            )}
-          </button>
+          ) : (
+            <div className="flex min-w-0 items-center gap-3">
+              <img
+                src={publicAsset('runiq-logo-light.png')}
+                alt="RunIQ"
+                className="h-14 w-auto max-w-[210px] object-contain dark:hidden"
+              />
+              <img
+                src={publicAsset('runiq-logo-dark.png')}
+                alt="RunIQ"
+                className="hidden h-14 w-auto max-w-[210px] object-contain dark:block"
+              />
+            </div>
+          )}
         </div>
 
         <div className={isSidebarCollapsed ? 'mt-9 lg:mt-10' : 'mt-9'}>
           <div
             className={[
-              'mb-3 flex items-center gap-3 px-1 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-500',
-              isSidebarCollapsed ? 'lg:hidden' : '',
+              'mb-3 px-1 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-500',
+              isSidebarCollapsed ? 'hidden' : '',
             ].join(' ')}
           >
             <span>Primitives</span>
-            <div className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
           </div>
 
           <nav className="flex flex-col gap-1">
@@ -134,24 +124,39 @@ export function DashboardLayout({
                 label={route.navLabel}
                 active={activePage === route.page}
                 collapsed={isSidebarCollapsed}
+                icon={navigationIcons[route.page]}
                 onClick={() => navigateTo(route.page)}
               />
             ))}
           </nav>
         </div>
 
-        <div
-          className={[
-            'mt-auto border-t border-zinc-200 pt-4 dark:border-zinc-800',
-            isSidebarCollapsed ? 'lg:hidden' : '',
-          ].join(' ')}
-        >
-          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
-            Runiq Version
-          </div>
+        <div className="mt-auto">
+          <div className={isSidebarCollapsed ? 'flex justify-center' : 'flex justify-end'}>
+            <button
+              type="button"
+              className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-700 shadow-sm transition hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100 dark:hover:border-zinc-700 dark:hover:bg-zinc-900"
+              aria-label={
+                isSidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'
+              }
+              aria-expanded={!isSidebarCollapsed}
+              onClick={() => {
+                if (isSidebarCollapsed) {
+                  setSidebarCollapsed(false);
+                  setMobileSidebarOpen(
+                    window.matchMedia('(max-width: 1023px)').matches,
+                  );
+                  return;
+                }
 
-          <div className="mt-1.5 font-mono text-xs text-emerald-400">
-            0.1.0
+                setMobileSidebarOpen(false);
+                setSidebarCollapsed(true);
+              }}
+            >
+              <SidebarCollapseIcon
+                direction={isSidebarCollapsed ? 'right' : 'left'}
+              />
+            </button>
           </div>
         </div>
       </aside>
@@ -229,5 +234,32 @@ export function DashboardLayout({
         </div>
       </section>
     </main>
+  );
+}
+
+type SidebarCollapseIconProps = {
+  direction: 'left' | 'right';
+};
+
+function SidebarCollapseIcon({ direction }: SidebarCollapseIconProps) {
+  const arrowPath =
+    direction === 'left' ? 'M17 8L13 12L17 16' : 'M13 8L17 12L13 16';
+  const arrowLine = direction === 'left' ? 'M13 12H22' : 'M8 12H17';
+
+  return (
+    <svg
+      className="size-5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.8"
+      aria-hidden="true"
+    >
+      <path d="M7 5V19" />
+      <path d={arrowLine} />
+      <path d={arrowPath} />
+    </svg>
   );
 }
