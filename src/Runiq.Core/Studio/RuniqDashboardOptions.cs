@@ -1,4 +1,4 @@
-﻿namespace Runiq.Core.Dashboard;
+namespace Runiq.Core.Dashboard;
 
 /// <summary>
 /// Runiq Dashboard uç noktasının host uygulama içinde nasıl yayınlanacağını belirleyen ayarlardır.
@@ -16,4 +16,12 @@ public sealed class RuniqDashboardOptions
     /// Varsayılan değer "Runiq Dashboard" olur.
     /// </summary>
     public string Title { get; set; } = "Runiq Dashboard";
+
+    /// <summary>
+    /// Dashboard API ve metadata endpoint'lerini korumak için kullanılan API anahtarıdır.
+    /// Ayarlandığında, tüm <c>/api/</c> ve <c>/metadata/</c> istekleri
+    /// <c>Authorization: Bearer {key}</c> veya <c>X-Api-Key: {key}</c> header'ı gerektirir.
+    /// <c>null</c> olduğunda kimlik doğrulama uygulanmaz (varsayılan).
+    /// </summary>
+    public string? ApiKey { get; set; }
 }

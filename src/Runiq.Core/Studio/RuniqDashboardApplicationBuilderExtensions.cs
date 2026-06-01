@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Runiq.Core.Agents;
 using Runiq.Core.ContextSpaces;
@@ -39,6 +39,12 @@ public static class RuniqDashboardApplicationBuilderExtensions
         configure(options);
 
         var basePath = NormalizePath(options.Path);
+
+        if (!string.IsNullOrWhiteSpace(options.ApiKey))
+        {
+            app.Use(next => new RuniqDashboardApiKeyMiddleware(
+                next, basePath, options.ApiKey).InvokeAsync);
+        }
 
         app.UseRouting();
 
