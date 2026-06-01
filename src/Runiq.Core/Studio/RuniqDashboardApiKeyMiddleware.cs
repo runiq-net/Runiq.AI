@@ -30,15 +30,18 @@ internal sealed class RuniqDashboardApiKeyMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
-        var requestPath = context.Request.Path;
+        var requestPath = context.Request.Path.Value ?? string.Empty;
 
-        if (!requestPath.StartsWithSegments(_basePath, out var remainingPath))
+        // Path'i normalize et — double slash, trailing slash gibi bypass vektörlerini engelle.
+        var normalizedPath = NormalizePath(requestPath);
+
+        if (!normalizedPath.StartsWith(_basePath, StringComparison.OrdinalIgnoreCase))
         {
             await _next(context);
             return;
         }
 
-        var remaining = remainingPath.Value ?? string.Empty;
+        var remaining = normalizedPath[_basePath.Length..];
 
         var isProtectedPath =
             remaining.StartsWith("/api/", StringComparison.OrdinalIgnoreCase) ||
@@ -106,5 +109,42 @@ internal sealed class RuniqDashboardApiKeyMiddleware
         return CryptographicOperations.FixedTimeEquals(
             providedBytes,
             _expectedKeyBytes);
+    }
+
+    /// <summary>
+    /// Path'i normalize eder: ardışık slash'ları tek slash'a indirger
+    /// ve bypass vektörlerini (double slash vb.) engeller.
+    /// </summary>
+    private static string NormalizePath(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return "/";
+        }
+
+        // Ardışık slash'ları tek slash'a indir: //api/ → /api/
+        var span = path.AsSpan();
+        var builder = new StringBuilder(span.Length);
+        var previousWasSlash = false;
+
+        foreach (var c in span)
+        {
+            if (c == '/')
+            {
+                if (!previousWasSlash)
+                {
+                    builder.Append(c);
+                }
+
+                previousWasSlash = true;
+            }
+            else
+            {
+                builder.Append(c);
+                previousWasSlash = false;
+            }
+        }
+
+        return builder.ToString();
     }
 }
