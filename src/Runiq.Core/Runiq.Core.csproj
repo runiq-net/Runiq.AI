@@ -7,7 +7,7 @@
 
     <IsPackable>true</IsPackable>
     <PackageId>Runiq.Core</PackageId>
-    <Version>0.1.0-preview.3</Version>
+    <Version>0.1.0-preview.4</Version>
     <Title>Runiq Core</Title>
     <Authors>Runiq</Authors>
     <Company>Runiq</Company>

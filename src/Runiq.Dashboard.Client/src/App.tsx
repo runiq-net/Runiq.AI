@@ -57,6 +57,7 @@ function App() {
       dashboardTitle={dashboardTitle}
       navigationRoutes={navigationRoutes}
       onNavigate={navigateTo}
+      onLogoClick={() => navigateTo('agents')}
     >
       {renderDashboardRoute(route)}
     </DashboardLayout>

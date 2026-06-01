@@ -35,6 +35,7 @@ type DashboardLayoutProps = {
   navigationRoutes: DashboardRouteDefinition[];
   children: ReactNode;
   onNavigate: (page: DashboardPage) => void;
+  onLogoClick: () => void;
 };
 
 export function DashboardLayout({
@@ -44,6 +45,7 @@ export function DashboardLayout({
   navigationRoutes,
   children,
   onNavigate,
+  onLogoClick,
 }: DashboardLayoutProps) {
   const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -54,6 +56,11 @@ export function DashboardLayout({
 
   const navigateTo = (page: DashboardPage) => {
     onNavigate(page);
+    closeMobileSidebar();
+  };
+
+  const handleLogoClick = () => {
+    onLogoClick();
     closeMobileSidebar();
   };
 
@@ -79,9 +86,13 @@ export function DashboardLayout({
             : 'w-[320px] max-w-[calc(100vw-48px)] lg:w-[270px]',
         ].join(' ')}
       >
-        <div
+        <button
+          type="button"
+          aria-label="Go to dashboard home"
+          title="Dashboard home"
+          onClick={handleLogoClick}
           className={[
-            'flex min-h-10 items-center gap-3',
+            'flex min-h-10 items-center gap-3 rounded-lg text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500',
             isSidebarCollapsed ? 'justify-center' : '',
           ].join(' ')}
         >
@@ -105,7 +116,7 @@ export function DashboardLayout({
               />
             </div>
           )}
-        </div>
+        </button>
 
         <div className={isSidebarCollapsed ? 'mt-9 lg:mt-10' : 'mt-9'}>
           <div
