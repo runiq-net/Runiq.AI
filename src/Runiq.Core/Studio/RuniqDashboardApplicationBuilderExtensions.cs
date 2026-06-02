@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using System.Security.Claims;
 using Runiq.Core.Agents;
 using Runiq.Core.ContextSpaces;
 using Runiq.Core.Dashboard;
@@ -40,8 +41,28 @@ public static class RuniqDashboardApplicationBuilderExtensions
         options.ValidateAuthentication();
 
         var basePath = NormalizePath(options.Path);
+        var authenticationOptions = options.AuthenticationOptions;
 
         app.UseRouting();
+
+        app.Use(async (context, next) =>
+        {
+            if (!context.Request.Path.StartsWithSegments(basePath))
+            {
+                await next();
+                return;
+            }
+
+            if (HasDashboardAccess(context.User, authenticationOptions))
+            {
+                await next();
+                return;
+            }
+
+            context.Response.StatusCode = IsAuthenticated(context.User)
+                ? StatusCodes.Status403Forbidden
+                : StatusCodes.Status401Unauthorized;
+        });
 
         app.UseEndpoints(endpoints =>
         {
@@ -151,6 +172,26 @@ public static class RuniqDashboardApplicationBuilderExtensions
         });
 
         return app;
+    }
+
+    private static bool HasDashboardAccess(
+        ClaimsPrincipal user,
+        RuniqDashboardAuthenticationOptions authenticationOptions)
+    {
+        return authenticationOptions.AccessMode switch
+        {
+            RuniqDashboardAccessMode.Anonymous => true,
+            RuniqDashboardAccessMode.AuthenticatedUser => IsAuthenticated(user),
+            RuniqDashboardAccessMode.Role =>
+                IsAuthenticated(user) &&
+                authenticationOptions.Roles.Any(user.IsInRole),
+            _ => false
+        };
+    }
+
+    private static bool IsAuthenticated(ClaimsPrincipal user)
+    {
+        return user.Identity?.IsAuthenticated == true;
     }
 
     /// <summary>
