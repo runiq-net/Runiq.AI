@@ -171,6 +171,7 @@ public sealed class RuniqDashboardPathTests
                         {
                             options.Path = dashboardPath;
                             options.Title = dashboardTitle;
+                            options.Authentication(auth => auth.AllowAnonymous());
                         });
                     });
             })

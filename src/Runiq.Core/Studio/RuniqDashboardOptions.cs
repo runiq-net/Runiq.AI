@@ -1,27 +1,45 @@
 namespace Runiq.Core.Dashboard;
 
 /// <summary>
-/// Runiq Dashboard uç noktasının host uygulama içinde nasıl yayınlanacağını belirleyen ayarlardır.
+/// Runiq Dashboard endpoint publishing options for the host application.
 /// </summary>
 public sealed class RuniqDashboardOptions
 {
+    private readonly RuniqDashboardAuthenticationOptions authentication = new();
+
     /// <summary>
-    /// Dashboard'un yayınlanacağı temel path değeridir.
-    /// Varsayılan değer "/runiq" olur.
+    /// Base path where the dashboard is published. Defaults to "/runiq".
     /// </summary>
     public string Path { get; set; } = "/runiq";
 
     /// <summary>
-    /// Dashboard uygulamasında gösterilecek başlık bilgisidir.
-    /// Varsayılan değer "Runiq Dashboard" olur.
+    /// Title displayed in the dashboard application. Defaults to "Runiq Dashboard".
     /// </summary>
     public string Title { get; set; } = "Runiq Dashboard";
 
     /// <summary>
-    /// Dashboard API ve metadata endpoint'lerini korumak için kullanılan API anahtarıdır.
-    /// Ayarlandığında, tüm <c>/api/</c> ve <c>/metadata/</c> istekleri
-    /// <c>Authorization: Bearer {key}</c> veya <c>X-Api-Key: {key}</c> header'ı gerektirir.
-    /// <c>null</c> olduğunda kimlik doğrulama uygulanmaz (varsayılan).
+    /// Dashboard authentication ayarlarını döndürür.
     /// </summary>
-    public string? ApiKey { get; set; }
+    public RuniqDashboardAuthenticationOptions AuthenticationOptions => authentication;
+
+    /// <summary>
+    /// Dashboard authentication kararını yapılandırır.
+    /// </summary>
+    /// <param name="configure">Authentication ayarlarını yapılandıran callback.</param>
+    public void Authentication(Action<RuniqDashboardAuthenticationOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+
+        configure(authentication);
+    }
+
+    internal void ValidateAuthentication()
+    {
+        if (authentication.AccessMode == RuniqDashboardAccessMode.NotConfigured)
+        {
+            throw new InvalidOperationException(
+                "Runiq Dashboard authentication must be explicitly configured when UseRuniqDashboard(...) is used. " +
+                "Configure it with auth.RequireRole(...), auth.RequireAuthenticatedUser(), or auth.AllowAnonymous().");
+        }
+    }
 }

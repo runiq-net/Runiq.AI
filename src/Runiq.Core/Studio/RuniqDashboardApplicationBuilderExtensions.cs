@@ -1,5 +1,8 @@
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using System.Security.Claims;
 using Runiq.Core.Agents;
 using Runiq.Core.ContextSpaces;
 using Runiq.Core.Dashboard;
@@ -37,16 +40,29 @@ public static class RuniqDashboardApplicationBuilderExtensions
 
         var options = new RuniqDashboardOptions();
         configure(options);
+        options.ValidateAuthentication();
 
         var basePath = NormalizePath(options.Path);
-
-        if (!string.IsNullOrWhiteSpace(options.ApiKey))
-        {
-            app.Use(next => new RuniqDashboardApiKeyMiddleware(
-                next, basePath, options.ApiKey).InvokeAsync);
-        }
+        var authenticationOptions = options.AuthenticationOptions;
 
         app.UseRouting();
+
+        app.Use(async (context, next) =>
+        {
+            if (!context.Request.Path.StartsWithSegments(basePath))
+            {
+                await next();
+                return;
+            }
+
+            if (HasDashboardAccess(context.User, authenticationOptions))
+            {
+                await next();
+                return;
+            }
+
+            await RejectDashboardAccessAsync(context);
+        });
 
         app.UseEndpoints(endpoints =>
         {
@@ -142,7 +158,12 @@ public static class RuniqDashboardApplicationBuilderExtensions
             var dashboardConfigJson = JsonSerializer.Serialize(new
             {
                 basePath,
-                title = options.Title
+                title = options.Title,
+                authentication = new
+                {
+                    accessMode = options.AuthenticationOptions.AccessMode.ToString(),
+                    logoutPath = "/logout"
+                }
             });
 
             html = html
@@ -156,6 +177,63 @@ public static class RuniqDashboardApplicationBuilderExtensions
         });
 
         return app;
+    }
+
+    private static bool HasDashboardAccess(
+        ClaimsPrincipal user,
+        RuniqDashboardAuthenticationOptions authenticationOptions)
+    {
+        return authenticationOptions.AccessMode switch
+        {
+            RuniqDashboardAccessMode.Anonymous => true,
+            RuniqDashboardAccessMode.AuthenticatedUser => IsAuthenticated(user),
+            RuniqDashboardAccessMode.Role =>
+                IsAuthenticated(user) &&
+                authenticationOptions.Roles.Any(user.IsInRole),
+            _ => false
+        };
+    }
+
+    private static bool IsAuthenticated(ClaimsPrincipal user)
+    {
+        return user.Identity?.IsAuthenticated == true;
+    }
+
+    private static async Task RejectDashboardAccessAsync(HttpContext context)
+    {
+        if (IsAuthenticated(context.User))
+        {
+            if (await HasDefaultAuthenticationSchemeAsync(context))
+            {
+                await context.ForbidAsync();
+                return;
+            }
+
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return;
+        }
+
+        if (await HasDefaultAuthenticationSchemeAsync(context))
+        {
+            await context.ChallengeAsync();
+            return;
+        }
+
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+    }
+
+    private static async Task<bool> HasDefaultAuthenticationSchemeAsync(HttpContext context)
+    {
+        var schemeProvider = context.RequestServices
+            .GetService<IAuthenticationSchemeProvider>();
+
+        if (schemeProvider is null)
+        {
+            return false;
+        }
+
+        return await schemeProvider.GetDefaultChallengeSchemeAsync() is not null ||
+            await schemeProvider.GetDefaultAuthenticateSchemeAsync() is not null;
     }
 
     /// <summary>
