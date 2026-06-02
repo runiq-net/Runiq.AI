@@ -35,7 +35,7 @@ public sealed class RuniqDashboardOptions
 
     internal void ValidateAuthentication()
     {
-        if (authentication.AccessMode == RuniqDashboardAuthenticationAccessMode.NotConfigured)
+        if (authentication.AccessMode == RuniqDashboardAccessMode.NotConfigured)
         {
             throw new InvalidOperationException(
                 "Runiq Dashboard authentication must be explicitly configured when UseRuniqDashboard(...) is used. " +

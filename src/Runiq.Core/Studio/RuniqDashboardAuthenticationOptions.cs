@@ -10,8 +10,8 @@ public sealed class RuniqDashboardAuthenticationOptions
     /// <summary>
     /// Dashboard authentication kararının türünü döndürür.
     /// </summary>
-    public RuniqDashboardAuthenticationAccessMode AccessMode { get; private set; } =
-        RuniqDashboardAuthenticationAccessMode.NotConfigured;
+    public RuniqDashboardAccessMode AccessMode { get; private set; } =
+        RuniqDashboardAccessMode.NotConfigured;
 
     /// <summary>
     /// Role tabanlı erişimde kabul edilen rolleri döndürür.
@@ -25,7 +25,7 @@ public sealed class RuniqDashboardAuthenticationOptions
     {
         EnsureNotConfigured();
 
-        AccessMode = RuniqDashboardAuthenticationAccessMode.Anonymous;
+        AccessMode = RuniqDashboardAccessMode.Anonymous;
     }
 
     /// <summary>
@@ -35,7 +35,7 @@ public sealed class RuniqDashboardAuthenticationOptions
     {
         EnsureNotConfigured();
 
-        AccessMode = RuniqDashboardAuthenticationAccessMode.AuthenticatedUser;
+        AccessMode = RuniqDashboardAccessMode.AuthenticatedUser;
     }
 
     /// <summary>
@@ -70,12 +70,12 @@ public sealed class RuniqDashboardAuthenticationOptions
         }
 
         this.roles.AddRange(normalizedRoles);
-        AccessMode = RuniqDashboardAuthenticationAccessMode.Role;
+        AccessMode = RuniqDashboardAccessMode.Role;
     }
 
     private void EnsureNotConfigured()
     {
-        if (AccessMode != RuniqDashboardAuthenticationAccessMode.NotConfigured)
+        if (AccessMode != RuniqDashboardAccessMode.NotConfigured)
         {
             throw new InvalidOperationException(
                 "Dashboard authentication has already been configured. " +

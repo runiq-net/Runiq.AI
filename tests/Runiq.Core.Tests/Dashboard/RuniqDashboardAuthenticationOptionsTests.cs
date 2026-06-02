@@ -36,7 +36,7 @@ public sealed class RuniqDashboardAuthenticationOptionsTests
         options.ValidateAuthentication();
 
         Assert.Equal(
-            RuniqDashboardAuthenticationAccessMode.Anonymous,
+            RuniqDashboardAccessMode.Anonymous,
             options.AuthenticationOptions.AccessMode);
     }
 
@@ -50,7 +50,7 @@ public sealed class RuniqDashboardAuthenticationOptionsTests
         options.ValidateAuthentication();
 
         Assert.Equal(
-            RuniqDashboardAuthenticationAccessMode.AuthenticatedUser,
+            RuniqDashboardAccessMode.AuthenticatedUser,
             options.AuthenticationOptions.AccessMode);
     }
 
@@ -64,7 +64,7 @@ public sealed class RuniqDashboardAuthenticationOptionsTests
         options.ValidateAuthentication();
 
         Assert.Equal(
-            RuniqDashboardAuthenticationAccessMode.Role,
+            RuniqDashboardAccessMode.Role,
             options.AuthenticationOptions.AccessMode);
         Assert.Equal(["Admin"], options.AuthenticationOptions.Roles);
     }
@@ -160,6 +160,20 @@ public sealed class RuniqDashboardAuthenticationOptionsTests
 
         var exception = Assert.Throws<InvalidOperationException>(
             auth.AllowAnonymous);
+
+        Assert.Contains("already been configured", exception.Message);
+    }
+
+    [Fact]
+    public void RequireRole_ShouldThrow_WhenRequireAuthenticatedUserWasAlreadyConfigured()
+    {
+        // Authenticated kullanıcı gereksiniminden sonra role gereksinimi seçilemeyeceğini doğrular.
+        var auth = new RuniqDashboardAuthenticationOptions();
+
+        auth.RequireAuthenticatedUser();
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            auth.RequireRole("Admin"));
 
         Assert.Contains("already been configured", exception.Message);
     }

@@ -3,7 +3,7 @@ namespace Runiq.Core.Dashboard;
 /// <summary>
 /// Runiq Dashboard authentication kararının türünü belirtir.
 /// </summary>
-public enum RuniqDashboardAuthenticationAccessMode
+public enum RuniqDashboardAccessMode
 {
     /// <summary>
     /// Authentication kararı henüz verilmedi.
