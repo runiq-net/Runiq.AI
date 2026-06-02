@@ -2,6 +2,8 @@
   <Folder Name="/samples/">
     <Project Path="samples/Runiq.ExpenseDesk/Runiq.ExpenseDesk.csproj" />
     <Project Path="samples/Runiq.ContextTravelGuide/Runiq.ContextTravelGuide.csproj" />
+    <Project Path="samples/Runiq.DashboardSecurityRole/Runiq.DashboardSecurityRole.csproj" />
+    <Project Path="samples/Runiq.DashboardSecurityUser/Runiq.DashboardSecurityUser.csproj" />
     <Project Path="samples/Runiq.WorkflowTravelPlanner/Runiq.WorkflowTravelPlanner.csproj" />
   </Folder>
   <Folder Name="/src/">

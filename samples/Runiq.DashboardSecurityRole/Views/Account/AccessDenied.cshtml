@@ -1,0 +1,24 @@
+@{
+    ViewData["Title"] = "Access denied";
+}
+
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>@ViewData["Title"]</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 520px; margin: 64px auto; padding: 0 16px; }
+        a, button { display: inline-block; margin-top: 16px; }
+        button { padding: 8px 14px; }
+    </style>
+</head>
+<body>
+    <h1>Access denied</h1>
+    <p>Your signed-in user does not have the Admin role required for this dashboard.</p>
+
+    <form asp-controller="Account" asp-action="Logout" method="get">
+        <button type="submit">Logout</button>
+    </form>
+</body>
+</html>

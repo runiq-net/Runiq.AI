@@ -3,6 +3,10 @@ declare global {
     __RUNIQ_DASHBOARD__?: {
       basePath?: string;
       title?: string;
+      authentication?: {
+        accessMode?: string;
+        logoutPath?: string;
+      };
     };
   }
 }
@@ -19,4 +23,14 @@ export function getDashboardBasePath(): string {
 
 export function getDashboardTitle(): string {
   return window.__RUNIQ_DASHBOARD__?.title ?? 'Runiq Studio';
+}
+
+export function shouldShowDashboardLogout(): boolean {
+  const accessMode = window.__RUNIQ_DASHBOARD__?.authentication?.accessMode;
+
+  return accessMode === 'AuthenticatedUser' || accessMode === 'Role';
+}
+
+export function getDashboardLogoutPath(): string {
+  return window.__RUNIQ_DASHBOARD__?.authentication?.logoutPath ?? '/logout';
 }

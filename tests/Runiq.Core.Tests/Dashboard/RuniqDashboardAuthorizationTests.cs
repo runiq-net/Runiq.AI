@@ -1,5 +1,6 @@
 using System.Net;
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
@@ -26,6 +27,23 @@ public sealed class RuniqDashboardAuthorizationTests
         var response = await server.GetTestClient().GetAsync(path);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Dashboard_ShouldChallengeHostAuthentication_WhenCookieAuthenticationIsConfigured()
+    {
+        // Cookie Authentication tanımlıysa anonymous dashboard isteğinin host login sayfasına yönlendirildiğini doğrular.
+        using var server = CreateServer(
+            auth => auth.RequireAuthenticatedUser(),
+            useCookieAuthentication: true);
+        var client = server.GetTestClient();
+
+        var response = await client.GetAsync("/dashboard");
+        var redirectLocation = response.Headers.Location?.ToString();
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Contains("/login", redirectLocation);
+        Assert.Contains("ReturnUrl", redirectLocation);
     }
 
     [Theory]
@@ -79,7 +97,8 @@ public sealed class RuniqDashboardAuthorizationTests
     }
 
     private static IHost CreateServer(
-        Action<Runiq.Core.Dashboard.RuniqDashboardAuthenticationOptions> configureAuthentication)
+        Action<Runiq.Core.Dashboard.RuniqDashboardAuthenticationOptions> configureAuthentication,
+        bool useCookieAuthentication = false)
     {
         var dashboardRoot = PrepareDashboardAssets();
 
@@ -93,9 +112,27 @@ public sealed class RuniqDashboardAuthorizationTests
                     {
                         services.AddRouting();
                         services.AddRuniqServer();
+
+                        if (useCookieAuthentication)
+                        {
+                            services
+                                .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+                                .AddCookie(options =>
+                                {
+                                    options.LoginPath = "/login";
+                                });
+
+                            services.AddAuthorization();
+                        }
                     })
                     .Configure(app =>
                     {
+                        if (useCookieAuthentication)
+                        {
+                            app.UseAuthentication();
+                            app.UseAuthorization();
+                        }
+
                         app.Use(async (context, next) =>
                         {
                             var userName = context.Request.Headers["X-Test-User"].ToString();

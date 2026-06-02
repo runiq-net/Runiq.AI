@@ -2,6 +2,7 @@ import {
   Bot,
   Database,
   GitBranch,
+  LogOut,
   PanelLeftOpen,
   Wrench,
   type LucideIcon,
@@ -10,6 +11,10 @@ import { useState, type ReactNode } from 'react';
 
 import { SidebarItem } from '../components/Sidebar/SidebarItem';
 import { ThemeToggle } from '../components/ThemeToggle/ThemeToggle';
+import {
+  getDashboardLogoutPath,
+  shouldShowDashboardLogout,
+} from '../dashboardConfig';
 import type { DashboardPage, DashboardRouteDefinition } from '../routes';
 
 const navigationIcons: Record<DashboardPage, LucideIcon> = {
@@ -49,6 +54,7 @@ export function DashboardLayout({
 }: DashboardLayoutProps) {
   const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const showLogout = shouldShowDashboardLogout();
 
   const closeMobileSidebar = () => {
     setMobileSidebarOpen(false);
@@ -237,7 +243,22 @@ export function DashboardLayout({
     </div>
   </div>
 
-  <ThemeToggle />
+  <div className="flex shrink-0 items-center gap-2">
+    {showLogout && (
+      <button
+        type="button"
+        aria-label="Log out"
+        title="Log out"
+        onClick={() => {
+          window.location.assign(getDashboardLogoutPath());
+        }}
+        className="inline-flex size-10 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-700 shadow-sm transition hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100 dark:hover:border-zinc-700 dark:hover:bg-zinc-900"
+      >
+        <LogOut size={18} strokeWidth={2} aria-hidden="true" />
+      </button>
+    )}
+    <ThemeToggle />
+  </div>
 </header>
 
         <div className="min-h-0 flex-1 overflow-auto p-6 lg:p-10">

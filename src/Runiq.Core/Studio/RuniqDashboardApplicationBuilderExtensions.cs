@@ -1,5 +1,7 @@
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using System.Security.Claims;
 using Runiq.Core.Agents;
 using Runiq.Core.ContextSpaces;
@@ -59,9 +61,7 @@ public static class RuniqDashboardApplicationBuilderExtensions
                 return;
             }
 
-            context.Response.StatusCode = IsAuthenticated(context.User)
-                ? StatusCodes.Status403Forbidden
-                : StatusCodes.Status401Unauthorized;
+            await RejectDashboardAccessAsync(context);
         });
 
         app.UseEndpoints(endpoints =>
@@ -158,7 +158,12 @@ public static class RuniqDashboardApplicationBuilderExtensions
             var dashboardConfigJson = JsonSerializer.Serialize(new
             {
                 basePath,
-                title = options.Title
+                title = options.Title,
+                authentication = new
+                {
+                    accessMode = options.AuthenticationOptions.AccessMode.ToString(),
+                    logoutPath = "/logout"
+                }
             });
 
             html = html
@@ -192,6 +197,43 @@ public static class RuniqDashboardApplicationBuilderExtensions
     private static bool IsAuthenticated(ClaimsPrincipal user)
     {
         return user.Identity?.IsAuthenticated == true;
+    }
+
+    private static async Task RejectDashboardAccessAsync(HttpContext context)
+    {
+        if (IsAuthenticated(context.User))
+        {
+            if (await HasDefaultAuthenticationSchemeAsync(context))
+            {
+                await context.ForbidAsync();
+                return;
+            }
+
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return;
+        }
+
+        if (await HasDefaultAuthenticationSchemeAsync(context))
+        {
+            await context.ChallengeAsync();
+            return;
+        }
+
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+    }
+
+    private static async Task<bool> HasDefaultAuthenticationSchemeAsync(HttpContext context)
+    {
+        var schemeProvider = context.RequestServices
+            .GetService<IAuthenticationSchemeProvider>();
+
+        if (schemeProvider is null)
+        {
+            return false;
+        }
+
+        return await schemeProvider.GetDefaultChallengeSchemeAsync() is not null ||
+            await schemeProvider.GetDefaultAuthenticateSchemeAsync() is not null;
     }
 
     /// <summary>
