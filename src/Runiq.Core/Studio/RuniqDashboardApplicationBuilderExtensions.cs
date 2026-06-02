@@ -37,14 +37,9 @@ public static class RuniqDashboardApplicationBuilderExtensions
 
         var options = new RuniqDashboardOptions();
         configure(options);
+        options.ValidateAuthentication();
 
         var basePath = NormalizePath(options.Path);
-
-        if (!string.IsNullOrWhiteSpace(options.ApiKey))
-        {
-            app.Use(next => new RuniqDashboardApiKeyMiddleware(
-                next, basePath, options.ApiKey).InvokeAsync);
-        }
 
         app.UseRouting();
 

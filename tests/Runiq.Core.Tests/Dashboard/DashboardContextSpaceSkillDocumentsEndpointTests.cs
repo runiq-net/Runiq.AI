@@ -132,6 +132,7 @@ public sealed class DashboardContextSpaceSkillDocumentsEndpointTests
                         {
                             options.Path = "/dashboard";
                             options.Title = "Test Dashboard";
+                            options.Authentication(auth => auth.AllowAnonymous());
                         });
                     });
             })

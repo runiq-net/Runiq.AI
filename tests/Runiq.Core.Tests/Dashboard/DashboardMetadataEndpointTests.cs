@@ -228,6 +228,7 @@ public sealed class DashboardMetadataEndpointTests
                         {
                             options.Path = "/dashboard";
                             options.Title = "Test Dashboard";
+                            options.Authentication(auth => auth.AllowAnonymous());
                         });
                     });
             })

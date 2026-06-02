@@ -94,5 +94,27 @@ public sealed class RuniqServerServiceCollectionExtensionsTests
         Assert.Contains("missing-context", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void AddRuniqServer_ShouldNotValidateDashboardAuthentication_WhenDashboardIsNotUsed()
+    {
+        // Sadece agent kaydı yapılan uygulamada Dashboard auth validation'ın devreye girmediğini doğrular.
+        var services = new ServiceCollection();
+
+        services.AddRuniqServer(options =>
+        {
+            options.AddAgent(new Agent(
+                id: "travel-agent",
+                name: "Travel Agent",
+                instructions: "Plan short travel routes.",
+                model: "openai/gpt-5"));
+        });
+
+        using var provider = services.BuildServiceProvider();
+
+        var agent = Assert.Single(provider.GetServices<Agent>());
+
+        Assert.Equal("travel-agent", agent.Id);
+    }
+
 
 }
