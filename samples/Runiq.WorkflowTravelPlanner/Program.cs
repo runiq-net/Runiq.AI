@@ -32,6 +32,11 @@ app.UseRuniqDashboard(options =>
 {
     options.Path = "/dashboard";
     options.Title = "Runiq Flow Travel Planner";
+    options.Authentication(auth =>
+    {
+        // Demo/sample only. Do not use AllowAnonymous in production.
+        auth.AllowAnonymous();
+    });
 });
 
 app.Run();
