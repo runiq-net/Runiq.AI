@@ -60,6 +60,11 @@ app.UseRuniqDashboard(options =>
 {
     options.Path = "/dashboard";
     options.Title = "Runiq Dashboard";
+    options.Authentication(auth =>
+    {
+        // Demo or sample only. Do not use AllowAnonymous in production.
+        auth.AllowAnonymous();
+    });
 });
 ```
 
