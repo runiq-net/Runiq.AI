@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using System.Reflection;
+using Microsoft.Extensions.DependencyInjection;
 using Runiq.Mcp.Options;
 
 namespace Runiq.Mcp.DependencyInjection;
@@ -18,13 +19,23 @@ public static class RuniqMcpServiceCollectionExtensions
             services.Configure<RuniqMcpOptions>(_ => { });
         }
 
-        services
+        var serverBuilder = services
             .AddMcpServer()
             .WithHttpTransport(options =>
             {
                 options.Stateless = true;
-            })
-            .WithToolsFromAssembly();
+            });
+
+        var entryAssembly = Assembly.GetEntryAssembly();
+
+        if (entryAssembly is not null)
+        {
+            serverBuilder.WithToolsFromAssembly(entryAssembly);
+        }
+        else
+        {
+            serverBuilder.WithToolsFromAssembly();
+        }
 
         return services;
     }

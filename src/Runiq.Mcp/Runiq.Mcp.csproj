@@ -14,4 +14,8 @@
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="*" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Tools\" />
+  </ItemGroup>
+
 </Project>

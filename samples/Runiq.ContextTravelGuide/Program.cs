@@ -1,6 +1,6 @@
 using Runiq.ContextTravelGuide.Agents;
 using Runiq.ContextTravelGuide.Context;
-using Runiq.ContextTravelGuide.McpTools;
+using Runiq.ContextTravelGuide.Services;
 using Runiq.ContextTravelGuide.Tools;
 using Runiq.Core;
 using Runiq.Mcp.DependencyInjection;
@@ -16,6 +16,8 @@ if (string.IsNullOrWhiteSpace(openAiApiKey))
         "OpenAI API key is missing. Set OpenAI:ApiKey in appsettings.Development.json, user secrets, or environment variables.");
 }
 
+
+
 builder.Services.AddRuniqServer(options =>
 {
     options.AddTool<ServerTimeTool>();
@@ -25,9 +27,11 @@ builder.Services.AddRuniqServer(options =>
     options.AddAgent(PlainAgent.Create(openAiApiKey));
 });
 
-// MCP Service Feature
+
+builder.Services.AddScoped<ITravelSummaryService, TravelSummaryService>();
+
 builder.Services.AddRuniqMcp();
-builder.Services.AddMcpTool<HelloMcpTool>();
+
 
 var app = builder.Build();
 
