@@ -7,7 +7,7 @@
 
     <IsPackable>true</IsPackable>
     <PackageId>Runiq.Workflows</PackageId>
-    <Version>0.1.0-preview.4</Version>
+       <Version>0.1.0-preview.5</Version>
     <Title>Runiq Workflows</Title>
     <Authors>Runiq</Authors>
     <Company>Runiq</Company>
