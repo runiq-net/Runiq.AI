@@ -1,8 +1,8 @@
 ﻿using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
-using Runiq.Mcp.Options;
 
-namespace Runiq.Mcp.DependencyInjection;
+
+namespace Runiq.Mcp;
 
 public static class RuniqMcpServiceCollectionExtensions
 {

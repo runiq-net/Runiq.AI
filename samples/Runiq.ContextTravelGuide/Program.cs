@@ -3,8 +3,8 @@ using Runiq.ContextTravelGuide.Context;
 using Runiq.ContextTravelGuide.Services;
 using Runiq.ContextTravelGuide.Tools;
 using Runiq.Core;
-using Runiq.Mcp.DependencyInjection;
-using Runiq.Mcp.Routing;
+using Runiq.Mcp;
+
 
 var builder = WebApplication.CreateBuilder(args);
 

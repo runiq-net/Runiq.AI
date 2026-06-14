@@ -1,4 +1,4 @@
-﻿namespace Runiq.Mcp.Options;
+﻿namespace Runiq.Mcp;
 
 public sealed class RuniqMcpOptions
 {

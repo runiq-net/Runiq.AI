@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 
-namespace Runiq.Mcp.Routing;
+namespace Runiq.Mcp;
 
 public static class RuniqMcpEndpointRouteBuilderExtensions
 {

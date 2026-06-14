@@ -15,6 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Folder Include="Attributes\" />
     <Folder Include="Tools\" />
   </ItemGroup>
 
