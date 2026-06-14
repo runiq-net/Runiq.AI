@@ -23,7 +23,8 @@ public static class RuniqMcpServiceCollectionExtensions
             .WithHttpTransport(options =>
             {
                 options.Stateless = true;
-            });
+            })
+            .WithToolsFromAssembly();
 
         return services;
     }
