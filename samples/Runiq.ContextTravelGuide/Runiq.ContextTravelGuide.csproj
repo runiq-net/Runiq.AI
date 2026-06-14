@@ -13,6 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Runiq.Agent\Runiq.Agents.csproj" />
     <ProjectReference Include="..\..\src\Runiq.Core\Runiq.Core.csproj" />
+    <ProjectReference Include="..\..\src\Runiq.Mcp\Runiq.Mcp.csproj" />
   </ItemGroup>
 
   <ItemGroup>

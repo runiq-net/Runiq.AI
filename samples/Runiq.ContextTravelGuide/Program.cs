@@ -1,7 +1,10 @@
 using Runiq.ContextTravelGuide.Agents;
 using Runiq.ContextTravelGuide.Context;
+using Runiq.ContextTravelGuide.McpTools;
 using Runiq.ContextTravelGuide.Tools;
 using Runiq.Core;
+using Runiq.Mcp.DependencyInjection;
+using Runiq.Mcp.Routing;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,6 +25,10 @@ builder.Services.AddRuniqServer(options =>
     options.AddAgent(PlainAgent.Create(openAiApiKey));
 });
 
+// MCP Service Feature
+builder.Services.AddRuniqMcp();
+builder.Services.AddMcpTool<HelloMcpTool>();
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -41,5 +48,7 @@ app.UseRuniqDashboard(options =>
         auth.AllowAnonymous();
     });
 });
+
+app.MapRuniqMcp();
 
 app.Run();
