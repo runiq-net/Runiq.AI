@@ -20,6 +20,11 @@ By default, the MCP endpoint is available at:
 /mcp
 ```
 
+A custom endpoint path can be used when needed:
+```csharp
+    app.MapRuniqMcp("/ai/mcp");
+```
+
 ## Creating an MCP tool
 
 MCP tools can use regular ASP.NET Core dependency injection services.
