@@ -1,10 +1,26 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+
+    <IsPackable>true</IsPackable>
+    <PackageId>Runiq.Mcp</PackageId>
+    <Version>0.1.0-preview.5</Version>
+    <Title>Runiq Agents</Title>
+    <Description>Expose ASP.NET Core application services as Model Context Protocol tools.</Description>
+    <PackageTags>runiq;mcp;model-context-protocol;aspnetcore;ai-agents</PackageTags>
+    <RepositoryUrl>https://github.com/runiq-net/Runiq.net.git</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
+
+
+  <ItemGroup>
+    <None Update="README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\assets\nuget\runiq-icon.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
