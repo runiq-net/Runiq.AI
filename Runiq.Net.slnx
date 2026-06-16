@@ -10,6 +10,7 @@
     <Project Path="src/Runiq.Agent/Runiq.Agents.csproj" />
     <Project Path="src/Runiq.ContextSpaces/Runiq.ContextSpaces.csproj" />
     <Project Path="src/Runiq.Core/Runiq.Core.csproj" />
+    <Project Path="src/Runiq.Mcp/Runiq.Mcp.csproj" />
     <Project Path="src/Runiq.Workflows/Runiq.Workflows.csproj" />
   </Folder>
   <Folder Name="/tests/">

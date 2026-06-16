@@ -1,7 +1,10 @@
 using Runiq.ContextTravelGuide.Agents;
 using Runiq.ContextTravelGuide.Context;
+using Runiq.ContextTravelGuide.Services;
 using Runiq.ContextTravelGuide.Tools;
 using Runiq.Core;
+using Runiq.Mcp;
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,6 +16,8 @@ if (string.IsNullOrWhiteSpace(openAiApiKey))
         "OpenAI API key is missing. Set OpenAI:ApiKey in appsettings.Development.json, user secrets, or environment variables.");
 }
 
+
+
 builder.Services.AddRuniqServer(options =>
 {
     options.AddTool<ServerTimeTool>();
@@ -21,6 +26,12 @@ builder.Services.AddRuniqServer(options =>
     options.AddAgent(TravelGuideAgent.Create(openAiApiKey));
     options.AddAgent(PlainAgent.Create(openAiApiKey));
 });
+
+
+builder.Services.AddScoped<ITravelSummaryService, TravelSummaryService>();
+
+builder.Services.AddRuniqMcp();
+
 
 var app = builder.Build();
 
@@ -41,5 +52,7 @@ app.UseRuniqDashboard(options =>
         auth.AllowAnonymous();
     });
 });
+
+app.MapRuniqMcp();
 
 app.Run();
