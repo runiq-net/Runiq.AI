@@ -2,14 +2,15 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
-using System.Security.Claims;
 using Runiq.Core.Agents;
 using Runiq.Core.ContextSpaces;
 using Runiq.Core.Dashboard;
+using Runiq.Core.Mcp;
 using Runiq.Core.Metadata;
 using Runiq.Core.Studio;
 using Runiq.Core.Tools;
 using Runiq.Core.Workflows;
+using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 
@@ -71,6 +72,7 @@ public static class RuniqDashboardApplicationBuilderExtensions
             endpoints.MapRuniqContextSpaceApi($"{basePath}/api");
             endpoints.MapRuniqToolApi($"{basePath}/api");
             endpoints.MapRuniqWorkflowApi($"{basePath}/api");
+            endpoints.MapRuniqMcpApi($"{basePath}/api");
         });
 
         app.Use(async (context, next) =>

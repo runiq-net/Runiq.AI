@@ -3,8 +3,9 @@ import { AgentsPage } from './pages/AgentsPage';
 import { ToolsPage } from './pages/ToolsPage';
 import { ContextSpacesPage } from './pages/ContextSpacesPage';
 import { WorkflowsPage } from './pages/WorkflowsPage';
+import { McpPage } from './pages/McpPage';
 
-export type DashboardPage = 'agents' | 'tools' | 'workflows' | 'context-spaces';
+export type DashboardPage = 'agents' | 'tools' | 'workflows' | 'context-spaces' | 'mcp';
 
 export type DashboardRoute =
   | { page: 'agents' }
@@ -14,7 +15,9 @@ export type DashboardRoute =
   | { page: 'agent-chat'; agentId: string }
   | { page: 'tool-detail'; toolName: string }
   | { page: 'context-spaces' }
-  | { page: 'context-space-detail'; contextSpaceId: string };
+  | { page: 'context-space-detail'; contextSpaceId: string }
+  | { page: 'mcp' }
+  | { page: 'mcp-tool-detail'; toolName: string };
 
 export type DashboardRouteDefinition = {
   page: DashboardPage;
@@ -41,6 +44,14 @@ export const dashboardRoutes: DashboardRouteDefinition[] = [
     navLabel: 'Tools',
     showInNavigation: true,
     component: ToolsPage,
+  },
+  {
+    page: 'mcp',
+    path: 'mcp',
+    title: 'MCP Server',
+    navLabel: 'MCP Server',
+    showInNavigation: true,
+    component: McpPage,
   },
   {
     page: 'workflows',
@@ -138,6 +149,17 @@ export function resolveDashboardRouteFromUrl(
     return { page: 'tools' };
   }
 
+  if (firstSegment === 'mcp' && segments.length === 2) {
+    return {
+      page: 'mcp-tool-detail',
+      toolName: decodeURIComponent(segments[1]),
+    };
+  }
+
+  if (firstSegment === 'mcp') {
+    return { page: 'mcp' };
+  }
+
   if (firstSegment === 'workflows') {
     if (segments[1]) {
       return {
@@ -159,8 +181,6 @@ export function resolveDashboardRouteFromUrl(
 
     return { page: 'context-spaces' };
   }
-
-
 
   return { page: defaultDashboardPage };
 }
