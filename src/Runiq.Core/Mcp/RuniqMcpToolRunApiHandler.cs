@@ -67,7 +67,19 @@ public sealed class RuniqMcpToolRunApiHandler
         {
             return Results.Ok(CreateFailureResponse(exception.InnerException ?? exception));
         }
-        catch (Exception exception)
+        catch (ArgumentException exception)
+        {
+            return Results.Ok(CreateFailureResponse(exception));
+        }
+        catch (InvalidOperationException exception)
+        {
+            return Results.Ok(CreateFailureResponse(exception));
+        }
+        catch (NotSupportedException exception)
+        {
+            return Results.Ok(CreateFailureResponse(exception));
+        }
+        catch (JsonException exception)
         {
             return Results.Ok(CreateFailureResponse(exception));
         }
