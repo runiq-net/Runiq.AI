@@ -9,6 +9,7 @@ using Runiq.Core.Agents;
 using Runiq.Core.Configuration;
 using Runiq.Core.ContextSpaces;
 using Runiq.Core.Metadata;
+using Runiq.Core.Mcp;
 using Runiq.Core.Tools;
 using Runiq.Core.Validation;
 
@@ -37,6 +38,7 @@ public static class RuniqServerServiceCollectionExtensions
 
         // Tools
         services.AddScoped<ToolRunApiHandler>();
+        services.AddScoped<RuniqMcpToolRunApiHandler>();
         services.AddScoped<AgentExecutionRuntime>();
         services.AddScoped<AgentChatApiHandler>();
 

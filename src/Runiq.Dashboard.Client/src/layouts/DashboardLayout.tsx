@@ -1,5 +1,6 @@
 import {
   Bot,
+  Cable,
   Database,
   GitBranch,
   LogOut,
@@ -20,6 +21,7 @@ import type { DashboardPage, DashboardRouteDefinition } from '../routes';
 const navigationIcons: Record<DashboardPage, LucideIcon> = {
   agents: Bot,
   tools: Wrench,
+  mcp: Cable,
   workflows: GitBranch,
   'context-spaces': Database,
 };
@@ -34,6 +36,7 @@ export type DashboardBreadcrumb = {
 
 type DashboardLayoutProps = {
   title: string;
+  subtitle?: string;
   breadcrumbs?: DashboardBreadcrumb[];
   activePage: DashboardPage;
   dashboardTitle: string;
@@ -45,6 +48,7 @@ type DashboardLayoutProps = {
 
 export function DashboardLayout({
   title,
+  subtitle,
   breadcrumbs,
   activePage,
   navigationRoutes,
@@ -196,12 +200,12 @@ export function DashboardLayout({
         {title}
       </h1>
 
-      <nav
-        aria-label="Breadcrumb"
-        className="mt-1 flex h-5 min-w-0 items-center gap-1 text-sm text-zinc-500 dark:text-zinc-500"
-      >
-        {breadcrumbs && breadcrumbs.length > 0 ? (
-          breadcrumbs.map((breadcrumb, index) => {
+      {breadcrumbs && breadcrumbs.length > 0 ? (
+        <nav
+          aria-label="Breadcrumb"
+          className="mt-1 flex h-5 min-w-0 items-center gap-1 text-sm text-zinc-500 dark:text-zinc-500"
+        >
+          {breadcrumbs.map((breadcrumb, index) => {
             const isLast = index === breadcrumbs.length - 1;
 
             return (
@@ -235,11 +239,15 @@ export function DashboardLayout({
                 )}
               </span>
             );
-          })
-        ) : (
-          <span aria-hidden="true">&nbsp;</span>
-        )}
-      </nav>
+          })}
+        </nav>
+      ) : subtitle ? (
+        <p className="m-0 mt-1 truncate text-sm text-zinc-500 dark:text-zinc-500">
+          {subtitle}
+        </p>
+      ) : (
+        <div className="mt-1 h-5" aria-hidden="true" />
+      )}
     </div>
   </div>
 

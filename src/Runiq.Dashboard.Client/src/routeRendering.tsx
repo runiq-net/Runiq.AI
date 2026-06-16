@@ -3,6 +3,8 @@ import { AgentChatPage } from './pages/AgentChatPage';
 import { ContextSpaceDetailPage } from './pages/ContextSpaceDetailPage';
 import { ToolDetailPage } from './pages/ToolDetailPage';
 import { WorkflowDetailPage } from './pages/WorkflowDetailPage';
+import { McpPage } from './pages/McpPage';
+import { McpToolDetailPage } from './pages/McpToolDetailPage';
 
 import {
   getDashboardRouteByPage,
@@ -17,6 +19,14 @@ export function renderDashboardRoute(route: DashboardRoute) {
 
   if (route.page === 'tool-detail') {
     return <ToolDetailPage toolName={route.toolName} />;
+  }
+
+  if (route.page === 'mcp') {
+    return <McpPage />;
+  }
+
+  if (route.page === 'mcp-tool-detail') {
+    return <McpToolDetailPage toolName={route.toolName} />;
   }
 
   if (route.page === 'context-space-detail') {
@@ -41,6 +51,10 @@ export function getActivePage(route: DashboardRoute): DashboardPage {
     return 'tools';
   }
 
+  if (route.page === 'mcp' || route.page === 'mcp-tool-detail') {
+    return 'mcp';
+  }
+
   if (route.page === 'context-space-detail') {
     return 'context-spaces';
   }
@@ -61,6 +75,14 @@ export function getRouteTitle(route: DashboardRoute): string {
     return 'Tool Playground';
   }
 
+  if (route.page === 'mcp') {
+    return 'MCP Server';
+  }
+
+  if (route.page === 'mcp-tool-detail') {
+    return 'MCP Tool';
+  }
+
   if (route.page === 'context-space-detail') {
     return 'Context Space';
   }
@@ -70,6 +92,14 @@ export function getRouteTitle(route: DashboardRoute): string {
   }
 
   return getDashboardRouteByPage(route.page).title;
+}
+
+export function getRouteSubtitle(route: DashboardRoute): string | undefined {
+  if (route.page === 'mcp') {
+    return 'Expose selected ASP.NET Core services as MCP tools.';
+  }
+
+  return undefined;
 }
 
 export function getRouteBreadcrumbs(
@@ -93,6 +123,18 @@ export function getRouteBreadcrumbs(
       {
         label: 'Tools',
         onClick: () => navigateTo('tools'),
+      },
+      {
+        label: formatRouteDisplayName(route.toolName),
+      },
+    ];
+  }
+
+  if (route.page === 'mcp-tool-detail') {
+    return [
+      {
+        label: 'MCP Server',
+        onClick: () => navigateTo('mcp'),
       },
       {
         label: formatRouteDisplayName(route.toolName),

@@ -5,6 +5,7 @@ import { DashboardLayout } from './layouts/DashboardLayout';
 import {
   getActivePage,
   getRouteBreadcrumbs,
+  getRouteSubtitle,
   getRouteTitle,
   renderDashboardRoute,
 } from './routeRendering';
@@ -52,6 +53,7 @@ function App() {
   return (
     <DashboardLayout
       title={getRouteTitle(route)}
+      subtitle={getRouteSubtitle(route)}
       breadcrumbs={getRouteBreadcrumbs(route, navigateTo)}
       activePage={getActivePage(route)}
       dashboardTitle={dashboardTitle}
