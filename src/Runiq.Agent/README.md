@@ -2,9 +2,22 @@
 
 ![NuGet Version](https://img.shields.io/nuget/vpre/Runiq.Agents?label=nuget)
 
-Agent runtime, tool execution, provider integration, and streaming primitives for Runiq.Net.
+Code-first AI agents for .NET.
 
-`Runiq.Agents` contains the core code-first agent model used by the Runiq runtime. Use it to define agents, attach strongly typed tools, configure model providers, and consume structured execution results or streaming execution events.
+`Runiq.Agents` provides the core agent model for Runiq.Net. Use it to define agents in C#, attach strongly typed tools, configure model providers, and build agent-based applications with structured execution support.
+
+## Why Runiq.Agents?
+
+Runiq.Agents is designed for .NET developers who want to build AI agents without leaving the C# ecosystem.
+
+It focuses on:
+
+- Code-first agent definitions
+- Strongly typed tool execution
+- Provider-aware model configuration
+- Runtime-friendly agent composition
+- Streaming and structured execution support
+- Integration with the broader Runiq.Net platform
 
 ## Install
 
@@ -12,7 +25,7 @@ Agent runtime, tool execution, provider integration, and streaming primitives fo
 dotnet add package Runiq.Agents --prerelease
 ```
 
-## Basic Agent
+## Create an Agent
 
 ```csharp
 using Runiq.Agents;
@@ -25,7 +38,17 @@ var agent = new Agent(
     apiKey: configuration["OpenAI:ApiKey"]);
 ```
 
-## Tool Example
+An agent contains the basic runtime definition:
+
+- `id`: stable identifier used by the runtime
+- `name`: human-readable agent name
+- `instructions`: system-level behavior definition
+- `model`: target model identifier
+- `apiKey`: provider credential
+
+## Add a Tool
+
+Tools allow agents to call strongly typed C# code.
 
 ```csharp
 using Runiq.Agents.Tools;
@@ -37,7 +60,8 @@ public sealed class WeatherTool : IRuniqTool<WeatherInput, WeatherOutput>
         WeatherInput input,
         CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(new WeatherOutput(input.City, "Clear"));
+        return Task.FromResult(
+            new WeatherOutput(input.City, "Clear"));
     }
 }
 
@@ -46,7 +70,7 @@ public sealed record WeatherInput(string City);
 public sealed record WeatherOutput(string City, string Condition);
 ```
 
-Attach the tool during agent configuration:
+Attach the tool to the agent:
 
 ```csharp
 var agent = new Agent(
@@ -58,12 +82,60 @@ var agent = new Agent(
     .AddTool<WeatherTool>();
 ```
 
+## Tool Design
+
+A Runiq tool is a regular C# class that implements:
+
+```csharp
+IRuniqTool<TInput, TOutput>
+```
+
+This gives you:
+
+- Strongly typed input models
+- Strongly typed output models
+- Testable business logic
+- Clean separation between agent behavior and application code
+
+## Typical Use Cases
+
+Use `Runiq.Agents` when you want to build:
+
+- AI assistants for .NET applications
+- Tool-using agents
+- Domain-specific agents
+- Agent workflows
+- Internal automation agents
+- Dashboard-observable agent runtimes
+- MCP-compatible agent experiences
+
 ## Related Packages
 
-- `Runiq.Core` hosts agents and the embedded dashboard in ASP.NET Core.
-- `Runiq.ContextSpaces` adds context and source reading primitives.
-- `Runiq.Workflows` orchestrates agents in code-first workflows.
+Runiq.Net is modular. `Runiq.Agents` can be used together with other Runiq packages:
+
+| Package | Purpose |
+|---|---|
+| `Runiq.Core` | Hosts agents and the embedded dashboard in ASP.NET Core |
+| `Runiq.ContextSpaces` | Adds context and source-reading primitives |
+| `Runiq.Workflows` | Orchestrates agents in code-first workflows |
+| `Runiq.Mcp` | Exposes ASP.NET Core applications through MCP-compatible tools |
 
 ## Documentation
 
-Full documentation is available at [runiq.net/docs](https://runiq.net/docs).
+Full documentation is available at:
+
+https://runiq.net/docs
+
+## Status
+
+Runiq.Net is currently in preview.
+
+APIs may change before the first stable release.
+
+The main direction is clear:
+
+> Build code-first AI agents, tools, workflows, context sources, MCP endpoints, and dashboards for .NET applications.
+
+## License
+
+MIT
