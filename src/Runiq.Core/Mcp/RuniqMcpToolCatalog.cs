@@ -53,7 +53,7 @@ internal static class RuniqMcpToolCatalog
         return new RuniqMcpToolDescriptor(
             ToolType: type,
             Method: method,
-            Name: ToSnakeCase(method.Name),
+            Name: GetMcpToolName(method),
             Description: method.GetCustomAttribute<DescriptionAttribute>()?.Description,
             InputSchema: inputSchema,
             HasInput: HasInput(inputSchema));
@@ -167,6 +167,25 @@ internal static class RuniqMcpToolCatalog
         return method
             .GetCustomAttributes(inherit: false)
             .Any(attribute => attribute.GetType().FullName == McpToolAttributeName);
+    }
+
+    private static string GetMcpToolName(MethodInfo method)
+    {
+        var attribute = method
+            .GetCustomAttributes(inherit: false)
+            .FirstOrDefault(attribute => attribute.GetType().FullName == McpToolAttributeName);
+
+        var configuredName = attribute?
+            .GetType()
+            .GetProperty("Name")
+            ?.GetValue(attribute) as string;
+
+        if (!string.IsNullOrWhiteSpace(configuredName))
+        {
+            return configuredName.Trim();
+        }
+
+        return ToSnakeCase(method.Name);
     }
 
     private static string ToJsonPropertyName(string value)
