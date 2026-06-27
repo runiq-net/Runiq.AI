@@ -1,8 +1,11 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Runiq.Rag.Abstractions.Embeddings;
 using Runiq.Rag.Abstractions.Retrieval;
 using Runiq.Rag.Abstractions.Services;
 using Runiq.Rag.Abstractions.VectorStores;
+using Runiq.Rag.Configuration;
 using Runiq.Rag.DependencyInjection;
 using Runiq.Rag.Embeddings;
 using Runiq.Rag.Models.Documents;
@@ -150,7 +153,8 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection();
 
-        var exception = Assert.Throws<ArgumentNullException>(() => services.AddRuniqRag(null!));
+        var exception = Assert.Throws<ArgumentNullException>(() =>
+            services.AddRuniqRag((Action<RagBuilder>)null!));
 
         Assert.Equal("configure", exception.ParamName);
     }
@@ -223,6 +227,154 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         Assert.NotNull(serviceProvider.GetRequiredService<IRagService>());
     }
 
+    [Fact]
+    public void AddRuniqRagWithConfiguration_ShouldThrow_WhenServicesIsNull()
+    {
+        IServiceCollection services = null!;
+        var configuration = CreateConfiguration();
+
+        var exception = Assert.Throws<ArgumentNullException>(() => services.AddRuniqRag(configuration));
+
+        Assert.Equal("services", exception.ParamName);
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfiguration_ShouldThrow_WhenConfigurationIsNull()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ArgumentNullException>(() => services.AddRuniqRag((IConfiguration)null!));
+
+        Assert.Equal("configuration", exception.ParamName);
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigurationAndConfigure_ShouldThrow_WhenServicesIsNull()
+    {
+        IServiceCollection services = null!;
+        var configuration = CreateConfiguration();
+
+        var exception = Assert.Throws<ArgumentNullException>(() => services.AddRuniqRag(configuration, _ => { }));
+
+        Assert.Equal("services", exception.ParamName);
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigurationAndConfigure_ShouldThrow_WhenConfigurationIsNull()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ArgumentNullException>(() =>
+            services.AddRuniqRag(null!, _ => { }));
+
+        Assert.Equal("configuration", exception.ParamName);
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigurationAndConfigure_ShouldThrow_WhenConfigureIsNull()
+    {
+        var services = new ServiceCollection();
+        var configuration = CreateConfiguration();
+
+        var exception = Assert.Throws<ArgumentNullException>(() =>
+            services.AddRuniqRag(configuration, null!));
+
+        Assert.Equal("configure", exception.ParamName);
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfiguration_ShouldBindRagOptions()
+    {
+        var services = new ServiceCollection();
+        var configuration = CreateConfiguration(new Dictionary<string, string?>
+        {
+            ["Runiq:Rag:DefaultTopK"] = "8",
+            ["Runiq:Rag:ContextSeparator"] = "\n---\n",
+            ["Runiq:Rag:EnableEmptyContext"] = "false",
+        });
+
+        services.AddRuniqRag(configuration);
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var options = serviceProvider.GetRequiredService<IOptions<RagOptions>>().Value;
+
+        Assert.Equal(8, options.DefaultTopK);
+        Assert.Equal("\n---\n", options.ContextSeparator);
+        Assert.False(options.EnableEmptyContext);
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfiguration_ShouldRegisterRagService()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(CreateConfiguration());
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagService>());
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfiguration_ShouldRegisterRagRetriever()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(CreateConfiguration());
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagRetriever>());
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfiguration_ShouldRegisterRagEmbeddingProvider()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(CreateConfiguration());
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfiguration_ShouldRegisterRagVectorStore()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(CreateConfiguration());
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagVectorStore>());
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigurationAndConfigure_ShouldBindOptionsAndApplyProviderOverrides()
+    {
+        var services = new ServiceCollection();
+        var configuration = CreateConfiguration(new Dictionary<string, string?>
+        {
+            ["Runiq:Rag:DefaultTopK"] = "9",
+        });
+
+        services.AddRuniqRag(configuration, rag =>
+        {
+            rag.UseEmbedding<TestEmbeddingProvider>();
+            rag.UseVectorStore<TestVectorStore>();
+            rag.UseRetriever<TestRetriever>();
+        });
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.Equal(9, serviceProvider.GetRequiredService<IOptions<RagOptions>>().Value.DefaultTopK);
+        Assert.IsType<TestEmbeddingProvider>(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+        Assert.IsType<TestVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+        Assert.IsType<TestRetriever>(serviceProvider.GetRequiredService<IRagRetriever>());
+    }
+
     private sealed class TestEmbeddingProvider : IRagEmbeddingProvider
     {
         public Task<RagEmbedding> GenerateAsync(
@@ -260,5 +412,13 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         {
             return Task.FromResult<IReadOnlyList<RagSearchResult>>(Array.Empty<RagSearchResult>());
         }
+    }
+
+    private static IConfiguration CreateConfiguration(
+        IDictionary<string, string?>? values = null)
+    {
+        return new ConfigurationBuilder()
+            .AddInMemoryCollection(values ?? new Dictionary<string, string?>())
+            .Build();
     }
 }
