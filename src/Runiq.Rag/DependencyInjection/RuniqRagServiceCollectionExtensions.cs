@@ -4,6 +4,7 @@ using Runiq.Rag.Abstractions.Embeddings;
 using Runiq.Rag.Abstractions.Retrieval;
 using Runiq.Rag.Abstractions.Services;
 using Runiq.Rag.Abstractions.VectorStores;
+using Runiq.Rag.Configuration;
 using Runiq.Rag.Embeddings;
 using Runiq.Rag.Retrieval;
 using Runiq.Rag.Services;
@@ -29,6 +30,27 @@ public static class RuniqRagServiceCollectionExtensions
         services.TryAddSingleton<IRagVectorStore, NullVectorStore>();
         services.TryAddScoped<IRagRetriever, DefaultRetriever>();
         services.TryAddScoped<IRagService, RagService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds the default RAG services to the dependency injection container and applies fluent configuration.
+    /// </summary>
+    /// <param name="services">The service collection to add RAG services to.</param>
+    /// <param name="configure">The fluent configuration action to apply.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddRuniqRag(
+        this IServiceCollection services,
+        Action<RagBuilder> configure)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        services.AddRuniqRag();
+
+        var builder = new RagBuilder(services);
+        configure(builder);
 
         return services;
     }
