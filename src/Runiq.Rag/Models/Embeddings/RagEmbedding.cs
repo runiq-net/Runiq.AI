@@ -5,8 +5,6 @@ namespace Runiq.Rag.Models.Embeddings;
 /// </summary>
 public sealed class RagEmbedding
 {
-    private IReadOnlyList<float> values = Array.Empty<float>();
-
     /// <summary>
     /// Initializes a new instance of the <see cref="RagEmbedding"/> class.
     /// </summary>
@@ -28,11 +26,7 @@ public sealed class RagEmbedding
     /// <summary>
     /// Gets the embedding vector values.
     /// </summary>
-    public IReadOnlyList<float> Values
-    {
-        get => values;
-        init => values = value ?? throw new ArgumentNullException(nameof(value));
-    }
+    public IReadOnlyList<float> Values { get; init; } = Array.Empty<float>();
 
     /// <summary>
     /// Gets the number of dimensions in the embedding vector.
