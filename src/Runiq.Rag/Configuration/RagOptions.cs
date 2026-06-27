@@ -1,3 +1,5 @@
+using Runiq.Rag.Chunking;
+
 namespace Runiq.Rag.Configuration;
 
 /// <summary>
@@ -24,4 +26,9 @@ public sealed class RagOptions
     /// Gets or sets a value indicating whether empty context is enabled.
     /// </summary>
     public bool EnableEmptyContext { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets provider-independent document chunking options.
+    /// </summary>
+    public RagChunkingOptions Chunking { get; set; } = new();
 }

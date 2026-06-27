@@ -33,4 +33,28 @@ public sealed class RagOptionsTests
     {
         Assert.Equal("Runiq:Rag", RagOptions.SectionName);
     }
+
+    [Fact]
+    public void Chunking_ShouldNotBeNullByDefault()
+    {
+        var options = new RagOptions();
+
+        Assert.NotNull(options.Chunking);
+    }
+
+    [Fact]
+    public void ChunkingMaxChunkLength_ShouldDefaultToOneThousand()
+    {
+        var options = new RagOptions();
+
+        Assert.Equal(1000, options.Chunking.MaxChunkLength);
+    }
+
+    [Fact]
+    public void ChunkingChunkOverlap_ShouldDefaultToOneHundred()
+    {
+        var options = new RagOptions();
+
+        Assert.Equal(100, options.Chunking.ChunkOverlap);
+    }
 }
