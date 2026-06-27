@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Runiq.Rag.Abstractions.Chunking;
 using Runiq.Rag.Abstractions.Embeddings;
 using Runiq.Rag.Abstractions.Retrieval;
 using Runiq.Rag.Abstractions.VectorStores;
@@ -64,6 +65,20 @@ public sealed class RagBuilderTests
     }
 
     [Fact]
+    public void UseChunker_ShouldReplaceDefaultChunkerRegistration()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+        var builder = new RagBuilder(services);
+
+        builder.UseChunker<TestChunker>();
+
+        var descriptor = Assert.Single(services, service => service.ServiceType == typeof(IRagChunker));
+        Assert.Equal(typeof(TestChunker), descriptor.ImplementationType);
+        Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
+    }
+
+    [Fact]
     public void UseEmbedding_ShouldReturnSameBuilderInstance()
     {
         var builder = new RagBuilder(new ServiceCollection());
@@ -89,6 +104,16 @@ public sealed class RagBuilderTests
         var builder = new RagBuilder(new ServiceCollection());
 
         var returnedBuilder = builder.UseRetriever<TestRetriever>();
+
+        Assert.Same(builder, returnedBuilder);
+    }
+
+    [Fact]
+    public void UseChunker_ShouldReturnSameBuilderInstance()
+    {
+        var builder = new RagBuilder(new ServiceCollection());
+
+        var returnedBuilder = builder.UseChunker<TestChunker>();
 
         Assert.Same(builder, returnedBuilder);
     }
@@ -129,6 +154,16 @@ public sealed class RagBuilderTests
             CancellationToken cancellationToken = default)
         {
             return Task.FromResult<IReadOnlyList<RagSearchResult>>(Array.Empty<RagSearchResult>());
+        }
+    }
+
+    private sealed class TestChunker : IRagChunker
+    {
+        public Task<IReadOnlyList<RagChunk>> ChunkAsync(
+            RagDocument document,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<RagChunk>>(Array.Empty<RagChunk>());
         }
     }
 }

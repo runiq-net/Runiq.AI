@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Runiq.Rag.Abstractions.Chunking;
 using Runiq.Rag.Abstractions.Embeddings;
 using Runiq.Rag.Abstractions.Retrieval;
 using Runiq.Rag.Abstractions.VectorStores;
@@ -57,6 +58,19 @@ public sealed class RagBuilder
         where TRetriever : class, IRagRetriever
     {
         services.Replace(ServiceDescriptor.Scoped<IRagRetriever, TRetriever>());
+
+        return this;
+    }
+
+    /// <summary>
+    /// Replaces the configured chunker with the specified chunker type.
+    /// </summary>
+    /// <typeparam name="TChunker">The chunker implementation type.</typeparam>
+    /// <returns>The same builder instance so calls can be chained.</returns>
+    public RagBuilder UseChunker<TChunker>()
+        where TChunker : class, IRagChunker
+    {
+        services.Replace(ServiceDescriptor.Singleton<IRagChunker, TChunker>());
 
         return this;
     }

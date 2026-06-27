@@ -1,10 +1,12 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Runiq.Rag.Abstractions.Chunking;
 using Runiq.Rag.Abstractions.Embeddings;
 using Runiq.Rag.Abstractions.Retrieval;
 using Runiq.Rag.Abstractions.Services;
 using Runiq.Rag.Abstractions.VectorStores;
+using Runiq.Rag.Chunking;
 using Runiq.Rag.Configuration;
 using Runiq.Rag.DependencyInjection;
 using Runiq.Rag.Embeddings;
@@ -69,6 +71,16 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public void AddRuniqRag_ShouldRegisterRagChunker()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagChunker));
+    }
+
+    [Fact]
     public void AddRuniqRag_ShouldResolveRagService()
     {
         var services = new ServiceCollection();
@@ -88,6 +100,17 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         using var serviceProvider = services.BuildServiceProvider();
 
         Assert.NotNull(serviceProvider.GetRequiredService<IRagRetriever>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveRagChunker()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<DefaultRagChunker>(serviceProvider.GetRequiredService<IRagChunker>());
     }
 
     [Fact]
@@ -172,6 +195,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         Assert.IsType<NullVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
         Assert.NotNull(serviceProvider.GetRequiredService<IRagRetriever>());
         Assert.NotNull(serviceProvider.GetRequiredService<IRagService>());
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagChunker>());
     }
 
     [Fact]
@@ -211,6 +235,18 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public void AddRuniqRagWithConfigure_ShouldAllowCustomChunker()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(rag => rag.UseChunker<TestChunker>());
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<TestChunker>(serviceProvider.GetRequiredService<IRagChunker>());
+    }
+
+    [Fact]
     public void AddRuniqRagWithConfigure_ShouldResolveRagService_WhenCustomProvidersAreConfigured()
     {
         var services = new ServiceCollection();
@@ -220,11 +256,13 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
             rag.UseEmbedding<TestEmbeddingProvider>();
             rag.UseVectorStore<TestVectorStore>();
             rag.UseRetriever<TestRetriever>();
+            rag.UseChunker<TestChunker>();
         });
 
         using var serviceProvider = services.BuildServiceProvider();
 
         Assert.NotNull(serviceProvider.GetRequiredService<IRagService>());
+        Assert.IsType<TestChunker>(serviceProvider.GetRequiredService<IRagChunker>());
     }
 
     [Fact]
@@ -291,6 +329,8 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
             ["Runiq:Rag:DefaultTopK"] = "8",
             ["Runiq:Rag:ContextSeparator"] = "\n---\n",
             ["Runiq:Rag:EnableEmptyContext"] = "false",
+            ["Runiq:Rag:Chunking:MaxChunkLength"] = "12",
+            ["Runiq:Rag:Chunking:ChunkOverlap"] = "3",
         });
 
         services.AddRuniqRag(configuration);
@@ -301,6 +341,8 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         Assert.Equal(8, options.DefaultTopK);
         Assert.Equal("\n---\n", options.ContextSeparator);
         Assert.False(options.EnableEmptyContext);
+        Assert.Equal(12, options.Chunking.MaxChunkLength);
+        Assert.Equal(3, options.Chunking.ChunkOverlap);
     }
 
     [Fact]
@@ -352,6 +394,18 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public void AddRuniqRagWithConfiguration_ShouldRegisterRagChunker()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(CreateConfiguration());
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagChunker>());
+    }
+
+    [Fact]
     public void AddRuniqRagWithConfigurationAndConfigure_ShouldBindOptionsAndApplyProviderOverrides()
     {
         var services = new ServiceCollection();
@@ -365,6 +419,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
             rag.UseEmbedding<TestEmbeddingProvider>();
             rag.UseVectorStore<TestVectorStore>();
             rag.UseRetriever<TestRetriever>();
+            rag.UseChunker<TestChunker>();
         });
 
         using var serviceProvider = services.BuildServiceProvider();
@@ -373,6 +428,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         Assert.IsType<TestEmbeddingProvider>(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
         Assert.IsType<TestVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
         Assert.IsType<TestRetriever>(serviceProvider.GetRequiredService<IRagRetriever>());
+        Assert.IsType<TestChunker>(serviceProvider.GetRequiredService<IRagChunker>());
     }
 
     private sealed class TestEmbeddingProvider : IRagEmbeddingProvider
@@ -411,6 +467,16 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
             CancellationToken cancellationToken = default)
         {
             return Task.FromResult<IReadOnlyList<RagSearchResult>>(Array.Empty<RagSearchResult>());
+        }
+    }
+
+    private sealed class TestChunker : IRagChunker
+    {
+        public Task<IReadOnlyList<RagChunk>> ChunkAsync(
+            RagDocument document,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<RagChunk>>(Array.Empty<RagChunk>());
         }
     }
 

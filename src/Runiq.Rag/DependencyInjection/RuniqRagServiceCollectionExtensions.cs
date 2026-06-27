@@ -1,10 +1,12 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Runiq.Rag.Abstractions.Chunking;
 using Runiq.Rag.Abstractions.Embeddings;
 using Runiq.Rag.Abstractions.Retrieval;
 using Runiq.Rag.Abstractions.Services;
 using Runiq.Rag.Abstractions.VectorStores;
+using Runiq.Rag.Chunking;
 using Runiq.Rag.Configuration;
 using Runiq.Rag.Embeddings;
 using Runiq.Rag.Retrieval;
@@ -29,6 +31,7 @@ public static class RuniqRagServiceCollectionExtensions
 
         services.TryAddSingleton<IRagEmbeddingProvider, NullEmbeddingProvider>();
         services.TryAddSingleton<IRagVectorStore, NullVectorStore>();
+        services.TryAddSingleton<IRagChunker, DefaultRagChunker>();
         services.TryAddScoped<IRagRetriever, DefaultRetriever>();
         services.TryAddScoped<IRagService, RagService>();
         services.Configure<RagOptions>(_ => { });
