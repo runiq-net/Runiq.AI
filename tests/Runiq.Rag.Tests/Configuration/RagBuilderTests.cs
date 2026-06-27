@@ -1,0 +1,134 @@
+using Microsoft.Extensions.DependencyInjection;
+using Runiq.Rag.Abstractions.Embeddings;
+using Runiq.Rag.Abstractions.Retrieval;
+using Runiq.Rag.Abstractions.VectorStores;
+using Runiq.Rag.Configuration;
+using Runiq.Rag.DependencyInjection;
+using Runiq.Rag.Models.Documents;
+using Runiq.Rag.Models.Embeddings;
+using Runiq.Rag.Models.Queries;
+using Runiq.Rag.Models.Search;
+
+namespace Runiq.Rag.Tests.Configuration;
+
+public sealed class RagBuilderTests
+{
+    [Fact]
+    public void Constructor_ShouldThrow_WhenServicesIsNull()
+    {
+        var exception = Assert.Throws<ArgumentNullException>(() => new RagBuilder(null!));
+
+        Assert.Equal("services", exception.ParamName);
+    }
+
+    [Fact]
+    public void UseEmbedding_ShouldReplaceDefaultEmbeddingProviderRegistration()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+        var builder = new RagBuilder(services);
+
+        builder.UseEmbedding<TestEmbeddingProvider>();
+
+        var descriptor = Assert.Single(services, service => service.ServiceType == typeof(IRagEmbeddingProvider));
+        Assert.Equal(typeof(TestEmbeddingProvider), descriptor.ImplementationType);
+        Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
+    }
+
+    [Fact]
+    public void UseVectorStore_ShouldReplaceDefaultVectorStoreRegistration()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+        var builder = new RagBuilder(services);
+
+        builder.UseVectorStore<TestVectorStore>();
+
+        var descriptor = Assert.Single(services, service => service.ServiceType == typeof(IRagVectorStore));
+        Assert.Equal(typeof(TestVectorStore), descriptor.ImplementationType);
+        Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
+    }
+
+    [Fact]
+    public void UseRetriever_ShouldReplaceDefaultRetrieverRegistration()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+        var builder = new RagBuilder(services);
+
+        builder.UseRetriever<TestRetriever>();
+
+        var descriptor = Assert.Single(services, service => service.ServiceType == typeof(IRagRetriever));
+        Assert.Equal(typeof(TestRetriever), descriptor.ImplementationType);
+        Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
+    }
+
+    [Fact]
+    public void UseEmbedding_ShouldReturnSameBuilderInstance()
+    {
+        var builder = new RagBuilder(new ServiceCollection());
+
+        var returnedBuilder = builder.UseEmbedding<TestEmbeddingProvider>();
+
+        Assert.Same(builder, returnedBuilder);
+    }
+
+    [Fact]
+    public void UseVectorStore_ShouldReturnSameBuilderInstance()
+    {
+        var builder = new RagBuilder(new ServiceCollection());
+
+        var returnedBuilder = builder.UseVectorStore<TestVectorStore>();
+
+        Assert.Same(builder, returnedBuilder);
+    }
+
+    [Fact]
+    public void UseRetriever_ShouldReturnSameBuilderInstance()
+    {
+        var builder = new RagBuilder(new ServiceCollection());
+
+        var returnedBuilder = builder.UseRetriever<TestRetriever>();
+
+        Assert.Same(builder, returnedBuilder);
+    }
+
+    private sealed class TestEmbeddingProvider : IRagEmbeddingProvider
+    {
+        public Task<RagEmbedding> GenerateAsync(
+            string text,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new RagEmbedding());
+        }
+    }
+
+    private sealed class TestVectorStore : IRagVectorStore
+    {
+        public Task UpsertAsync(
+            RagChunk chunk,
+            RagEmbedding embedding,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<RagSearchResult>> SearchAsync(
+            RagQuery query,
+            RagEmbedding embedding,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<RagSearchResult>>(Array.Empty<RagSearchResult>());
+        }
+    }
+
+    private sealed class TestRetriever : IRagRetriever
+    {
+        public Task<IReadOnlyList<RagSearchResult>> RetrieveAsync(
+            RagQuery query,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<RagSearchResult>>(Array.Empty<RagSearchResult>());
+        }
+    }
+}
