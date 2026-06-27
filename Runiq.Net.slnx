@@ -12,6 +12,7 @@
     <Project Path="src/Runiq.ContextSpaces/Runiq.ContextSpaces.csproj" />
     <Project Path="src/Runiq.Core/Runiq.Core.csproj" />
     <Project Path="src/Runiq.Mcp/Runiq.Mcp.csproj" />
+    <Project Path="src/Runiq.Rag/Runiq.Rag.csproj" />
     <Project Path="src/Runiq.Workflows/Runiq.Workflows.csproj" />
   </Folder>
   <Folder Name="/tests/">
@@ -19,6 +20,7 @@
     <Project Path="tests/Runiq.Cli.Tests/Runiq.Cli.Tests.csproj" />
     <Project Path="tests/Runiq.ContextSpaces.Tests/Runiq.ContextSpaces.Tests.csproj" />
     <Project Path="tests/Runiq.Core.Tests/Runiq.Core.Tests.csproj" />
+    <Project Path="tests/Runiq.Rag.Tests/Runiq.Rag.Tests.csproj" />
     <Project Path="tests/Runiq.Workflows.Tests/Runiq.Workflows.Tests.csproj" />
   </Folder>
 </Solution>
