@@ -30,56 +30,59 @@ internal static class AgentInstructionsBuilder
             builder.AppendLine();
         }
 
-        builder.AppendLine("## Runiq Context Spaces");
-        builder.AppendLine();
-        builder.AppendLine("The following context spaces are attached to this agent run.");
-        builder.AppendLine("Use the provided skill instructions as operational guidance.");
-
-        if (runtimeContext.RetrievedSourceContext.Count > 0)
+        if (runtimeContext.ContextSpaces.Count > 0 || runtimeContext.Skills.Count > 0)
         {
-            builder.AppendLine("Relevant source excerpts are provided below. Use them as grounding context when they are relevant to the user request.");
-        }
-        else
-        {
-            builder.AppendLine("Sources are listed as available context only. Do not claim to have read source contents unless their contents are explicitly provided by a tool, message, or future context capability.");
-        }
+            builder.AppendLine("## Runiq Context Spaces");
+            builder.AppendLine();
+            builder.AppendLine("The following context spaces are attached to this agent run.");
+            builder.AppendLine("Use the provided skill instructions as operational guidance.");
 
-        builder.AppendLine();
-
-        foreach (var contextSpace in runtimeContext.ContextSpaces)
-        {
-            builder.AppendLine($"### Context Space: {contextSpace.Name}");
-            builder.AppendLine($"Id: {contextSpace.Id}");
-
-            if (!string.IsNullOrWhiteSpace(contextSpace.Description))
+            if (runtimeContext.RetrievedSourceContext.Count > 0)
             {
-                builder.AppendLine($"Description: {contextSpace.Description}");
+                builder.AppendLine("Relevant source excerpts are provided below. Use them as grounding context when they are relevant to the user request.");
             }
-
-            if (contextSpace.Sources.Count > 0)
+            else
             {
-                builder.AppendLine();
-                builder.AppendLine("Available sources:");
-
-                foreach (var source in contextSpace.Sources)
-                {
-                    builder.Append("- ");
-                    builder.Append(source.Name);
-                    builder.Append(" (");
-                    builder.Append(source.Kind);
-                    builder.Append(')');
-
-                    if (!string.IsNullOrWhiteSpace(source.Description))
-                    {
-                        builder.Append(": ");
-                        builder.Append(source.Description);
-                    }
-
-                    builder.AppendLine();
-                }
+                builder.AppendLine("Sources are listed as available context only. Do not claim to have read source contents unless their contents are explicitly provided by a tool, message, or future context capability.");
             }
 
             builder.AppendLine();
+
+            foreach (var contextSpace in runtimeContext.ContextSpaces)
+            {
+                builder.AppendLine($"### Context Space: {contextSpace.Name}");
+                builder.AppendLine($"Id: {contextSpace.Id}");
+
+                if (!string.IsNullOrWhiteSpace(contextSpace.Description))
+                {
+                    builder.AppendLine($"Description: {contextSpace.Description}");
+                }
+
+                if (contextSpace.Sources.Count > 0)
+                {
+                    builder.AppendLine();
+                    builder.AppendLine("Available sources:");
+
+                    foreach (var source in contextSpace.Sources)
+                    {
+                        builder.Append("- ");
+                        builder.Append(source.Name);
+                        builder.Append(" (");
+                        builder.Append(source.Kind);
+                        builder.Append(')');
+
+                        if (!string.IsNullOrWhiteSpace(source.Description))
+                        {
+                            builder.Append(": ");
+                            builder.Append(source.Description);
+                        }
+
+                        builder.AppendLine();
+                    }
+                }
+
+                builder.AppendLine();
+            }
         }
 
         if (runtimeContext.RetrievedSourceContext.Count > 0)
@@ -131,6 +134,25 @@ internal static class AgentInstructionsBuilder
                 builder.AppendLine($"Source: {skill.SourceId}/{skill.RelativePath}");
                 builder.AppendLine();
                 builder.AppendLine(skill.Instructions.Trim());
+                builder.AppendLine();
+            }
+        }
+
+        if (runtimeContext.RetrievedRagContext.Count > 0)
+        {
+            builder.AppendLine("## Runiq RAG Context");
+            builder.AppendLine();
+            builder.AppendLine("The following chunks were retrieved from the configured vector index for this user request.");
+            builder.AppendLine("Prefer these chunks over general knowledge when they directly answer the request.");
+            builder.AppendLine();
+
+            foreach (var result in runtimeContext.RetrievedRagContext)
+            {
+                builder.AppendLine($"### Chunk: {result.Chunk.Id}");
+                builder.AppendLine($"Document: {result.Chunk.DocumentId}");
+                builder.AppendLine($"Score: {result.Score:0.##}");
+                builder.AppendLine();
+                builder.AppendLine(result.Chunk.Content.Trim());
                 builder.AppendLine();
             }
         }

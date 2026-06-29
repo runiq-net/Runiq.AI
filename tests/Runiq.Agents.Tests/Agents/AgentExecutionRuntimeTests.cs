@@ -1,15 +1,179 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Runiq.Agents.Providers.OpenAI;
 using Runiq.Agents.Runtime;
 using Runiq.Agents.Tools;
 using Runiq.ContextSpaces.Models.Skills;
 using Runiq.ContextSpaces.Models.Sources;
 using Runiq.ContextSpaces.Services;
+using Runiq.Rag.Abstractions.Embeddings;
+using Runiq.Rag.Abstractions.Retrieval;
+using Runiq.Rag.Abstractions.VectorStores;
+using Runiq.Rag.Configuration;
+using Runiq.Rag.Models.Embeddings;
+using Runiq.Rag.Models.Queries;
+using Runiq.Rag.Models.Search;
+using Runiq.Rag.Models.VectorStores;
+using Runiq.Rag.Retrieval;
 
 namespace Runiq.Agents.Tests.Agents;
 
 public sealed class AgentExecutionRuntimeTests
 {
+    [Fact]
+    public void Constructor_ShouldExposeLegacyPublicOverload()
+    {
+        var constructor = typeof(AgentExecutionRuntime).GetConstructor([
+            typeof(IEnumerable<Agent>),
+            typeof(OpenAIResponsesClient),
+            typeof(OpenAICompatibleClient),
+            typeof(AgentToolInvoker),
+            typeof(IReadOnlyList<ContextSpace>),
+            typeof(IContextSpaceSkillDiscoveryService),
+            typeof(IContextSpaceSourceSearchService)
+        ]);
+
+        Assert.NotNull(constructor);
+    }
+
+    [Fact]
+    public void Constructor_ShouldExposeRagRetrieverOverload()
+    {
+        var constructor = typeof(AgentExecutionRuntime).GetConstructor([
+            typeof(IEnumerable<Agent>),
+            typeof(OpenAIResponsesClient),
+            typeof(OpenAICompatibleClient),
+            typeof(AgentToolInvoker),
+            typeof(IReadOnlyList<ContextSpace>),
+            typeof(IContextSpaceSkillDiscoveryService),
+            typeof(IContextSpaceSourceSearchService),
+            typeof(IRagRetriever)
+        ]);
+
+        Assert.NotNull(constructor);
+
+        var retriever = new TrackingRagRetriever([]);
+        var runtime = new AgentExecutionRuntime(
+            agents: [],
+            openAIResponsesClient: new OpenAIResponsesClient(new HttpClient()),
+            openAICompatibleClient: new OpenAICompatibleClient(new HttpClient()),
+            toolInvoker: new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()),
+            ragRetriever: retriever);
+
+        Assert.NotNull(runtime);
+    }
+
+    [Fact]
+    public async Task ExecuteStreamAsync_ShouldForwardAgentRagIndexNameToRetriever()
+    {
+        var agent = CreateRagAgent().UseRagIndex("documents");
+        var retriever = new TrackingRagRetriever([]);
+        var runtime = CreateRuntimeWithRag(agent, retriever);
+
+        await DrainAsync(runtime.ExecuteStreamAsync(agent.Id, "Find travel notes."));
+
+        Assert.NotNull(retriever.Query);
+        Assert.Equal("documents", retriever.Query.IndexName);
+    }
+
+    [Fact]
+    public async Task ExecuteStreamAsync_ShouldUseRuntimeIndexName_WhenRuntimeIndexOverridesAgentRagIndex()
+    {
+        var agent = CreateRagAgent().UseRagIndex("documents");
+        var retriever = new TrackingRagRetriever([]);
+        var runtime = CreateRuntimeWithRag(agent, retriever);
+
+        await DrainAsync(runtime.ExecuteStreamAsync(
+            agent.Id,
+            new AgentQuery("Find travel notes.") { IndexName = "archive" }));
+
+        Assert.Equal("archive", retriever.Query!.IndexName);
+    }
+
+    [Fact]
+    public async Task ExecuteStreamAsync_ShouldLetRetrievalDefaultIndexNameResolve_WhenAgentRagIndexNameIsMissing()
+    {
+        var agent = new Agent(
+            id: "travel-agent",
+            name: "Travel Agent",
+            instructions: "Plan short travel routes.",
+            model: "ollama/llama3",
+            rag: new());
+        var vectorStore = new SearchOnlyRagVectorStore([]);
+        var retriever = new DefaultRetriever(
+            new StaticEmbeddingProvider(new RagEmbedding([1.0f])),
+            vectorStore,
+            Options.Create(new RagOptions { DefaultIndexName = "default-index" }));
+        var runtime = CreateRuntimeWithRag(agent, retriever);
+
+        await DrainAsync(runtime.ExecuteStreamAsync(agent.Id, "Find travel notes."));
+
+        Assert.True(vectorStore.SearchAsyncWasCalled);
+        Assert.Equal("default-index", vectorStore.SearchQuery!.IndexName);
+    }
+
+    [Fact]
+    public async Task ExecuteStreamAsync_ShouldFailDeterministically_WhenRetrieverRejectsMissingIndexName()
+    {
+        var agent = new Agent(
+            id: "travel-agent",
+            name: "Travel Agent",
+            instructions: "Plan short travel routes.",
+            model: "ollama/llama3",
+            rag: new());
+        var retriever = new DefaultRetriever(
+            new StaticEmbeddingProvider(new RagEmbedding([1.0f])),
+            new SearchOnlyRagVectorStore([]));
+        var runtime = CreateRuntimeWithRag(
+            agent,
+            retriever);
+
+        var events = await DrainAsync(runtime.ExecuteStreamAsync(agent.Id, "Find travel notes."));
+
+        var failedEvent = Assert.Single(events, item => item.Kind == AgentExecutionEventKind.Failed);
+        Assert.Equal("RagRetrievalFailed", failedEvent.ErrorCode);
+        Assert.Contains("vector index name", failedEvent.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExecuteStreamAsync_ShouldUseRuntimeIndexNameWithRealRetriever_WhenRuntimeIndexOverridesAgentRagIndex()
+    {
+        var agent = CreateRagAgent().UseRagIndex("documents");
+        var vectorStore = new SearchOnlyRagVectorStore([]);
+        var retriever = new DefaultRetriever(
+            new StaticEmbeddingProvider(new RagEmbedding([1.0f])),
+            vectorStore,
+            Options.Create(new RagOptions { DefaultIndexName = "default-index" }));
+        var runtime = CreateRuntimeWithRag(agent, retriever);
+
+        await DrainAsync(runtime.ExecuteStreamAsync(
+            agent.Id,
+            new AgentQuery("Find travel notes.") { IndexName = "archive" }));
+
+        Assert.True(vectorStore.SearchAsyncWasCalled);
+        Assert.Equal("archive", vectorStore.SearchQuery!.IndexName);
+    }
+
+    [Fact]
+    public async Task ExecuteStreamAsync_ShouldSupportDifferentAgentRagIndexNames()
+    {
+        var documentsAgent = CreateRagAgent("documents-agent").UseRagIndex("documents");
+        var archiveAgent = CreateRagAgent("archive-agent").UseRagIndex("archive");
+        var retriever = new TrackingRagRetriever([]);
+        var runtime = new AgentExecutionRuntime(
+            agents: [documentsAgent, archiveAgent],
+            openAIResponsesClient: new OpenAIResponsesClient(new HttpClient()),
+            openAICompatibleClient: new OpenAICompatibleClient(new HttpClient()),
+            toolInvoker: new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()),
+            ragRetriever: retriever);
+
+        await DrainAsync(runtime.ExecuteStreamAsync(documentsAgent.Id, "Find documents."));
+        Assert.Equal("documents", retriever.Query!.IndexName);
+
+        await DrainAsync(runtime.ExecuteStreamAsync(archiveAgent.Id, "Find archive."));
+        Assert.Equal("archive", retriever.Query!.IndexName);
+    }
+
     // Verifies that discovered skills are emitted before context search events during streaming execution.
     [Fact]
     public async Task ExecuteStreamAsync_ShouldEmitSkillLoadedBeforeContextSearched_WhenSkillsExist()
@@ -267,6 +431,91 @@ public sealed class AgentExecutionRuntimeTests
         }
     }
 
+    private sealed class TrackingRagRetriever : IRagRetriever
+    {
+        private readonly IReadOnlyList<RagSearchResult> results;
+
+        public TrackingRagRetriever(IReadOnlyList<RagSearchResult> results)
+        {
+            this.results = results;
+        }
+
+        public RagQuery? Query { get; private set; }
+
+        public Task<IReadOnlyList<RagSearchResult>> RetrieveAsync(
+            RagQuery query,
+            CancellationToken cancellationToken = default)
+        {
+            Query = query;
+
+            return Task.FromResult(results);
+        }
+    }
+
+    private sealed class StaticEmbeddingProvider : IRagEmbeddingProvider
+    {
+        private readonly RagEmbedding embedding;
+
+        public StaticEmbeddingProvider(RagEmbedding embedding)
+        {
+            this.embedding = embedding;
+        }
+
+        public Task<RagEmbedding> GenerateAsync(
+            string text,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(embedding);
+        }
+    }
+
+    private sealed class SearchOnlyRagVectorStore : IRagVectorStore
+    {
+        private readonly IReadOnlyList<RagSearchResult> results;
+
+        public SearchOnlyRagVectorStore(IReadOnlyList<RagSearchResult> results)
+        {
+            this.results = results;
+        }
+
+        public bool SearchAsyncWasCalled { get; private set; }
+
+        public RagQuery? SearchQuery { get; private set; }
+
+        public Task<CreateVectorIndexResult> CreateIndexAsync(
+            CreateVectorIndexRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new CreateVectorIndexResult
+            {
+                IndexName = request.IndexName,
+                Succeeded = true,
+            });
+        }
+
+        public Task<UpsertVectorResult> UpsertAsync(
+            UpsertVectorRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new UpsertVectorResult
+            {
+                Succeeded = true,
+                UpsertedCount = request.Records?.Count ?? 0,
+            });
+        }
+
+        public Task<IReadOnlyList<RagSearchResult>> SearchAsync(
+            RagQuery query,
+            RagEmbedding embedding,
+            CancellationToken cancellationToken = default)
+        {
+            SearchAsyncWasCalled = true;
+            SearchQuery = query;
+
+            return Task.FromResult(results);
+        }
+    }
+
     private static AgentExecutionRuntime CreateRuntimeWithSourceResults(
         int searchedDocumentCount,
         IReadOnlyList<ContextSpaceSourceSearchResult> results)
@@ -296,6 +545,40 @@ public sealed class AgentExecutionRuntimeTests
             sourceSearchService: new StubSourceSearchService(
                 searchedDocumentCount,
                 results));
+    }
+
+    private static Agent CreateRagAgent(string id = "travel-agent")
+    {
+        return new Agent(
+            id: id,
+            name: "Travel Agent",
+            instructions: "Plan short travel routes.",
+            model: "ollama/llama3");
+    }
+
+    private static AgentExecutionRuntime CreateRuntimeWithRag(
+        Agent agent,
+        IRagRetriever retriever)
+    {
+        return new AgentExecutionRuntime(
+            agents: [agent],
+            openAIResponsesClient: new OpenAIResponsesClient(new HttpClient()),
+            openAICompatibleClient: new OpenAICompatibleClient(new HttpClient()),
+            toolInvoker: new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()),
+            ragRetriever: retriever);
+    }
+
+    private static async Task<List<AgentExecutionEvent>> DrainAsync(
+        IAsyncEnumerable<AgentExecutionEvent> events)
+    {
+        var collectedEvents = new List<AgentExecutionEvent>();
+
+        await foreach (var executionEvent in events)
+        {
+            collectedEvents.Add(executionEvent);
+        }
+
+        return collectedEvents;
     }
 
     private static ContextSpaceSourceSearchResult CreateSearchResult(

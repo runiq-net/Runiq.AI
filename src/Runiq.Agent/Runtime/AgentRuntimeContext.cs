@@ -1,5 +1,6 @@
-﻿using Runiq.ContextSpaces.Models.Skills;
+using Runiq.ContextSpaces.Models.Skills;
 using Runiq.ContextSpaces.Models.Sources;
+using Runiq.Rag.Models.Search;
 
 namespace Runiq.Agents.Runtime;
 
@@ -12,7 +13,8 @@ public sealed record AgentRuntimeContext(
     int AttachedSourceCount = 0,
     int SearchedDocumentCount = 0,
     int CandidateCount = 0,
-    IReadOnlyList<ContextSpaceSourceSearchResult>? SourceSearchResults = null)
+    IReadOnlyList<ContextSpaceSourceSearchResult>? SourceSearchResults = null,
+    IReadOnlyList<RagSearchResult>? RagSearchResults = null)
 {
     /// <summary>
     /// Çalıştırma sırasında kullanıcı girdisine göre bulunan source arama sonuçlarını döner.
@@ -21,12 +23,19 @@ public sealed record AgentRuntimeContext(
         SourceSearchResults ?? [];
 
     /// <summary>
+    /// Çalıştırma sırasında kullanıcı girdisine göre bulunan RAG arama sonuçlarını döner.
+    /// </summary>
+    public IReadOnlyList<RagSearchResult> RetrievedRagContext =>
+        RagSearchResults ?? [];
+
+    /// <summary>
     /// Çalıştırma için herhangi bir context bilgisinin çözülüp çözülmediğini belirtir.
     /// </summary>
     public bool HasContext =>
         ContextSpaces.Count > 0 ||
         Skills.Count > 0 ||
-        RetrievedSourceContext.Count > 0;
+        RetrievedSourceContext.Count > 0 ||
+        RetrievedRagContext.Count > 0;
 
     /// <summary>
     /// Model context'ine eklenmek üzere seçilen source excerpt sayısını döner.

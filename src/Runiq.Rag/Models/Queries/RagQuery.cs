@@ -22,6 +22,11 @@ public sealed class RagQuery
     public required string Text { get; init; }
 
     /// <summary>
+    /// Gets or initializes the vector index name to query.
+    /// </summary>
+    public string? IndexName { get; init; }
+
+    /// <summary>
     /// Gets or initializes the maximum number of matches to retrieve.
     /// </summary>
     public int TopK { get; init; } = 5;

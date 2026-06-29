@@ -1,6 +1,8 @@
+using Microsoft.Extensions.Options;
 using Runiq.Rag.Abstractions.Embeddings;
 using Runiq.Rag.Abstractions.Retrieval;
 using Runiq.Rag.Abstractions.VectorStores;
+using Runiq.Rag.Configuration;
 using Runiq.Rag.Models.Queries;
 using Runiq.Rag.Models.Search;
 
@@ -11,8 +13,11 @@ namespace Runiq.Rag.Retrieval;
 /// </summary>
 public sealed class DefaultRetriever : IRagRetriever
 {
+    private const string MissingIndexNameMessage = "RAG retrieval requires a non-empty vector index name. Set RagQuery.IndexName or RagOptions.DefaultIndexName.";
+
     private readonly IRagEmbeddingProvider embeddingProvider;
     private readonly IRagVectorStore vectorStore;
+    private readonly RagOptions options;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DefaultRetriever"/> class.
@@ -21,10 +26,12 @@ public sealed class DefaultRetriever : IRagRetriever
     /// <param name="vectorStore">The vector store used to search for matching chunks.</param>
     public DefaultRetriever(
         IRagEmbeddingProvider embeddingProvider,
-        IRagVectorStore vectorStore)
+        IRagVectorStore vectorStore,
+        IOptions<RagOptions>? options = null)
     {
         this.embeddingProvider = embeddingProvider ?? throw new ArgumentNullException(nameof(embeddingProvider));
         this.vectorStore = vectorStore ?? throw new ArgumentNullException(nameof(vectorStore));
+        this.options = options?.Value ?? new RagOptions();
     }
 
     /// <summary>
@@ -37,9 +44,30 @@ public sealed class DefaultRetriever : IRagRetriever
         RagQuery query,
         CancellationToken cancellationToken = default)
     {
-        var embedding = await embeddingProvider.GenerateAsync(query.Text, cancellationToken).ConfigureAwait(false);
-        var results = await vectorStore.SearchAsync(query, embedding, cancellationToken).ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(query);
 
-        return results;
+        var indexName = ResolveIndexName(query);
+        var embedding = await embeddingProvider.GenerateAsync(query.Text, cancellationToken).ConfigureAwait(false);
+        var resolvedQuery = new RagQuery
+        {
+            Text = query.Text,
+            IndexName = indexName,
+            TopK = query.TopK,
+            Metadata = query.Metadata,
+        };
+
+        return await vectorStore.SearchAsync(resolvedQuery, embedding, cancellationToken).ConfigureAwait(false);
+    }
+
+    private string ResolveIndexName(RagQuery query)
+    {
+        var indexName = query.IndexName ?? options.DefaultIndexName;
+
+        if (string.IsNullOrWhiteSpace(indexName))
+        {
+            throw new InvalidOperationException(MissingIndexNameMessage);
+        }
+
+        return indexName.Trim();
     }
 }

@@ -18,6 +18,11 @@ public sealed class RagOptions
     public int DefaultTopK { get; set; } = 5;
 
     /// <summary>
+    /// Gets or sets the default vector index name used by retrieval queries.
+    /// </summary>
+    public string? DefaultIndexName { get; set; }
+
+    /// <summary>
     /// Gets or sets the separator used when context content is assembled.
     /// </summary>
     public string ContextSeparator { get; set; } = Environment.NewLine;

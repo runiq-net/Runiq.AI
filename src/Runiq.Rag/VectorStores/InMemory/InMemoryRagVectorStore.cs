@@ -5,6 +5,7 @@ using Runiq.Rag.Models.Metadata;
 using Runiq.Rag.Models.Queries;
 using Runiq.Rag.Models.Search;
 using Runiq.Rag.Models.VectorStores;
+using Runiq.Rag.Retrieval;
 
 namespace Runiq.Rag.VectorStores.InMemory;
 
@@ -295,16 +296,14 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(embedding);
 
-        var indexName = query.Metadata.Values.TryGetValue("indexName", out var configuredIndexName)
-            ? configuredIndexName
-            : string.Empty;
-
         var result = await QueryAsync(
             new QueryVectorRequest
             {
-                IndexName = indexName,
+                IndexName = query.IndexName ?? string.Empty,
                 Values = embedding.Values,
                 TopK = query.TopK,
+                MetadataFilter = query.Metadata,
+                Metadata = query.Metadata,
                 IncludeMetadata = true,
             },
             cancellationToken).ConfigureAwait(false);
@@ -314,24 +313,7 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
             return Array.Empty<RagSearchResult>();
         }
 
-        return result.Records
-            .Select(record => new RagSearchResult
-            {
-                Chunk = new RagChunk
-                {
-                    Id = record.Id,
-                    DocumentId = GetMetadataValue(record.Metadata, "documentId"),
-                    Content = record.Content,
-                    Index = ParseInt32(GetMetadataValue(record.Metadata, "chunkIndex")),
-                    Metadata = new RagChunkMetadata
-                    {
-                        AdditionalMetadata = CopyMetadata(record.Metadata),
-                    },
-                },
-                Score = record.Score,
-                Metadata = CopyMetadata(record.Metadata),
-            })
-            .ToList();
+        return RagSearchResultMapper.Map(result.Records);
     }
 
     private static VectorRecord CopyRecord(VectorRecord record)
@@ -499,16 +481,6 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
         }
 
         return new RagMetadata(values);
-    }
-
-    private static int ParseInt32(string? value)
-    {
-        return int.TryParse(value, out var result) ? result : 0;
-    }
-
-    private static string GetMetadataValue(RagMetadata metadata, string key)
-    {
-        return metadata.Values.TryGetValue(key, out var value) ? value : string.Empty;
     }
 
     private sealed class InMemoryVectorIndex

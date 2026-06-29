@@ -25,6 +25,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Runiq.ContextSpaces\Runiq.ContextSpaces.csproj" />
+    <!-- Intentional: RAG integration uses only retrieval abstractions and query models from Runiq.Rag. -->
+    <ProjectReference Include="..\Runiq.Rag\Runiq.Rag.csproj" />
   </ItemGroup>
 
 </Project>

@@ -5,4 +5,5 @@
 /// </summary>
 public sealed record AgentChatRequest(
     string Message,
-    AgentChatResponseMode ResponseMode = AgentChatResponseMode.Stream);
+    AgentChatResponseMode ResponseMode = AgentChatResponseMode.Stream,
+    string? IndexName = null);
