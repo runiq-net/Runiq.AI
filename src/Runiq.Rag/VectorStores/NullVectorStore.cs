@@ -1,7 +1,6 @@
 using Runiq.Rag.Abstractions.VectorStores;
 using Runiq.Rag.Models.Documents;
 using Runiq.Rag.Models.Embeddings;
-using Runiq.Rag.Models.Metadata;
 using Runiq.Rag.Models.Queries;
 using Runiq.Rag.Models.Search;
 using Runiq.Rag.Models.VectorStores;
@@ -13,6 +12,8 @@ namespace Runiq.Rag.VectorStores;
 /// </summary>
 public sealed class NullVectorStore : IRagVectorStore
 {
+    private const string InvalidIndexNameReason = "Vector index name is required.";
+
     /// <summary>
     /// Initializes a new instance of the <see cref="NullVectorStore"/> class.
     /// </summary>
@@ -30,6 +31,16 @@ public sealed class NullVectorStore : IRagVectorStore
         CreateVectorIndexRequest request,
         CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(request.IndexName))
+        {
+            return Task.FromResult(new CreateVectorIndexResult
+            {
+                IndexName = request.IndexName ?? string.Empty,
+                Succeeded = false,
+                Reason = InvalidIndexNameReason,
+            });
+        }
+
         return Task.FromResult(new CreateVectorIndexResult
         {
             IndexName = request.IndexName,
@@ -47,6 +58,15 @@ public sealed class NullVectorStore : IRagVectorStore
         UpsertVectorRequest request,
         CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(request.IndexName))
+        {
+            return Task.FromResult(new UpsertVectorResult
+            {
+                Succeeded = false,
+                Reason = InvalidIndexNameReason,
+            });
+        }
+
         return Task.FromResult(new UpsertVectorResult
         {
             Succeeded = true,
@@ -65,6 +85,17 @@ public sealed class NullVectorStore : IRagVectorStore
         DeleteVectorRequest request,
         CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(request.IndexName))
+        {
+            return Task.FromResult(new DeleteVectorResult
+            {
+                Succeeded = false,
+                RequestedCount = request.VectorIds?.Count ?? 0,
+                NotFoundVectorIds = request.VectorIds?.ToList() ?? [],
+                Reason = InvalidIndexNameReason,
+            });
+        }
+
         return Task.FromResult(new DeleteVectorResult
         {
             Succeeded = true,
@@ -84,6 +115,15 @@ public sealed class NullVectorStore : IRagVectorStore
         QueryVectorRequest request,
         CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(request.IndexName))
+        {
+            return Task.FromResult(new QueryVectorResult
+            {
+                Succeeded = false,
+                Reason = InvalidIndexNameReason,
+            });
+        }
+
         return Task.FromResult(new QueryVectorResult
         {
             Succeeded = true,
@@ -105,22 +145,12 @@ public sealed class NullVectorStore : IRagVectorStore
         ArgumentNullException.ThrowIfNull(chunk);
         ArgumentNullException.ThrowIfNull(embedding);
 
-        return UpsertAsync(
-            new UpsertVectorRequest
-            {
-                IndexName = string.Empty,
-                Records =
-                [
-                    new VectorRecord
-                    {
-                        Id = chunk.Id,
-                        Values = embedding.Values,
-                        Content = chunk.Content,
-                        Metadata = BuildChunkMetadata(chunk),
-                    },
-                ],
-            },
-            cancellationToken);
+        return Task.FromResult(new UpsertVectorResult
+        {
+            Succeeded = true,
+            UpsertedCount = 1,
+            VectorIds = [chunk.Id],
+        });
     }
 
     /// <summary>
@@ -136,31 +166,5 @@ public sealed class NullVectorStore : IRagVectorStore
         CancellationToken cancellationToken = default)
     {
         return Task.FromResult<IReadOnlyList<RagSearchResult>>(Array.Empty<RagSearchResult>());
-    }
-
-    private static RagMetadata BuildChunkMetadata(RagChunk chunk)
-    {
-        var values = new Dictionary<string, string>(chunk.Metadata.AdditionalMetadata.Values)
-        {
-            ["documentId"] = chunk.DocumentId,
-            ["chunkIndex"] = chunk.Index.ToString(),
-        };
-
-        if (chunk.Metadata.StartIndex.HasValue)
-        {
-            values["startIndex"] = chunk.Metadata.StartIndex.Value.ToString();
-        }
-
-        if (chunk.Metadata.EndIndex.HasValue)
-        {
-            values["endIndex"] = chunk.Metadata.EndIndex.Value.ToString();
-        }
-
-        if (chunk.Metadata.TokenCount.HasValue)
-        {
-            values["tokenCount"] = chunk.Metadata.TokenCount.Value.ToString();
-        }
-
-        return new RagMetadata(values);
     }
 }

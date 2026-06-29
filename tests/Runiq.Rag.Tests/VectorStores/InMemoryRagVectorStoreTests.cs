@@ -80,6 +80,71 @@ public sealed class InMemoryRagVectorStoreTests
     }
 
     [Fact]
+    public async Task Operations_ShouldIsolateRecordsByIndexName()
+    {
+        var vectorStore = new InMemoryRagVectorStore();
+        await vectorStore.CreateIndexAsync(new CreateVectorIndexRequest
+        {
+            IndexName = "documents",
+            Dimensions = 3,
+        });
+        await vectorStore.CreateIndexAsync(new CreateVectorIndexRequest
+        {
+            IndexName = "archive",
+            Dimensions = 3,
+        });
+
+        await vectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            Records = [CreateRecord("shared-vector", [1.0f, 0.0f, 0.0f], content: "documents record")],
+        });
+        await vectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "archive",
+            Records = [CreateRecord("shared-vector", [0.0f, 1.0f, 0.0f], content: "archive record")],
+        });
+
+        var documentsQuery = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [1.0f, 0.0f, 0.0f],
+            TopK = 1,
+        });
+        var archiveQuery = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "archive",
+            Values = [0.0f, 1.0f, 0.0f],
+            TopK = 1,
+        });
+
+        Assert.Equal("documents record", Assert.Single(documentsQuery.Records).Content);
+        Assert.Equal("archive record", Assert.Single(archiveQuery.Records).Content);
+
+        var deleteResult = await vectorStore.DeleteAsync(new DeleteVectorRequest
+        {
+            IndexName = "documents",
+            VectorIds = ["shared-vector"],
+        });
+        var documentsAfterDelete = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [1.0f, 0.0f, 0.0f],
+            TopK = 1,
+        });
+        var archiveAfterDelete = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "archive",
+            Values = [0.0f, 1.0f, 0.0f],
+            TopK = 1,
+        });
+
+        Assert.True(deleteResult.Succeeded);
+        Assert.Empty(documentsAfterDelete.Records);
+        Assert.Equal("archive record", Assert.Single(archiveAfterDelete.Records).Content);
+    }
+
+    [Fact]
     public async Task QueryAsync_ShouldReturnMostSimilarRecordsFirst()
     {
         var vectorStore = await CreateVectorStoreWithThreeRecordsAsync();
