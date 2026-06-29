@@ -5,6 +5,7 @@ using Runiq.Rag.Models.Documents;
 using Runiq.Rag.Models.Embeddings;
 using Runiq.Rag.Models.Queries;
 using Runiq.Rag.Models.Search;
+using Runiq.Rag.Models.VectorStores;
 using Runiq.Rag.Retrieval;
 using Runiq.Rag.VectorStores;
 
@@ -103,6 +104,17 @@ public sealed class DefaultRetrieverTests
         public RagQuery? SearchQuery { get; private set; }
 
         public RagEmbedding? SearchEmbedding { get; private set; }
+
+        public Task<CreateVectorIndexResult> CreateIndexAsync(
+            CreateVectorIndexRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new CreateVectorIndexResult
+            {
+                IndexName = request.IndexName,
+                Succeeded = true,
+            });
+        }
 
         public Task UpsertAsync(
             RagChunk chunk,

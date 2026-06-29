@@ -2,6 +2,7 @@ using Runiq.Rag.Models.Documents;
 using Runiq.Rag.Models.Embeddings;
 using Runiq.Rag.Models.Queries;
 using Runiq.Rag.Models.Search;
+using Runiq.Rag.Models.VectorStores;
 
 namespace Runiq.Rag.Abstractions.VectorStores;
 
@@ -10,6 +11,16 @@ namespace Runiq.Rag.Abstractions.VectorStores;
 /// </summary>
 public interface IRagVectorStore
 {
+    /// <summary>
+    /// Creates a provider-independent vector index.
+    /// </summary>
+    /// <param name="request">The vector index creation request.</param>
+    /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
+    /// <returns>The vector index creation result.</returns>
+    Task<CreateVectorIndexResult> CreateIndexAsync(
+        CreateVectorIndexRequest request,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Inserts or updates a chunk and its embedding in the vector store.
     /// </summary>

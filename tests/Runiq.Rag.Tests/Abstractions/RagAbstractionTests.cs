@@ -7,6 +7,7 @@ using Runiq.Rag.Models.Documents;
 using Runiq.Rag.Models.Embeddings;
 using Runiq.Rag.Models.Queries;
 using Runiq.Rag.Models.Search;
+using Runiq.Rag.Models.VectorStores;
 
 namespace Runiq.Rag.Tests.Abstractions;
 
@@ -50,9 +51,16 @@ public sealed class RagAbstractionTests
         };
         var embedding = new RagEmbedding([0.1f]);
 
+        var createResult = await vectorStore.CreateIndexAsync(new CreateVectorIndexRequest
+        {
+            IndexName = "documents",
+            Dimensions = embedding.Dimensions,
+        });
         await vectorStore.UpsertAsync(chunk, embedding);
         var results = await vectorStore.SearchAsync(new RagQuery { Text = "query" }, embedding);
 
+        Assert.True(createResult.Succeeded);
+        Assert.Equal("documents", createResult.IndexName);
         var result = Assert.Single(results);
         Assert.Same(chunk, result.Chunk);
     }
@@ -90,6 +98,17 @@ public sealed class RagAbstractionTests
     private sealed class TestVectorStore : IRagVectorStore
     {
         private RagChunk? chunk;
+
+        public Task<CreateVectorIndexResult> CreateIndexAsync(
+            CreateVectorIndexRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new CreateVectorIndexResult
+            {
+                IndexName = request.IndexName,
+                Succeeded = true,
+            });
+        }
 
         public Task UpsertAsync(
             RagChunk chunk,
