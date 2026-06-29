@@ -16,6 +16,7 @@ using Runiq.Rag.Models.Queries;
 using Runiq.Rag.Models.Search;
 using Runiq.Rag.Models.VectorStores;
 using Runiq.Rag.VectorStores;
+using Runiq.Rag.VectorStores.InMemory;
 
 namespace Runiq.Rag.Tests.DependencyInjection;
 
@@ -163,6 +164,82 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public void AddInMemoryRagVectorStore_ShouldRegisterInMemoryVectorStore()
+    {
+        var services = new ServiceCollection();
+
+        services.AddInMemoryRagVectorStore();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<InMemoryRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+    }
+
+    [Fact]
+    public void AddInMemoryRagVectorStore_ShouldOverrideDefaultVectorStore_WhenRegisteredAfterAddRuniqRag()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+        services.AddInMemoryRagVectorStore();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<InMemoryRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+    }
+
+    [Fact]
+    public void AddInMemoryRagVectorStore_ShouldNotRequireProviderConfiguration()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(rag => rag.UseInMemoryVectorStore());
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<InMemoryRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagService>());
+    }
+
+    [Fact]
+    public void AddRagVectorStore_ShouldRegisterCustomVectorStore()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRagVectorStore<TestVectorStore>();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<TestVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+    }
+
+    [Fact]
+    public void AddRagVectorStoreWithFactory_ShouldRegisterCustomVectorStoreInstance()
+    {
+        var services = new ServiceCollection();
+        var vectorStore = new TestVectorStore();
+
+        services.AddRagVectorStore(_ => vectorStore);
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.Same(vectorStore, serviceProvider.GetRequiredService<IRagVectorStore>());
+    }
+
+    [Fact]
+    public void AddRagVectorStore_ShouldAllowTestVectorStoreToBeChanged()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRagVectorStore<TestVectorStore>();
+        services.AddInMemoryRagVectorStore();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<InMemoryRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+    }
+
+    [Fact]
     public void AddRuniqRagWithConfigure_ShouldThrow_WhenServicesIsNull()
     {
         IServiceCollection services = null!;
@@ -221,6 +298,31 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         using var serviceProvider = services.BuildServiceProvider();
 
         Assert.IsType<TestVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigure_ShouldAllowInMemoryVectorStore()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(rag => rag.UseInMemoryVectorStore());
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<InMemoryRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigure_ShouldAllowCustomVectorStoreFactory()
+    {
+        var services = new ServiceCollection();
+        var vectorStore = new TestVectorStore();
+
+        services.AddRuniqRag(rag => rag.UseVectorStore(_ => vectorStore));
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.Same(vectorStore, serviceProvider.GetRequiredService<IRagVectorStore>());
     }
 
     [Fact]

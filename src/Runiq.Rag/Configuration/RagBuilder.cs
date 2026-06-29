@@ -4,6 +4,7 @@ using Runiq.Rag.Abstractions.Chunking;
 using Runiq.Rag.Abstractions.Embeddings;
 using Runiq.Rag.Abstractions.Retrieval;
 using Runiq.Rag.Abstractions.VectorStores;
+using Runiq.Rag.DependencyInjection;
 
 namespace Runiq.Rag.Configuration;
 
@@ -44,7 +45,32 @@ public sealed class RagBuilder
     public RagBuilder UseVectorStore<TVectorStore>()
         where TVectorStore : class, IRagVectorStore
     {
-        services.Replace(ServiceDescriptor.Singleton<IRagVectorStore, TVectorStore>());
+        services.AddRagVectorStore<TVectorStore>();
+
+        return this;
+    }
+
+    /// <summary>
+    /// Replaces the configured vector store with the in-memory vector store.
+    /// </summary>
+    /// <returns>The same builder instance so calls can be chained.</returns>
+    public RagBuilder UseInMemoryVectorStore()
+    {
+        services.AddInMemoryRagVectorStore();
+
+        return this;
+    }
+
+    /// <summary>
+    /// Replaces the configured vector store using the specified factory.
+    /// </summary>
+    /// <param name="factory">The factory used to create the vector store.</param>
+    /// <returns>The same builder instance so calls can be chained.</returns>
+    public RagBuilder UseVectorStore(Func<IServiceProvider, IRagVectorStore> factory)
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+
+        services.AddRagVectorStore(factory);
 
         return this;
     }
