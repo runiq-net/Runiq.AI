@@ -4,6 +4,8 @@ using Runiq.Agents.Providers.OpenAI;
 using Runiq.Agents.Tools;
 using Runiq.ContextSpaces.Models.Sources;
 using Runiq.ContextSpaces.Services;
+using Runiq.Rag.Abstractions.Retrieval;
+using Runiq.Rag.Models.Queries;
 
 namespace Runiq.Agents.Runtime;
 
@@ -23,6 +25,7 @@ public sealed class AgentExecutionRuntime
     private readonly IReadOnlyList<ContextSpace> contextSpaces;
     private readonly IContextSpaceSkillDiscoveryService skillDiscoveryService;
     private readonly IContextSpaceSourceSearchService sourceSearchService;
+    private readonly IRagRetriever? ragRetriever;
 
 
     /// <summary>
@@ -32,6 +35,9 @@ public sealed class AgentExecutionRuntime
     /// <param name="openAIResponsesClient">OpenAI Responses API provider çağrılarını yürüten client örneğidir.</param>
     /// <param name="openAICompatibleClient">OpenAI-compatible provider çağrılarını yürüten client örneğidir.</param>
     /// <param name="toolInvoker">Agent tool çağrılarını çalıştıran invoker örneğidir.</param>
+    /// <param name="contextSpaces">Agent çalışmasında kullanılabilecek context space tanımlarıdır.</param>
+    /// <param name="skillDiscoveryService">Context space skill keşif servisidir.</param>
+    /// <param name="sourceSearchService">Context source arama servisidir.</param>
     public AgentExecutionRuntime(
         IEnumerable<Agent> agents,
         OpenAIResponsesClient openAIResponsesClient,
@@ -40,6 +46,70 @@ public sealed class AgentExecutionRuntime
         IReadOnlyList<ContextSpace>? contextSpaces = null,
         IContextSpaceSkillDiscoveryService? skillDiscoveryService = null,
         IContextSpaceSourceSearchService? sourceSearchService = null)
+        : this(
+            agents,
+            openAIResponsesClient,
+            openAICompatibleClient,
+            toolInvoker,
+            contextSpaces,
+            skillDiscoveryService,
+            sourceSearchService,
+            ragRetriever: null)
+    {
+    }
+
+    /// <summary>
+    /// Yeni bir agent execution runtime örneği ve RAG retriever entegrasyonu oluşturur.
+    /// </summary>
+    /// <param name="agents">Runtime tarafından çalıştırılabilecek kayıtlı agent koleksiyonudur.</param>
+    /// <param name="openAIResponsesClient">OpenAI Responses API provider çağrılarını yürüten client örneğidir.</param>
+    /// <param name="openAICompatibleClient">OpenAI-compatible provider çağrılarını yürüten client örneğidir.</param>
+    /// <param name="toolInvoker">Agent tool çağrılarını çalıştıran invoker örneğidir.</param>
+    /// <param name="ragRetriever">Agent RAG sorgularını çalıştıracak opsiyonel retriever servisidir.</param>
+    /// <param name="contextSpaces">Agent çalışmasında kullanılabilecek context space tanımlarıdır.</param>
+    /// <param name="skillDiscoveryService">Context space skill keşif servisidir.</param>
+    /// <param name="sourceSearchService">Context source arama servisidir.</param>
+    public AgentExecutionRuntime(
+        IEnumerable<Agent> agents,
+        OpenAIResponsesClient openAIResponsesClient,
+        OpenAICompatibleClient openAICompatibleClient,
+        AgentToolInvoker toolInvoker,
+        IRagRetriever? ragRetriever,
+        IReadOnlyList<ContextSpace>? contextSpaces = null,
+        IContextSpaceSkillDiscoveryService? skillDiscoveryService = null,
+        IContextSpaceSourceSearchService? sourceSearchService = null)
+        : this(
+            agents,
+            openAIResponsesClient,
+            openAICompatibleClient,
+            toolInvoker,
+            contextSpaces,
+            skillDiscoveryService,
+            sourceSearchService,
+            ragRetriever)
+    {
+    }
+
+    /// <summary>
+    /// Yeni bir agent execution runtime örneği oluşturur.
+    /// </summary>
+    /// <param name="agents">Runtime tarafından çalıştırılabilecek kayıtlı agent koleksiyonudur.</param>
+    /// <param name="openAIResponsesClient">OpenAI Responses API provider çağrılarını yürüten client örneğidir.</param>
+    /// <param name="openAICompatibleClient">OpenAI-compatible provider çağrılarını yürüten client örneğidir.</param>
+    /// <param name="toolInvoker">Agent tool çağrılarını çalıştıran invoker örneğidir.</param>
+    /// <param name="contextSpaces">Agent çalışmasında kullanılabilecek context space tanımlarıdır.</param>
+    /// <param name="skillDiscoveryService">Context space skill keşif servisidir.</param>
+    /// <param name="sourceSearchService">Context source arama servisidir.</param>
+    /// <param name="ragRetriever">Agent RAG sorgularını çalıştıracak opsiyonel retriever servisidir.</param>
+    public AgentExecutionRuntime(
+        IEnumerable<Agent> agents,
+        OpenAIResponsesClient openAIResponsesClient,
+        OpenAICompatibleClient openAICompatibleClient,
+        AgentToolInvoker toolInvoker,
+        IReadOnlyList<ContextSpace>? contextSpaces,
+        IContextSpaceSkillDiscoveryService? skillDiscoveryService,
+        IContextSpaceSourceSearchService? sourceSearchService,
+        IRagRetriever? ragRetriever)
     {
         this.agents = agents;
         this.openAIResponsesClient = openAIResponsesClient;
@@ -49,6 +119,7 @@ public sealed class AgentExecutionRuntime
         this.skillDiscoveryService = skillDiscoveryService ?? new ContextSpaceSkillDiscoveryService();
         this.sourceSearchService = sourceSearchService
                 ?? new ContextSpaceSourceSearchService(new ContextSpaceFileSystemSourceReader());
+        this.ragRetriever = ragRetriever;
     }
 
     /// <summary>
@@ -74,7 +145,34 @@ public sealed class AgentExecutionRuntime
 
         return await ExecuteAgentAsync(
             agent,
-            input,
+            new AgentQuery(input),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Agent cevabını agent kimliğine göre runtime query bilgisiyle tek seferlik sonuç olarak üretir.
+    /// </summary>
+    /// <param name="agentId">Çalıştırılacak agent kimliğidir.</param>
+    /// <param name="query">Agent'a gönderilecek runtime query bilgisidir.</param>
+    /// <param name="cancellationToken">İptal bildirimidir.</param>
+    /// <returns>Agent çalıştırma sonucudur.</returns>
+    public async Task<AgentExecutionResult> ExecuteAsync(
+        string agentId,
+        AgentQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        var agent = FindAgent(agentId);
+
+        if (agent is null)
+        {
+            return AgentExecutionResult.Failure(
+                errorCode: "AgentNotFound",
+                errorMessage: $"Agent '{agentId}' was not found.");
+        }
+
+        return await ExecuteAgentAsync(
+            agent,
+            query,
             cancellationToken);
     }
 
@@ -92,7 +190,25 @@ public sealed class AgentExecutionRuntime
     {
         return ExecuteAgentAsync(
             agent,
-            input,
+            new AgentQuery(input),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Kayıt listesine bağlı olmayan geçici bir agent tanımıyla runtime query bilgisiyle tek seferlik sonuç üretir.
+    /// </summary>
+    /// <param name="agent">Çalıştırılacak agent tanımıdır.</param>
+    /// <param name="query">Agent'a gönderilecek runtime query bilgisidir.</param>
+    /// <param name="cancellationToken">İptal bildirimidir.</param>
+    /// <returns>Agent çalıştırma sonucudur.</returns>
+    public Task<AgentExecutionResult> ExecuteAsync(
+        Agent agent,
+        AgentQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        return ExecuteAgentAsync(
+            agent,
+            query,
             cancellationToken);
     }
 
@@ -123,7 +239,42 @@ public sealed class AgentExecutionRuntime
 
         await foreach (var executionEvent in ExecuteAgentStreamAsync(
                            agent,
-                           input,
+                           new AgentQuery(input),
+                           toolInvoker ?? this.toolInvoker,
+                           cancellationToken))
+        {
+            yield return executionEvent;
+        }
+    }
+
+    /// <summary>
+    /// Agent cevabını agent kimliğine göre runtime query bilgisiyle event stream olarak üretir.
+    /// </summary>
+    /// <param name="agentId">Çalıştırılacak agent kimliğidir.</param>
+    /// <param name="query">Agent'a gönderilecek runtime query bilgisidir.</param>
+    /// <param name="toolInvoker">Varsa bu çağrı için kullanılacak tool invoker örneğidir.</param>
+    /// <param name="cancellationToken">İptal bildirimidir.</param>
+    /// <returns>Agent çalışması sırasında üretilen olay stream'idir.</returns>
+    public async IAsyncEnumerable<AgentExecutionEvent> ExecuteStreamAsync(
+        string agentId,
+        AgentQuery query,
+        AgentToolInvoker? toolInvoker = null,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var agent = FindAgent(agentId);
+
+        if (agent is null)
+        {
+            yield return AgentExecutionEvent.Failed(
+                $"Agent '{agentId}' was not found.",
+                "AgentNotFound");
+
+            yield break;
+        }
+
+        await foreach (var executionEvent in ExecuteAgentStreamAsync(
+                           agent,
+                           query,
                            toolInvoker ?? this.toolInvoker,
                            cancellationToken))
         {
@@ -135,17 +286,18 @@ public sealed class AgentExecutionRuntime
     /// Agent cevabını tek seferlik sonuç olarak üretir.
     /// </summary>
     /// <param name="agent">Çalıştırılacak agent tanımıdır.</param>
-    /// <param name="input">Agent'a gönderilecek kullanıcı girdisidir.</param>
+    /// <param name="query">Agent'a gönderilecek runtime query bilgisidir.</param>
     /// <param name="cancellationToken">İptal bildirimidir.</param>
     /// <returns>Agent çalıştırma sonucudur.</returns>
     private async Task<AgentExecutionResult> ExecuteAgentAsync(
         Agent agent,
-        string input,
+        AgentQuery query,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(agent);
+        ArgumentNullException.ThrowIfNull(query);
 
-        if (string.IsNullOrWhiteSpace(input))
+        if (string.IsNullOrWhiteSpace(query.Message))
         {
             return AgentExecutionResult.Failure(
                 errorCode: "InputRequired",
@@ -156,7 +308,7 @@ public sealed class AgentExecutionRuntime
 
         await foreach (var executionEvent in ExecuteAgentStreamAsync(
                            agent,
-                           input,
+                           query,
                            toolInvoker,
                            cancellationToken))
         {
@@ -177,19 +329,20 @@ public sealed class AgentExecutionRuntime
     /// Agent cevabını event stream olarak üretir.
     /// </summary>
     /// <param name="agent">Çalıştırılacak agent tanımıdır.</param>
-    /// <param name="input">Agent'a gönderilecek kullanıcı girdisidir.</param>
+    /// <param name="query">Agent'a gönderilecek runtime query bilgisidir.</param>
     /// <param name="toolInvoker">Tool çağrılarını çalıştıracak invoker örneğidir.</param>
     /// <param name="cancellationToken">İptal bildirimidir.</param>
     /// <returns>Agent çalışması sırasında üretilen olay stream'idir.</returns>
     private async IAsyncEnumerable<AgentExecutionEvent> ExecuteAgentStreamAsync(
         Agent agent,
-        string input,
+        AgentQuery query,
         AgentToolInvoker? toolInvoker = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(agent);
+        ArgumentNullException.ThrowIfNull(query);
 
-        if (string.IsNullOrWhiteSpace(input))
+        if (string.IsNullOrWhiteSpace(query.Message))
         {
             yield return AgentExecutionEvent.Failed(
                 "Agent input cannot be empty.",
@@ -209,8 +362,31 @@ public sealed class AgentExecutionRuntime
 
         runtimeContext = await SearchRuntimeContextSourcesAsync(
             runtimeContext,
-            input,
+            query.Message,
             cancellationToken);
+
+        AgentExecutionEvent? ragFailureEvent = null;
+
+        try
+        {
+            runtimeContext = await SearchRagContextAsync(
+                agent,
+                runtimeContext,
+                query,
+                cancellationToken);
+        }
+        catch (InvalidOperationException exception)
+        {
+            ragFailureEvent = AgentExecutionEvent.Failed(
+                exception.Message,
+                "RagRetrievalFailed");
+        }
+
+        if (ragFailureEvent is not null)
+        {
+            yield return ragFailureEvent;
+            yield break;
+        }
 
         var instructions = AgentInstructionsBuilder.Build(agent, runtimeContext);
 
@@ -243,7 +419,7 @@ public sealed class AgentExecutionRuntime
                 await foreach (var executionEvent in ExecuteOpenAICompatibleStreamAsync(
                           agent,
                           endpoint,
-                          input,
+                          query.Message,
                           instructions,
                           toolInvoker,
                           cancellationToken))
@@ -257,7 +433,7 @@ public sealed class AgentExecutionRuntime
                 var ollamaResult = await ExecuteOllamaAsync(
                     agent,
                     endpoint,
-                    input,
+                    query.Message,
                     cancellationToken);
 
                 if (!ollamaResult.IsSuccess)
@@ -292,6 +468,7 @@ public sealed class AgentExecutionRuntime
     /// <param name="agent">Çalıştırılacak agent tanımıdır.</param>
     /// <param name="endpoint">Provider endpoint adresidir.</param>
     /// <param name="input">Agent'a gönderilecek kullanıcı girdisidir.</param>
+    /// <param name="instructions">Runtime context ile zenginleştirilmiş system yönergeleridir.</param>
     /// <param name="toolInvoker">Tool çağrılarını çalıştıracak invoker örneğidir.</param>
     /// <param name="cancellationToken">İptal bildirimidir.</param>
     /// <returns>Provider tarafından üretilen agent execution event stream'idir.</returns>
@@ -467,7 +644,41 @@ public sealed class AgentExecutionRuntime
             AttachedSourceCount: runtimeContext.AttachedSourceCount,
             SearchedDocumentCount: searchedDocumentCount,
             CandidateCount: candidates.Length,
-            SourceSearchResults: selectedResults);
+            SourceSearchResults: selectedResults,
+            RagSearchResults: runtimeContext.RetrievedRagContext);
+    }
+
+    /// <summary>
+    /// Agent RAG yapılandırması varsa RAG retrieval çalıştırır ve sonuçları runtime context'e ekler.
+    /// </summary>
+    private async Task<AgentRuntimeContext> SearchRagContextAsync(
+        Agent agent,
+        AgentRuntimeContext runtimeContext,
+        AgentQuery query,
+        CancellationToken cancellationToken)
+    {
+        if (ragRetriever is null || agent.Rag is null || !agent.Rag.Enabled)
+        {
+            return runtimeContext;
+        }
+
+        var indexName = query.IndexName ?? agent.Rag.IndexName;
+        var results = await ragRetriever.RetrieveAsync(
+            new RagQuery
+            {
+                Text = query.Message,
+                IndexName = indexName,
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        return new AgentRuntimeContext(
+            ContextSpaces: runtimeContext.ContextSpaces,
+            Skills: runtimeContext.Skills,
+            AttachedSourceCount: runtimeContext.AttachedSourceCount,
+            SearchedDocumentCount: runtimeContext.SearchedDocumentCount,
+            CandidateCount: runtimeContext.CandidateCount,
+            SourceSearchResults: runtimeContext.RetrievedSourceContext,
+            RagSearchResults: results);
     }
 
     /// <summary>

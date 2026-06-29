@@ -69,6 +69,11 @@ public class Agent
     public ProviderOptions? Provider { get; }
 
     /// <summary>
+    /// Agent RAG sorguları için opsiyonel çalışma zamanı ayarlarını alır.
+    /// </summary>
+    public AgentRagOptions? Rag { get; private set; }
+
+    /// <summary>
     /// Provider ve model adını ayrıştırılmış biçimde temsil eden model referansını alır.
     /// </summary>
     public ModelReference ModelReference { get; }
@@ -98,6 +103,76 @@ public class Agent
         ProviderOptions? provider = null,
         string reasoningEffort = "minimal",
         string verbosity = "low")
+        : this(
+            id,
+            name,
+            instructions,
+            model,
+            apiKey,
+            provider,
+            reasoningEffort,
+            verbosity,
+            rag: null)
+    {
+    }
+
+    /// <summary>
+    /// Yeni bir agent tanımı ve RAG çalışma zamanı ayarları oluşturur.
+    /// </summary>
+    /// <param name="id">Ajanın sistem içindeki benzersiz kimliğidir.</param>
+    /// <param name="name">Ajanın gösterilecek adıdır.</param>
+    /// <param name="instructions">Ajanın model çağrılarında kullanılacak sistem yönergeleridir.</param>
+    /// <param name="model">Kullanılacak modelin provider/model biçimindeki adıdır.</param>
+    /// <param name="rag">Agent RAG sorguları için opsiyonel çalışma zamanı ayarlarıdır.</param>
+    /// <param name="apiKey">Provider çağrılarında kullanılacak opsiyonel API anahtarıdır.</param>
+    /// <param name="provider">Provider için opsiyonel çalışma zamanı ayarlarıdır.</param>
+    /// <param name="reasoningEffort">Modelin akıl yürütme yoğunluğudur.</param>
+    /// <param name="verbosity">Model yanıtının ayrıntı seviyesidir.</param>
+    public Agent(
+        string id,
+        string name,
+        string instructions,
+        string model,
+        AgentRagOptions? rag,
+        string? apiKey = null,
+        ProviderOptions? provider = null,
+        string reasoningEffort = "minimal",
+        string verbosity = "low")
+        : this(
+            id,
+            name,
+            instructions,
+            model,
+            apiKey,
+            provider,
+            reasoningEffort,
+            verbosity,
+            rag)
+    {
+    }
+
+    /// <summary>
+    /// Yeni bir agent tanımı oluşturur.
+    /// </summary>
+    /// <param name="id">Ajanın sistem içindeki benzersiz kimliğidir.</param>
+    /// <param name="name">Ajanın gösterilecek adıdır.</param>
+    /// <param name="instructions">Ajanın model çağrılarında kullanılacak sistem yönergeleridir.</param>
+    /// <param name="model">Kullanılacak modelin provider/model biçimindeki adıdır.</param>
+    /// <param name="apiKey">Provider çağrılarında kullanılacak opsiyonel API anahtarıdır.</param>
+    /// <param name="provider">Provider için opsiyonel çalışma zamanı ayarlarıdır.</param>
+    /// <param name="reasoningEffort">Modelin akıl yürütme yoğunluğudur.</param>
+    /// <param name="verbosity">Model yanıtının ayrıntı seviyesidir.</param>
+    /// <param name="rag">Agent RAG sorguları için opsiyonel çalışma zamanı ayarlarıdır.</param>
+    public Agent(
+        string id,
+        string name,
+        string instructions,
+        string model,
+        string? apiKey,
+        ProviderOptions? provider,
+        string reasoningEffort,
+        string verbosity,
+        AgentRagOptions? rag)
     {
         Id = ValidateRequired(id, nameof(id));
         Name = ValidateRequired(name, nameof(name));
@@ -106,6 +181,7 @@ public class Agent
         ModelReference = ModelReference.Parse(Model);
         ApiKey = apiKey;
         Provider = provider;
+        Rag = rag;
         ReasoningEffort = ValidateReasoningEffort(reasoningEffort);
         Verbosity = ValidateVerbosity(verbosity);
     }
@@ -158,6 +234,21 @@ public class Agent
         }
 
         contextSpaceIds.Add(normalizedContextSpaceId);
+
+        return this;
+    }
+
+    /// <summary>
+    /// Agent RAG sorguları için kullanılacak vector index adını yapılandırır.
+    /// </summary>
+    /// <param name="indexName">Kullanılacak vector index adıdır.</param>
+    /// <returns>Akıcı yapılandırma için mevcut agent örneği.</returns>
+    public Agent UseRagIndex(string indexName)
+    {
+        Rag = new AgentRagOptions
+        {
+            IndexName = ValidateRequired(indexName, nameof(indexName)),
+        };
 
         return this;
     }

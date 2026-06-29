@@ -13,6 +13,14 @@ public sealed class RagOptionsTests
     }
 
     [Fact]
+    public void DefaultIndexName_ShouldDefaultToNull()
+    {
+        var options = new RagOptions();
+
+        Assert.Null(options.DefaultIndexName);
+    }
+
+    [Fact]
     public void ContextSeparator_ShouldDefaultToEnvironmentNewLine()
     {
         var options = new RagOptions();

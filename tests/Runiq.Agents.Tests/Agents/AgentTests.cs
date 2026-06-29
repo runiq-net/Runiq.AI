@@ -4,6 +4,51 @@ namespace Runiq.Agents.Tests.Agents;
 
 public sealed class AgentTests
 {
+    [Fact]
+    public void Constructor_ShouldExposeLegacyPublicOverload()
+    {
+        var constructor = typeof(Agent).GetConstructor([
+            typeof(string),
+            typeof(string),
+            typeof(string),
+            typeof(string),
+            typeof(string),
+            typeof(Runiq.Agents.Configuration.ProviderOptions),
+            typeof(string),
+            typeof(string)
+        ]);
+
+        Assert.NotNull(constructor);
+    }
+
+    [Fact]
+    public void Constructor_ShouldExposeRagOptionsOverload()
+    {
+        var constructor = typeof(Agent).GetConstructor([
+            typeof(string),
+            typeof(string),
+            typeof(string),
+            typeof(string),
+            typeof(string),
+            typeof(Runiq.Agents.Configuration.ProviderOptions),
+            typeof(string),
+            typeof(string),
+            typeof(Runiq.Agents.Configuration.AgentRagOptions)
+        ]);
+
+        Assert.NotNull(constructor);
+
+        var agent = new Agent(
+            id: "travel-agent",
+            name: "Travel Agent",
+            instructions: "Plan short travel routes.",
+            model: "ollama/llama3",
+            rag: new Runiq.Agents.Configuration.AgentRagOptions { IndexName = "documents" });
+
+        Assert.NotNull(agent.Rag);
+        Assert.Equal("documents", agent.Rag.IndexName);
+    }
+
     // Verifies that an agent can attach a context space id and return itself for chaining.
     [Fact]
     public void UseContextSpace_ShouldAttachContextSpaceId()
@@ -56,6 +101,31 @@ public sealed class AgentTests
             agent.UseContextSpace("TRAVEL-PLANNING"));
 
         Assert.Contains("travel-planning", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void UseRagIndex_ShouldConfigureAgentRagIndexName()
+    {
+        var agent = CreateAgent();
+
+        var result = agent.UseRagIndex(" documents ");
+
+        Assert.Same(agent, result);
+        Assert.NotNull(agent.Rag);
+        Assert.Equal("documents", agent.Rag.IndexName);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void UseRagIndex_ShouldThrow_WhenIndexNameIsEmpty(string indexName)
+    {
+        var agent = CreateAgent();
+
+        var exception = Assert.Throws<ArgumentException>(() =>
+            agent.UseRagIndex(indexName));
+
+        Assert.Equal("indexName", exception.ParamName);
     }
 
     private static Agent CreateAgent()

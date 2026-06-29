@@ -50,7 +50,7 @@ public sealed class AgentChatApiHandler
             await WriteStreamAsync(
                 httpContext,
                 agentId,
-                request.Message,
+                CreateAgentQuery(request),
                 cancellationToken);
 
             return Results.Empty;
@@ -59,7 +59,7 @@ public sealed class AgentChatApiHandler
         var result = await ExecuteToResultAsync(
             httpContext,
             agentId,
-            request.Message,
+            CreateAgentQuery(request),
             cancellationToken);
 
         return Results.Ok(ToChatResponse(result));
@@ -68,7 +68,7 @@ public sealed class AgentChatApiHandler
     private async Task<AgentExecutionResult> ExecuteToResultAsync(
         HttpContext httpContext,
         string agentId,
-        string message,
+        AgentQuery query,
         CancellationToken cancellationToken)
     {
         var resultBuilder = new AgentExecutionResultBuilder();
@@ -76,7 +76,7 @@ public sealed class AgentChatApiHandler
 
         await foreach (var executionEvent in agentRuntime.ExecuteStreamAsync(
                            agentId,
-                           message,
+                           query,
                            toolInvoker,
                            cancellationToken))
         {
@@ -101,7 +101,7 @@ public sealed class AgentChatApiHandler
     private  async Task WriteStreamAsync(
         HttpContext httpContext,
         string agentId,
-        string message,
+        AgentQuery query,
         CancellationToken cancellationToken)
     {
         httpContext.Response.ContentType = "text/event-stream; charset=utf-8";
@@ -112,7 +112,7 @@ public sealed class AgentChatApiHandler
 
         await foreach (var executionEvent in agentRuntime.ExecuteStreamAsync(
                         agentId,
-                        message,
+                        query,
                         toolInvoker,
                         cancellationToken))
         {
@@ -125,5 +125,13 @@ public sealed class AgentChatApiHandler
 
         await httpContext.Response.WriteAsync("data: [DONE]\n\n", cancellationToken);
         await httpContext.Response.Body.FlushAsync(cancellationToken);
+    }
+
+    private static AgentQuery CreateAgentQuery(AgentChatRequest request)
+    {
+        return new AgentQuery(request.Message)
+        {
+            IndexName = request.IndexName,
+        };
     }
 }
