@@ -28,7 +28,7 @@ public sealed class DeleteVectorRequest
     public IList<string> VectorIds
     {
         get => vectorIds;
-        init => vectorIds = value ?? throw new ArgumentNullException(nameof(value));
+        init => vectorIds = value ?? new List<string>();
     }
 
     /// <summary>

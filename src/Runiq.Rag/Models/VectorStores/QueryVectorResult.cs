@@ -18,7 +18,7 @@ public sealed class QueryVectorResult
     }
 
     /// <summary>
-    /// Gets or initializes the matching vector records.
+    /// Gets or initializes the matching vector records ordered best match first.
     /// </summary>
     public IList<VectorSearchResult> Records
     {

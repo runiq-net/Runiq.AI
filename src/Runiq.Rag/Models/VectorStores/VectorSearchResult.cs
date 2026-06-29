@@ -22,7 +22,9 @@ public sealed class VectorSearchResult
     public required string Id { get; init; }
 
     /// <summary>
-    /// Gets or initializes the relevance or similarity score.
+    /// Gets or initializes the provider-independent relevance or similarity score.
+    /// Higher values represent better matches. Providers that use distance metrics should convert distances
+    /// to a higher-is-better score instead of returning raw distance values here.
     /// </summary>
     public double Score { get; init; }
 

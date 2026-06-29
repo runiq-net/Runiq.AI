@@ -106,7 +106,7 @@ public sealed class RagAbstractionTests
 
         var result = await vectorStore.UpsertAsync(chunk, embedding);
         var request = Assert.IsType<RequestOnlyVectorStore>(vectorStore).LastUpsertRequest;
-        var record = Assert.Single(request!.Records);
+        var record = Assert.Single(request!.Records!);
 
         Assert.True(result.Succeeded);
         Assert.Equal("chunk-1", record.Id);
@@ -118,6 +118,40 @@ public sealed class RagAbstractionTests
         Assert.Equal("24", record.Metadata.Values["endIndex"]);
         Assert.Equal("4", record.Metadata.Values["tokenCount"]);
         Assert.Equal("docs", record.Metadata.Values["source"]);
+    }
+
+    [Fact]
+    public async Task IRagVectorStore_DefaultQueryAsync_ShouldReturnFailedNotImplementedResult()
+    {
+        IRagVectorStore vectorStore = new RequestOnlyVectorStore();
+
+        var result = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [0.1f, 0.2f],
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Empty(result.Records);
+        Assert.Equal("Query operation is not implemented by this vector store provider.", result.Reason);
+    }
+
+    [Fact]
+    public async Task IRagVectorStore_DefaultDeleteAsync_ShouldReturnFailedNotImplementedResult()
+    {
+        IRagVectorStore vectorStore = new RequestOnlyVectorStore();
+
+        var result = await vectorStore.DeleteAsync(new DeleteVectorRequest
+        {
+            IndexName = "documents",
+            VectorIds = ["vector-1"],
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(1, result.RequestedCount);
+        Assert.Equal(0, result.DeletedCount);
+        Assert.Equal("vector-1", Assert.Single(result.NotFoundVectorIds));
+        Assert.Equal("Delete operation is not implemented by this vector store provider.", result.Reason);
     }
 
     [Fact]
@@ -169,13 +203,14 @@ public sealed class RagAbstractionTests
             UpsertVectorRequest request,
             CancellationToken cancellationToken = default)
         {
-            record = request.Records.Single();
+            var records = request.Records!;
+            record = records.Single();
 
             return Task.FromResult(new UpsertVectorResult
             {
                 Succeeded = true,
-                UpsertedCount = request.Records.Count,
-                VectorIds = request.Records.Select(item => item.Id).ToList(),
+                UpsertedCount = records.Count,
+                VectorIds = records.Select(item => item.Id).ToList(),
             });
         }
 
@@ -250,8 +285,8 @@ public sealed class RagAbstractionTests
             return Task.FromResult(new UpsertVectorResult
             {
                 Succeeded = true,
-                UpsertedCount = request.Records.Count,
-                VectorIds = request.Records.Select(record => record.Id).ToList(),
+                UpsertedCount = request.Records?.Count ?? 0,
+                VectorIds = request.Records?.Select(record => record.Id).ToList() ?? [],
             });
         }
 

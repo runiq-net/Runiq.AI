@@ -28,7 +28,7 @@ public sealed class UpsertVectorRequest
     public IList<VectorRecord> Records
     {
         get => records;
-        init => records = value ?? throw new ArgumentNullException(nameof(value));
+        init => records = value ?? new List<VectorRecord>();
     }
 
     /// <summary>

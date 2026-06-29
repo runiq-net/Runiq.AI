@@ -50,8 +50,8 @@ public sealed class NullVectorStore : IRagVectorStore
         return Task.FromResult(new UpsertVectorResult
         {
             Succeeded = true,
-            UpsertedCount = request.Records.Count,
-            VectorIds = request.Records.Select(record => record.Id).ToList(),
+            UpsertedCount = request.Records?.Count ?? 0,
+            VectorIds = request.Records?.Select(record => record.Id).ToList() ?? [],
         });
     }
 
@@ -68,9 +68,9 @@ public sealed class NullVectorStore : IRagVectorStore
         return Task.FromResult(new DeleteVectorResult
         {
             Succeeded = true,
-            RequestedCount = request.VectorIds.Count,
+            RequestedCount = request.VectorIds?.Count ?? 0,
             DeletedCount = 0,
-            NotFoundVectorIds = request.VectorIds.ToList(),
+            NotFoundVectorIds = request.VectorIds?.ToList() ?? [],
         });
     }
 

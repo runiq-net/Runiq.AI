@@ -28,7 +28,7 @@ public sealed class QueryVectorRequest
     public required IReadOnlyList<float> Values { get; init; }
 
     /// <summary>
-    /// Gets or initializes the maximum number of matches to return.
+    /// Gets or initializes the maximum number of matches to return. Query results are returned best match first.
     /// </summary>
     public int TopK { get; init; } = 5;
 

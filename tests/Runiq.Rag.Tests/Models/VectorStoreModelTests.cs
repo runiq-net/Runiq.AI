@@ -45,6 +45,19 @@ public sealed class VectorStoreModelTests
     }
 
     [Fact]
+    public void UpsertVectorRequest_ShouldNormalizeNullRecordsToEmptyCollection()
+    {
+        var request = new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            Records = null!,
+        };
+
+        Assert.NotNull(request.Records);
+        Assert.Empty(request.Records);
+    }
+
+    [Fact]
     public void VectorRecord_ShouldCarryIdValuesAndMetadata()
     {
         var record = new VectorRecord
@@ -205,6 +218,19 @@ public sealed class VectorStoreModelTests
         Assert.NotNull(request.VectorIds);
         Assert.Equal(["vector-1", "vector-2"], request.VectorIds);
         Assert.NotNull(request.Metadata);
+    }
+
+    [Fact]
+    public void DeleteVectorRequest_ShouldNormalizeNullVectorIdsToEmptyCollection()
+    {
+        var request = new DeleteVectorRequest
+        {
+            IndexName = "documents",
+            VectorIds = null!,
+        };
+
+        Assert.NotNull(request.VectorIds);
+        Assert.Empty(request.VectorIds);
     }
 
     [Fact]

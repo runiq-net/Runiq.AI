@@ -209,7 +209,7 @@ public sealed class RagBuilderTests
             return Task.FromResult(new UpsertVectorResult
             {
                 Succeeded = true,
-                UpsertedCount = request.Records.Count,
+                UpsertedCount = request.Records?.Count ?? 0,
             });
         }
 

@@ -46,15 +46,17 @@ public interface IRagVectorStore
 
         return Task.FromResult(new DeleteVectorResult
         {
-            Succeeded = true,
+            Succeeded = false,
             RequestedCount = request.VectorIds.Count,
             DeletedCount = 0,
             NotFoundVectorIds = request.VectorIds.ToList(),
+            Reason = "Delete operation is not implemented by this vector store provider.",
         });
     }
 
     /// <summary>
     /// Queries the vector store for records that are similar to the supplied query vector.
+    /// Results are expected to be returned best match first.
     /// </summary>
     /// <param name="request">The provider-independent vector query request.</param>
     /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
@@ -67,7 +69,8 @@ public interface IRagVectorStore
 
         return Task.FromResult(new QueryVectorResult
         {
-            Succeeded = true,
+            Succeeded = false,
+            Reason = "Query operation is not implemented by this vector store provider.",
         });
     }
 

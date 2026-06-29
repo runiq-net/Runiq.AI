@@ -15,6 +15,13 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
 {
     private const string IndexNotFoundReason = "Vector index has not been created.";
     private const string DimensionMismatchReason = "Vector dimension does not match the index dimensions.";
+    private const string RequestRequiredReason = "Request is required.";
+    private const string InvalidIndexNameReason = "Vector index name is required.";
+    private const string InvalidDimensionsReason = "Vector dimensions must be greater than zero.";
+    private const string RecordsRequiredReason = "At least one vector record is required.";
+    private const string InvalidVectorIdReason = "Vector identifier is required.";
+    private const string InvalidVectorValuesReason = "Vector values are required.";
+    private const string InvalidTopKReason = "TopK must be greater than zero.";
 
     private readonly object gate = new();
     private readonly Dictionary<string, InMemoryVectorIndex> indexes = new(StringComparer.Ordinal);
@@ -24,7 +31,20 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
         CreateVectorIndexRequest request,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(request);
+        if (request is null)
+        {
+            return Task.FromResult(CreateFailedIndexResult(string.Empty, RequestRequiredReason));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.IndexName))
+        {
+            return Task.FromResult(CreateFailedIndexResult(request.IndexName ?? string.Empty, InvalidIndexNameReason));
+        }
+
+        if (request.Dimensions <= 0)
+        {
+            return Task.FromResult(CreateFailedIndexResult(request.IndexName, InvalidDimensionsReason));
+        }
 
         lock (gate)
         {
@@ -62,27 +82,45 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
         UpsertVectorRequest request,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(request);
+        if (request is null)
+        {
+            return Task.FromResult(CreateFailedUpsertResult(RequestRequiredReason));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.IndexName))
+        {
+            return Task.FromResult(CreateFailedUpsertResult(InvalidIndexNameReason));
+        }
+
+        if (request.Records is null || request.Records.Count == 0)
+        {
+            return Task.FromResult(CreateFailedUpsertResult(RecordsRequiredReason));
+        }
+
+        foreach (var record in request.Records)
+        {
+            if (record is null || string.IsNullOrWhiteSpace(record.Id))
+            {
+                return Task.FromResult(CreateFailedUpsertResult(InvalidVectorIdReason));
+            }
+
+            if (record.Values is null || record.Values.Count == 0)
+            {
+                return Task.FromResult(CreateFailedUpsertResult(InvalidVectorValuesReason));
+            }
+        }
 
         lock (gate)
         {
             if (!indexes.TryGetValue(request.IndexName, out var index))
             {
-                return Task.FromResult(new UpsertVectorResult
-                {
-                    Succeeded = false,
-                    Reason = IndexNotFoundReason,
-                });
+                return Task.FromResult(CreateFailedUpsertResult(IndexNotFoundReason));
             }
 
             var dimensionMismatch = request.Records.Any(record => record.Values.Count != index.Dimensions);
             if (dimensionMismatch)
             {
-                return Task.FromResult(new UpsertVectorResult
-                {
-                    Succeeded = false,
-                    Reason = DimensionMismatchReason,
-                });
+                return Task.FromResult(CreateFailedUpsertResult(DimensionMismatchReason));
             }
 
             foreach (var record in request.Records)
@@ -104,19 +142,35 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
         DeleteVectorRequest request,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(request);
+        if (request is null)
+        {
+            return Task.FromResult(CreateFailedDeleteResult(0, [], RequestRequiredReason));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.IndexName))
+        {
+            return Task.FromResult(CreateFailedDeleteResult(request.VectorIds?.Count ?? 0, request.VectorIds ?? [], InvalidIndexNameReason));
+        }
+
+        if (request.VectorIds is null || request.VectorIds.Count == 0)
+        {
+            return Task.FromResult(new DeleteVectorResult
+            {
+                Succeeded = true,
+                RequestedCount = 0,
+            });
+        }
+
+        if (request.VectorIds.Any(string.IsNullOrWhiteSpace))
+        {
+            return Task.FromResult(CreateFailedDeleteResult(request.VectorIds.Count, request.VectorIds, InvalidVectorIdReason));
+        }
 
         lock (gate)
         {
             if (!indexes.TryGetValue(request.IndexName, out var index))
             {
-                return Task.FromResult(new DeleteVectorResult
-                {
-                    Succeeded = false,
-                    RequestedCount = request.VectorIds.Count,
-                    NotFoundVectorIds = request.VectorIds.ToList(),
-                    Reason = IndexNotFoundReason,
-                });
+                return Task.FromResult(CreateFailedDeleteResult(request.VectorIds.Count, request.VectorIds, IndexNotFoundReason));
             }
 
             var deletedIds = new List<string>();
@@ -150,31 +204,40 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
         QueryVectorRequest request,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(request);
+        if (request is null)
+        {
+            return Task.FromResult(CreateFailedQueryResult(RequestRequiredReason));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.IndexName))
+        {
+            return Task.FromResult(CreateFailedQueryResult(InvalidIndexNameReason));
+        }
+
+        if (request.Values is null || request.Values.Count == 0)
+        {
+            return Task.FromResult(CreateFailedQueryResult(InvalidVectorValuesReason));
+        }
+
+        if (request.TopK <= 0)
+        {
+            return Task.FromResult(CreateFailedQueryResult(InvalidTopKReason));
+        }
 
         lock (gate)
         {
             if (!indexes.TryGetValue(request.IndexName, out var index))
             {
-                return Task.FromResult(new QueryVectorResult
-                {
-                    Succeeded = false,
-                    Reason = IndexNotFoundReason,
-                });
+                return Task.FromResult(CreateFailedQueryResult(IndexNotFoundReason));
             }
 
             if (request.Values.Count != index.Dimensions)
             {
-                return Task.FromResult(new QueryVectorResult
-                {
-                    Succeeded = false,
-                    Reason = DimensionMismatchReason,
-                });
+                return Task.FromResult(CreateFailedQueryResult(DimensionMismatchReason));
             }
 
-            var records = request.TopK <= 0
-                ? []
-                : index.Records.Values
+            var records = index.Records.Values
+                    .Where(record => MatchesMetadataFilter(record, request.MetadataFilter))
                     .Select(record => new VectorSearchResult
                     {
                         Id = record.Id,
@@ -285,6 +348,72 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
     private static RagMetadata CopyMetadata(RagMetadata metadata)
     {
         return new RagMetadata(metadata.Values);
+    }
+
+    private static bool MatchesMetadataFilter(VectorRecord record, RagMetadata metadataFilter)
+    {
+        if (metadataFilter.Values.Count == 0)
+        {
+            return true;
+        }
+
+        if (record.Metadata.Values.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (var filter in metadataFilter.Values)
+        {
+            if (!record.Metadata.Values.TryGetValue(filter.Key, out var value) ||
+                !StringComparer.Ordinal.Equals(value, filter.Value))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static CreateVectorIndexResult CreateFailedIndexResult(string indexName, string reason)
+    {
+        return new CreateVectorIndexResult
+        {
+            IndexName = indexName,
+            Succeeded = false,
+            Reason = reason,
+        };
+    }
+
+    private static UpsertVectorResult CreateFailedUpsertResult(string reason)
+    {
+        return new UpsertVectorResult
+        {
+            Succeeded = false,
+            Reason = reason,
+        };
+    }
+
+    private static QueryVectorResult CreateFailedQueryResult(string reason)
+    {
+        return new QueryVectorResult
+        {
+            Succeeded = false,
+            Reason = reason,
+        };
+    }
+
+    private static DeleteVectorResult CreateFailedDeleteResult(
+        int requestedCount,
+        IEnumerable<string?> notFoundVectorIds,
+        string reason)
+    {
+        return new DeleteVectorResult
+        {
+            Succeeded = false,
+            RequestedCount = requestedCount,
+            NotFoundVectorIds = notFoundVectorIds.Where(id => id is not null).Select(id => id!).ToList(),
+            Reason = reason,
+        };
     }
 
     private static double CalculateScore(
