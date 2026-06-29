@@ -87,6 +87,26 @@ public sealed class NullVectorStoreTests
     }
 
     [Fact]
+    public async Task DeleteAsync_ShouldReturnSuccessfulDeterministicNotFoundResult()
+    {
+        var vectorStore = new NullVectorStore();
+        var request = new DeleteVectorRequest
+        {
+            IndexName = "documents",
+            VectorIds = ["vector-1", "vector-2"],
+        };
+
+        var result = await vectorStore.DeleteAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(2, result.RequestedCount);
+        Assert.Equal(0, result.DeletedCount);
+        Assert.Empty(result.VectorIds);
+        Assert.Equal(["vector-1", "vector-2"], result.NotFoundVectorIds);
+        Assert.Equal(string.Empty, result.Reason);
+    }
+
+    [Fact]
     public async Task SearchAsync_ShouldReturnNonNullEmptyResults()
     {
         var vectorStore = new NullVectorStore();

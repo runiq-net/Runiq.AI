@@ -8,7 +8,6 @@ namespace Runiq.Rag.Models.VectorStores;
 public sealed class DeleteVectorRequest
 {
     private IList<string> vectorIds = new List<string>();
-    private RagMetadata metadataFilter = RagMetadata.Empty;
     private RagMetadata metadata = RagMetadata.Empty;
 
     /// <summary>
@@ -30,15 +29,6 @@ public sealed class DeleteVectorRequest
     {
         get => vectorIds;
         init => vectorIds = value ?? throw new ArgumentNullException(nameof(value));
-    }
-
-    /// <summary>
-    /// Gets or initializes exact-match metadata filters for delete operations.
-    /// </summary>
-    public RagMetadata MetadataFilter
-    {
-        get => metadataFilter;
-        init => metadataFilter = value ?? throw new ArgumentNullException(nameof(value));
     }
 
     /// <summary>

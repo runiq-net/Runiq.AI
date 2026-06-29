@@ -56,6 +56,25 @@ public sealed class NullVectorStore : IRagVectorStore
     }
 
     /// <summary>
+    /// Completes successfully without deleting physical vector records.
+    /// </summary>
+    /// <param name="request">The vector delete request.</param>
+    /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
+    /// <returns>A successful vector delete result that treats every requested identifier as not found.</returns>
+    public Task<DeleteVectorResult> DeleteAsync(
+        DeleteVectorRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(new DeleteVectorResult
+        {
+            Succeeded = true,
+            RequestedCount = request.VectorIds.Count,
+            DeletedCount = 0,
+            NotFoundVectorIds = request.VectorIds.ToList(),
+        });
+    }
+
+    /// <summary>
     /// Returns a successful empty vector query result without querying external services.
     /// </summary>
     /// <param name="request">The vector query request.</param>
