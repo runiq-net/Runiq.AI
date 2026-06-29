@@ -33,6 +33,24 @@ public interface IRagVectorStore
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Queries the vector store for records that are similar to the supplied query vector.
+    /// </summary>
+    /// <param name="request">The provider-independent vector query request.</param>
+    /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
+    /// <returns>The provider-independent vector query result.</returns>
+    Task<QueryVectorResult> QueryAsync(
+        QueryVectorRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        return Task.FromResult(new QueryVectorResult
+        {
+            Succeeded = true,
+        });
+    }
+
+    /// <summary>
     /// Inserts or updates a chunk and its embedding in the vector store.
     /// </summary>
     /// <param name="chunk">The RAG chunk to store.</param>

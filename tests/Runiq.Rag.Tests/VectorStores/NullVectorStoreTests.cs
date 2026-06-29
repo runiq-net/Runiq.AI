@@ -68,6 +68,25 @@ public sealed class NullVectorStoreTests
     }
 
     [Fact]
+    public async Task QueryAsync_ShouldReturnSuccessfulEmptyResult()
+    {
+        var vectorStore = new NullVectorStore();
+        var request = new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [0.1f, 0.2f],
+            TopK = 3,
+        };
+
+        var result = await vectorStore.QueryAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.NotNull(result.Records);
+        Assert.Empty(result.Records);
+        Assert.Equal(string.Empty, result.Reason);
+    }
+
+    [Fact]
     public async Task SearchAsync_ShouldReturnNonNullEmptyResults()
     {
         var vectorStore = new NullVectorStore();
