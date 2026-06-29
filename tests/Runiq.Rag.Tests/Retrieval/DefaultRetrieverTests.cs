@@ -1,7 +1,6 @@
 using Runiq.Rag.Abstractions.Embeddings;
 using Runiq.Rag.Abstractions.VectorStores;
 using Runiq.Rag.Embeddings;
-using Runiq.Rag.Models.Documents;
 using Runiq.Rag.Models.Embeddings;
 using Runiq.Rag.Models.Queries;
 using Runiq.Rag.Models.Search;
@@ -116,12 +115,15 @@ public sealed class DefaultRetrieverTests
             });
         }
 
-        public Task UpsertAsync(
-            RagChunk chunk,
-            RagEmbedding embedding,
+        public Task<UpsertVectorResult> UpsertAsync(
+            UpsertVectorRequest request,
             CancellationToken cancellationToken = default)
         {
-            return Task.CompletedTask;
+            return Task.FromResult(new UpsertVectorResult
+            {
+                Succeeded = true,
+                UpsertedCount = request.Records.Count,
+            });
         }
 
         public Task<IReadOnlyList<RagSearchResult>> SearchAsync(

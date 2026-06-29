@@ -5,6 +5,7 @@ using Runiq.Rag.Abstractions.VectorStores;
 using Runiq.Rag.Models.Context;
 using Runiq.Rag.Models.Documents;
 using Runiq.Rag.Models.Embeddings;
+using Runiq.Rag.Models.Metadata;
 using Runiq.Rag.Models.Queries;
 using Runiq.Rag.Models.Search;
 using Runiq.Rag.Models.VectorStores;
@@ -44,10 +45,10 @@ public sealed class RagAbstractionTests
     public async Task IRagVectorStore_ShouldAllowTestImplementation()
     {
         IRagVectorStore vectorStore = new TestVectorStore();
-        var chunk = new RagChunk
+        var record = new VectorRecord
         {
-            Id = "chunk-1",
-            DocumentId = "document-1",
+            Id = "vector-1",
+            Values = [0.1f],
         };
         var embedding = new RagEmbedding([0.1f]);
 
@@ -56,13 +57,58 @@ public sealed class RagAbstractionTests
             IndexName = "documents",
             Dimensions = embedding.Dimensions,
         });
-        await vectorStore.UpsertAsync(chunk, embedding);
+        var upsertResult = await vectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            Records = [record],
+        });
         var results = await vectorStore.SearchAsync(new RagQuery { Text = "query" }, embedding);
 
         Assert.True(createResult.Succeeded);
         Assert.Equal("documents", createResult.IndexName);
+        Assert.True(upsertResult.Succeeded);
+        Assert.Equal(1, upsertResult.UpsertedCount);
         var result = Assert.Single(results);
-        Assert.Same(chunk, result.Chunk);
+        Assert.Equal(record.Id, result.Chunk.Id);
+    }
+
+    [Fact]
+    public async Task IRagVectorStore_LegacyUpsertAsync_ShouldDelegateToRequestUpsert()
+    {
+        IRagVectorStore vectorStore = new RequestOnlyVectorStore();
+        var chunk = new RagChunk
+        {
+            Id = "chunk-1",
+            DocumentId = "document-1",
+            Content = "chunk content",
+            Index = 3,
+            Metadata = new RagChunkMetadata
+            {
+                StartIndex = 10,
+                EndIndex = 24,
+                TokenCount = 4,
+                AdditionalMetadata = new RagMetadata(new Dictionary<string, string>
+                {
+                    ["source"] = "docs",
+                }),
+            },
+        };
+        var embedding = new RagEmbedding([0.1f, 0.2f]);
+
+        var result = await vectorStore.UpsertAsync(chunk, embedding);
+        var request = Assert.IsType<RequestOnlyVectorStore>(vectorStore).LastUpsertRequest;
+        var record = Assert.Single(request!.Records);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("chunk-1", record.Id);
+        Assert.Equal([0.1f, 0.2f], record.Values);
+        Assert.Equal("chunk content", record.Content);
+        Assert.Equal("document-1", record.Metadata.Values["documentId"]);
+        Assert.Equal("3", record.Metadata.Values["chunkIndex"]);
+        Assert.Equal("10", record.Metadata.Values["startIndex"]);
+        Assert.Equal("24", record.Metadata.Values["endIndex"]);
+        Assert.Equal("4", record.Metadata.Values["tokenCount"]);
+        Assert.Equal("docs", record.Metadata.Values["source"]);
     }
 
     [Fact]
@@ -97,7 +143,7 @@ public sealed class RagAbstractionTests
 
     private sealed class TestVectorStore : IRagVectorStore
     {
-        private RagChunk? chunk;
+        private VectorRecord? record;
 
         public Task<CreateVectorIndexResult> CreateIndexAsync(
             CreateVectorIndexRequest request,
@@ -110,14 +156,18 @@ public sealed class RagAbstractionTests
             });
         }
 
-        public Task UpsertAsync(
-            RagChunk chunk,
-            RagEmbedding embedding,
+        public Task<UpsertVectorResult> UpsertAsync(
+            UpsertVectorRequest request,
             CancellationToken cancellationToken = default)
         {
-            this.chunk = chunk;
+            record = request.Records.Single();
 
-            return Task.CompletedTask;
+            return Task.FromResult(new UpsertVectorResult
+            {
+                Succeeded = true,
+                UpsertedCount = request.Records.Count,
+                VectorIds = request.Records.Select(item => item.Id).ToList(),
+            });
         }
 
         public Task<IReadOnlyList<RagSearchResult>> SearchAsync(
@@ -125,18 +175,60 @@ public sealed class RagAbstractionTests
             RagEmbedding embedding,
             CancellationToken cancellationToken = default)
         {
-            IReadOnlyList<RagSearchResult> results = chunk is null
+            IReadOnlyList<RagSearchResult> results = record is null
                 ? []
                 :
                 [
                     new RagSearchResult
                     {
-                        Chunk = chunk,
+                        Chunk = new RagChunk
+                        {
+                            Id = record.Id,
+                            DocumentId = "document-1",
+                        },
                         Score = 1.0,
                     },
                 ];
 
             return Task.FromResult(results);
+        }
+    }
+
+    private sealed class RequestOnlyVectorStore : IRagVectorStore
+    {
+        public UpsertVectorRequest? LastUpsertRequest { get; private set; }
+
+        public Task<CreateVectorIndexResult> CreateIndexAsync(
+            CreateVectorIndexRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new CreateVectorIndexResult
+            {
+                IndexName = request.IndexName,
+                Succeeded = true,
+            });
+        }
+
+        public Task<UpsertVectorResult> UpsertAsync(
+            UpsertVectorRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            LastUpsertRequest = request;
+
+            return Task.FromResult(new UpsertVectorResult
+            {
+                Succeeded = true,
+                UpsertedCount = request.Records.Count,
+                VectorIds = request.Records.Select(record => record.Id).ToList(),
+            });
+        }
+
+        public Task<IReadOnlyList<RagSearchResult>> SearchAsync(
+            RagQuery query,
+            RagEmbedding embedding,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<RagSearchResult>>(Array.Empty<RagSearchResult>());
         }
     }
 

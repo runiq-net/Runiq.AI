@@ -1,5 +1,6 @@
 using Runiq.Rag.Models.Documents;
 using Runiq.Rag.Models.Embeddings;
+using Runiq.Rag.Models.Metadata;
 using Runiq.Rag.Models.Queries;
 using Runiq.Rag.Models.Search;
 using Runiq.Rag.Models.VectorStores;
@@ -7,7 +8,7 @@ using Runiq.Rag.Models.VectorStores;
 namespace Runiq.Rag.Abstractions.VectorStores;
 
 /// <summary>
-/// Defines a vector store that can persist embedded RAG chunks and perform similarity search operations.
+/// Defines a vector store that can persist vectors and perform similarity search operations.
 /// </summary>
 public interface IRagVectorStore
 {
@@ -22,16 +23,47 @@ public interface IRagVectorStore
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Inserts or updates vectors in the vector store.
+    /// </summary>
+    /// <param name="request">The provider-independent vector upsert request.</param>
+    /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
+    /// <returns>The provider-independent vector upsert result.</returns>
+    Task<UpsertVectorResult> UpsertAsync(
+        UpsertVectorRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Inserts or updates a chunk and its embedding in the vector store.
     /// </summary>
     /// <param name="chunk">The RAG chunk to store.</param>
     /// <param name="embedding">The embedding generated for the chunk content.</param>
     /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
-    Task UpsertAsync(
+    /// <returns>The provider-independent vector upsert result.</returns>
+    Task<UpsertVectorResult> UpsertAsync(
         RagChunk chunk,
         RagEmbedding embedding,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(chunk);
+        ArgumentNullException.ThrowIfNull(embedding);
+
+        return UpsertAsync(
+            new UpsertVectorRequest
+            {
+                IndexName = string.Empty,
+                Records =
+                [
+                    new VectorRecord
+                    {
+                        Id = chunk.Id,
+                        Values = embedding.Values,
+                        Content = chunk.Content,
+                        Metadata = BuildChunkMetadata(chunk),
+                    },
+                ],
+            },
+            cancellationToken);
+    }
 
     /// <summary>
     /// Searches the vector store for chunks that are similar to the specified query embedding.
@@ -44,4 +76,30 @@ public interface IRagVectorStore
         RagQuery query,
         RagEmbedding embedding,
         CancellationToken cancellationToken = default);
+
+    private static RagMetadata BuildChunkMetadata(RagChunk chunk)
+    {
+        var values = new Dictionary<string, string>(chunk.Metadata.AdditionalMetadata.Values)
+        {
+            ["documentId"] = chunk.DocumentId,
+            ["chunkIndex"] = chunk.Index.ToString(),
+        };
+
+        if (chunk.Metadata.StartIndex.HasValue)
+        {
+            values["startIndex"] = chunk.Metadata.StartIndex.Value.ToString();
+        }
+
+        if (chunk.Metadata.EndIndex.HasValue)
+        {
+            values["endIndex"] = chunk.Metadata.EndIndex.Value.ToString();
+        }
+
+        if (chunk.Metadata.TokenCount.HasValue)
+        {
+            values["tokenCount"] = chunk.Metadata.TokenCount.Value.ToString();
+        }
+
+        return new RagMetadata(values);
+    }
 }
