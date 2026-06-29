@@ -12,6 +12,7 @@ using Runiq.Rag.Embeddings;
 using Runiq.Rag.Retrieval;
 using Runiq.Rag.Services;
 using Runiq.Rag.VectorStores;
+using Runiq.Rag.VectorStores.InMemory;
 
 namespace Runiq.Rag.DependencyInjection;
 
@@ -35,6 +36,50 @@ public static class RuniqRagServiceCollectionExtensions
         services.TryAddScoped<IRagRetriever, DefaultRetriever>();
         services.TryAddScoped<IRagService, RagService>();
         services.Configure<RagOptions>(_ => { });
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the in-memory RAG vector store.
+    /// </summary>
+    /// <param name="services">The service collection to add the vector store to.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddInMemoryRagVectorStore(this IServiceCollection services)
+    {
+        return services.AddRagVectorStore<InMemoryRagVectorStore>();
+    }
+
+    /// <summary>
+    /// Registers the specified RAG vector store implementation.
+    /// </summary>
+    /// <typeparam name="TVectorStore">The vector store implementation type.</typeparam>
+    /// <param name="services">The service collection to add the vector store to.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddRagVectorStore<TVectorStore>(this IServiceCollection services)
+        where TVectorStore : class, IRagVectorStore
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.Replace(ServiceDescriptor.Singleton<IRagVectorStore, TVectorStore>());
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers a RAG vector store using the specified factory.
+    /// </summary>
+    /// <param name="services">The service collection to add the vector store to.</param>
+    /// <param name="factory">The factory used to create the vector store.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddRagVectorStore(
+        this IServiceCollection services,
+        Func<IServiceProvider, IRagVectorStore> factory)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(factory);
+
+        services.Replace(ServiceDescriptor.Singleton(factory));
 
         return services;
     }

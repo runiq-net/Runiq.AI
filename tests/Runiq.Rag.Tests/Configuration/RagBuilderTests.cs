@@ -10,6 +10,7 @@ using Runiq.Rag.Models.Embeddings;
 using Runiq.Rag.Models.Queries;
 using Runiq.Rag.Models.Search;
 using Runiq.Rag.Models.VectorStores;
+using Runiq.Rag.VectorStores.InMemory;
 
 namespace Runiq.Rag.Tests.Configuration;
 
@@ -49,6 +50,45 @@ public sealed class RagBuilderTests
         var descriptor = Assert.Single(services, service => service.ServiceType == typeof(IRagVectorStore));
         Assert.Equal(typeof(TestVectorStore), descriptor.ImplementationType);
         Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
+    }
+
+    [Fact]
+    public void UseInMemoryVectorStore_ShouldReplaceDefaultVectorStoreRegistration()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+        var builder = new RagBuilder(services);
+
+        builder.UseInMemoryVectorStore();
+
+        var descriptor = Assert.Single(services, service => service.ServiceType == typeof(IRagVectorStore));
+        Assert.Equal(typeof(InMemoryRagVectorStore), descriptor.ImplementationType);
+        Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
+    }
+
+    [Fact]
+    public void UseVectorStoreWithFactory_ShouldReplaceDefaultVectorStoreRegistration()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+        var builder = new RagBuilder(services);
+
+        builder.UseVectorStore(_ => new TestVectorStore());
+
+        var descriptor = Assert.Single(services, service => service.ServiceType == typeof(IRagVectorStore));
+        Assert.NotNull(descriptor.ImplementationFactory);
+        Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
+    }
+
+    [Fact]
+    public void UseVectorStoreWithFactory_ShouldThrow_WhenFactoryIsNull()
+    {
+        var builder = new RagBuilder(new ServiceCollection());
+
+        var exception = Assert.Throws<ArgumentNullException>(() =>
+            builder.UseVectorStore((Func<IServiceProvider, IRagVectorStore>)null!));
+
+        Assert.Equal("factory", exception.ParamName);
     }
 
     [Fact]
@@ -95,6 +135,26 @@ public sealed class RagBuilderTests
         var builder = new RagBuilder(new ServiceCollection());
 
         var returnedBuilder = builder.UseVectorStore<TestVectorStore>();
+
+        Assert.Same(builder, returnedBuilder);
+    }
+
+    [Fact]
+    public void UseInMemoryVectorStore_ShouldReturnSameBuilderInstance()
+    {
+        var builder = new RagBuilder(new ServiceCollection());
+
+        var returnedBuilder = builder.UseInMemoryVectorStore();
+
+        Assert.Same(builder, returnedBuilder);
+    }
+
+    [Fact]
+    public void UseVectorStoreWithFactory_ShouldReturnSameBuilderInstance()
+    {
+        var builder = new RagBuilder(new ServiceCollection());
+
+        var returnedBuilder = builder.UseVectorStore(_ => new TestVectorStore());
 
         Assert.Same(builder, returnedBuilder);
     }
