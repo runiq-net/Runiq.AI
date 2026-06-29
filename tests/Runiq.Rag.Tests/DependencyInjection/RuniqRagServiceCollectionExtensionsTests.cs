@@ -14,6 +14,7 @@ using Runiq.Rag.Models.Documents;
 using Runiq.Rag.Models.Embeddings;
 using Runiq.Rag.Models.Queries;
 using Runiq.Rag.Models.Search;
+using Runiq.Rag.Models.VectorStores;
 using Runiq.Rag.VectorStores;
 
 namespace Runiq.Rag.Tests.DependencyInjection;
@@ -443,6 +444,17 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
 
     private sealed class TestVectorStore : IRagVectorStore
     {
+        public Task<CreateVectorIndexResult> CreateIndexAsync(
+            CreateVectorIndexRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new CreateVectorIndexResult
+            {
+                IndexName = request.IndexName,
+                Succeeded = true,
+            });
+        }
+
         public Task UpsertAsync(
             RagChunk chunk,
             RagEmbedding embedding,

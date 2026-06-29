@@ -3,6 +3,7 @@ using Runiq.Rag.Models.Documents;
 using Runiq.Rag.Models.Embeddings;
 using Runiq.Rag.Models.Queries;
 using Runiq.Rag.Models.Search;
+using Runiq.Rag.Models.VectorStores;
 
 namespace Runiq.Rag.VectorStores;
 
@@ -16,6 +17,23 @@ public sealed class NullVectorStore : IRagVectorStore
     /// </summary>
     public NullVectorStore()
     {
+    }
+
+    /// <summary>
+    /// Completes successfully without creating a physical vector index.
+    /// </summary>
+    /// <param name="request">The vector index creation request.</param>
+    /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
+    /// <returns>A successful vector index creation result.</returns>
+    public Task<CreateVectorIndexResult> CreateIndexAsync(
+        CreateVectorIndexRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(new CreateVectorIndexResult
+        {
+            IndexName = request.IndexName,
+            Succeeded = true,
+        });
     }
 
     /// <summary>

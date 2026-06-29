@@ -1,12 +1,30 @@
 using Runiq.Rag.Models.Documents;
 using Runiq.Rag.Models.Embeddings;
 using Runiq.Rag.Models.Queries;
+using Runiq.Rag.Models.VectorStores;
 using Runiq.Rag.VectorStores;
 
 namespace Runiq.Rag.Tests.VectorStores;
 
 public sealed class NullVectorStoreTests
 {
+    [Fact]
+    public async Task CreateIndexAsync_ShouldReturnSuccessfulResult()
+    {
+        var vectorStore = new NullVectorStore();
+        var request = new CreateVectorIndexRequest
+        {
+            IndexName = "documents",
+            Dimensions = 1536,
+        };
+
+        var result = await vectorStore.CreateIndexAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("documents", result.IndexName);
+        Assert.Equal(string.Empty, result.Reason);
+    }
+
     [Fact]
     public async Task UpsertAsync_ShouldCompleteWithoutThrowing()
     {
