@@ -22,6 +22,28 @@ public sealed class InMemoryRagVectorStoreTests
     }
 
     [Fact]
+    public async Task CreateIndexAsync_ShouldCreateMultipleIndexes()
+    {
+        var vectorStore = new InMemoryRagVectorStore();
+
+        var documentsResult = await vectorStore.CreateIndexAsync(new CreateVectorIndexRequest
+        {
+            IndexName = "documents",
+            Dimensions = 3,
+        });
+        var archiveResult = await vectorStore.CreateIndexAsync(new CreateVectorIndexRequest
+        {
+            IndexName = "archive",
+            Dimensions = 3,
+        });
+
+        Assert.True(documentsResult.Succeeded);
+        Assert.True(archiveResult.Succeeded);
+        Assert.Equal("documents", documentsResult.IndexName);
+        Assert.Equal("archive", archiveResult.IndexName);
+    }
+
+    [Fact]
     public async Task UpsertAsync_ShouldStoreSingleVectorRecord()
     {
         var vectorStore = await CreateVectorStoreAsync();
@@ -142,6 +164,86 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.True(deleteResult.Succeeded);
         Assert.Empty(documentsAfterDelete.Records);
         Assert.Equal("archive record", Assert.Single(archiveAfterDelete.Records).Content);
+    }
+
+    [Fact]
+    public async Task UpsertAsync_ShouldAllowSameVectorIdInDifferentIndexes()
+    {
+        var vectorStore = await CreateVectorStoreWithDocumentsAndArchiveIndexesAsync();
+
+        var documentsResult = await vectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            Records = [CreateRecord("shared-vector", [1.0f, 0.0f, 0.0f], content: "documents record")],
+        });
+        var archiveResult = await vectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "archive",
+            Records = [CreateRecord("shared-vector", [0.0f, 1.0f, 0.0f], content: "archive record")],
+        });
+
+        Assert.True(documentsResult.Succeeded);
+        Assert.True(archiveResult.Succeeded);
+        Assert.Equal("shared-vector", Assert.Single(documentsResult.VectorIds));
+        Assert.Equal("shared-vector", Assert.Single(archiveResult.VectorIds));
+    }
+
+    [Fact]
+    public async Task QueryAsync_ShouldNotMixRecordsBetweenIndexes()
+    {
+        var vectorStore = await CreateVectorStoreWithDocumentsAndArchiveIndexesAsync();
+        await vectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            Records = [CreateRecord("document-vector", [1.0f, 0.0f, 0.0f], content: "documents record")],
+        });
+        await vectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "archive",
+            Records = [CreateRecord("archive-vector", [1.0f, 0.0f, 0.0f], content: "archive record")],
+        });
+
+        var result = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [1.0f, 0.0f, 0.0f],
+            TopK = 10,
+        });
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("document-vector", Assert.Single(result.Records).Id);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_ShouldOnlyDeleteFromRequestedIndex_WhenSameVectorIdExistsInMultipleIndexes()
+    {
+        var vectorStore = await CreateVectorStoreWithDocumentsAndArchiveIndexesAsync();
+        await vectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            Records = [CreateRecord("shared-vector", [1.0f, 0.0f, 0.0f], content: "documents record")],
+        });
+        await vectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "archive",
+            Records = [CreateRecord("shared-vector", [1.0f, 0.0f, 0.0f], content: "archive record")],
+        });
+
+        var deleteResult = await vectorStore.DeleteAsync(new DeleteVectorRequest
+        {
+            IndexName = "documents",
+            VectorIds = ["shared-vector"],
+        });
+        var archiveQuery = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "archive",
+            Values = [1.0f, 0.0f, 0.0f],
+            TopK = 1,
+        });
+
+        Assert.True(deleteResult.Succeeded);
+        Assert.Equal(1, deleteResult.DeletedCount);
+        Assert.Equal("archive record", Assert.Single(archiveQuery.Records).Content);
     }
 
     [Fact]
@@ -639,6 +741,19 @@ public sealed class InMemoryRagVectorStoreTests
         await vectorStore.CreateIndexAsync(new CreateVectorIndexRequest
         {
             IndexName = "documents",
+            Dimensions = 3,
+        });
+
+        return vectorStore;
+    }
+
+    private static async Task<InMemoryRagVectorStore> CreateVectorStoreWithDocumentsAndArchiveIndexesAsync()
+    {
+        var vectorStore = await CreateVectorStoreAsync();
+
+        await vectorStore.CreateIndexAsync(new CreateVectorIndexRequest
+        {
+            IndexName = "archive",
             Dimensions = 3,
         });
 
