@@ -92,6 +92,31 @@ public sealed class VectorStoreModelTests
     [Fact]
     public void QueryVectorRequest_DefaultOptions_ShouldBeProviderIndependent()
     {
+        var metadataFilter = new RagMetadata(new Dictionary<string, string>
+        {
+            ["tenant"] = "runiq",
+        });
+        var request = new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [0.1f, 0.2f],
+            TopK = 3,
+            MetadataFilter = metadataFilter,
+        };
+
+        Assert.Equal("documents", request.IndexName);
+        Assert.Equal([0.1f, 0.2f], request.Values);
+        Assert.Equal(3, request.TopK);
+        Assert.True(request.IncludeMetadata);
+        Assert.False(request.IncludeVectors);
+        Assert.Same(metadataFilter, request.MetadataFilter);
+        Assert.Equal("runiq", request.MetadataFilter.Values["tenant"]);
+        Assert.NotNull(request.Metadata);
+    }
+
+    [Fact]
+    public void QueryVectorRequest_DefaultTopKAndMetadataFilter_ShouldNotBeNull()
+    {
         var request = new QueryVectorRequest
         {
             IndexName = "documents",
@@ -99,14 +124,25 @@ public sealed class VectorStoreModelTests
         };
 
         Assert.Equal(5, request.TopK);
-        Assert.True(request.IncludeMetadata);
-        Assert.False(request.IncludeVectors);
         Assert.NotNull(request.MetadataFilter);
-        Assert.NotNull(request.Metadata);
+        Assert.Empty(request.MetadataFilter.Values);
     }
 
     [Fact]
-    public void QueryVectorResult_DefaultRecords_ShouldNotBeNullAndShouldHoldResults()
+    public void QueryVectorResult_DefaultRecords_ShouldNotBeNullAndShouldAllowEmptyResults()
+    {
+        var result = new QueryVectorResult
+        {
+            Succeeded = true,
+        };
+
+        Assert.True(result.Succeeded);
+        Assert.NotNull(result.Records);
+        Assert.Empty(result.Records);
+    }
+
+    [Fact]
+    public void QueryVectorResult_ShouldHoldVectorIdScoreAndOptionalMetadata()
     {
         var result = new QueryVectorResult
         {
@@ -118,12 +154,43 @@ public sealed class VectorStoreModelTests
             Id = "vector-1",
             Score = 0.98,
             Content = "content",
+            Metadata = new RagMetadata(new Dictionary<string, string>
+            {
+                ["source"] = "docs",
+            }),
             Values = [0.1f, 0.2f],
         });
 
-        Assert.NotNull(result.Records);
-        Assert.Single(result.Records);
-        Assert.NotNull(result.Records[0].Metadata);
+        var searchResult = Assert.Single(result.Records);
+        Assert.Equal("vector-1", searchResult.Id);
+        Assert.Equal(0.98, searchResult.Score);
+        Assert.Equal("docs", searchResult.Metadata.Values["source"]);
+        Assert.Equal([0.1f, 0.2f], searchResult.Values);
+    }
+
+    [Fact]
+    public void VectorSearchResult_DefaultMetadata_ShouldSupportOptionalMetadata()
+    {
+        var result = new VectorSearchResult
+        {
+            Id = "vector-1",
+            Score = 0.98,
+        };
+
+        Assert.NotNull(result.Metadata);
+        Assert.Empty(result.Metadata.Values);
+        Assert.Null(result.Values);
+    }
+
+    [Fact]
+    public void IRagVectorStore_ShouldExposeProviderIndependentQueryContract()
+    {
+        var method = typeof(IRagVectorStore).GetMethod(
+            nameof(IRagVectorStore.QueryAsync),
+            [typeof(QueryVectorRequest), typeof(CancellationToken)]);
+
+        Assert.NotNull(method);
+        Assert.Equal(typeof(Task<QueryVectorResult>), method.ReturnType);
     }
 
     [Fact]

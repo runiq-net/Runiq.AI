@@ -56,6 +56,22 @@ public sealed class NullVectorStore : IRagVectorStore
     }
 
     /// <summary>
+    /// Returns a successful empty vector query result without querying external services.
+    /// </summary>
+    /// <param name="request">The vector query request.</param>
+    /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
+    /// <returns>A successful empty vector query result.</returns>
+    public Task<QueryVectorResult> QueryAsync(
+        QueryVectorRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(new QueryVectorResult
+        {
+            Succeeded = true,
+        });
+    }
+
+    /// <summary>
     /// Completes successfully without storing the chunk or embedding.
     /// </summary>
     /// <param name="chunk">The RAG chunk to store.</param>

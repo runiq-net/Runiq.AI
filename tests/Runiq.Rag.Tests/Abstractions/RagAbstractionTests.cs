@@ -62,12 +62,21 @@ public sealed class RagAbstractionTests
             IndexName = "documents",
             Records = [record],
         });
+        var queryResult = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = embedding.Values,
+            TopK = 1,
+        });
         var results = await vectorStore.SearchAsync(new RagQuery { Text = "query" }, embedding);
 
         Assert.True(createResult.Succeeded);
         Assert.Equal("documents", createResult.IndexName);
         Assert.True(upsertResult.Succeeded);
         Assert.Equal(1, upsertResult.UpsertedCount);
+        var vectorResult = Assert.Single(queryResult.Records);
+        Assert.Equal(record.Id, vectorResult.Id);
+        Assert.Equal(1.0, vectorResult.Score);
         var result = Assert.Single(results);
         Assert.Equal(record.Id, result.Chunk.Id);
     }
@@ -191,6 +200,29 @@ public sealed class RagAbstractionTests
                 ];
 
             return Task.FromResult(results);
+        }
+
+        public Task<QueryVectorResult> QueryAsync(
+            QueryVectorRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            var records = record is null
+                ? new List<VectorSearchResult>()
+                :
+                [
+                    new VectorSearchResult
+                    {
+                        Id = record.Id,
+                        Score = 1.0,
+                        Metadata = record.Metadata,
+                    },
+                ];
+
+            return Task.FromResult(new QueryVectorResult
+            {
+                Succeeded = true,
+                Records = records,
+            });
         }
     }
 
