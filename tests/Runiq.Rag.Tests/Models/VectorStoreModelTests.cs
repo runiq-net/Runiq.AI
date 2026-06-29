@@ -1,3 +1,4 @@
+using Runiq.Rag.Abstractions.VectorStores;
 using Runiq.Rag.Models.Metadata;
 using Runiq.Rag.Models.VectorStores;
 
@@ -19,14 +20,34 @@ public sealed class VectorStoreModelTests
     }
 
     [Fact]
-    public void UpsertVectorRequest_DefaultRecords_ShouldNotBeNullAndShouldHoldRecords()
+    public void UpsertVectorRequest_ShouldHoldMultipleVectorRecords()
     {
         var request = new UpsertVectorRequest
         {
             IndexName = "documents",
+            Records =
+            [
+                new VectorRecord
+                {
+                    Id = "vector-1",
+                    Values = [0.1f, 0.2f],
+                },
+                new VectorRecord
+                {
+                    Id = "vector-2",
+                    Values = [0.3f, 0.4f],
+                },
+            ],
         };
 
-        request.Records.Add(new VectorRecord
+        Assert.Equal(2, request.Records.Count);
+        Assert.Equal(["vector-1", "vector-2"], request.Records.Select(record => record.Id));
+    }
+
+    [Fact]
+    public void VectorRecord_ShouldCarryIdValuesAndMetadata()
+    {
+        var record = new VectorRecord
         {
             Id = "vector-1",
             Values = [0.1f, 0.2f],
@@ -35,11 +56,37 @@ public sealed class VectorStoreModelTests
             {
                 ["source"] = "docs",
             }),
-        });
+        };
 
-        Assert.NotNull(request.Records);
-        Assert.Single(request.Records);
-        Assert.Equal("docs", request.Records[0].Metadata.Values["source"]);
+        Assert.Equal("vector-1", record.Id);
+        Assert.Equal([0.1f, 0.2f], record.Values);
+        Assert.Equal("docs", record.Metadata.Values["source"]);
+    }
+
+    [Fact]
+    public void UpsertVectorResult_ShouldCarryOperationOutcome()
+    {
+        var result = new UpsertVectorResult
+        {
+            Succeeded = true,
+            UpsertedCount = 2,
+            VectorIds = ["vector-1", "vector-2"],
+        };
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(2, result.UpsertedCount);
+        Assert.Equal(["vector-1", "vector-2"], result.VectorIds);
+    }
+
+    [Fact]
+    public void IRagVectorStore_ShouldExposeProviderIndependentUpsertContract()
+    {
+        var method = typeof(IRagVectorStore).GetMethod(
+            nameof(IRagVectorStore.UpsertAsync),
+            [typeof(UpsertVectorRequest), typeof(CancellationToken)]);
+
+        Assert.NotNull(method);
+        Assert.Equal(typeof(Task<UpsertVectorResult>), method.ReturnType);
     }
 
     [Fact]

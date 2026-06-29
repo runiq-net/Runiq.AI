@@ -26,7 +26,31 @@ public sealed class NullVectorStoreTests
     }
 
     [Fact]
-    public async Task UpsertAsync_ShouldCompleteWithoutThrowing()
+    public async Task UpsertAsync_ShouldReturnSuccessfulResult()
+    {
+        var vectorStore = new NullVectorStore();
+        var request = new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            Records =
+            [
+                new VectorRecord
+                {
+                    Id = "vector-1",
+                    Values = [0.1f, 0.2f],
+                },
+            ],
+        };
+
+        var result = await vectorStore.UpsertAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(1, result.UpsertedCount);
+        Assert.Equal("vector-1", Assert.Single(result.VectorIds));
+    }
+
+    [Fact]
+    public async Task LegacyUpsertAsync_ShouldReturnSuccessfulResult()
     {
         var vectorStore = new NullVectorStore();
         var chunk = new RagChunk
@@ -34,11 +58,13 @@ public sealed class NullVectorStoreTests
             Id = "chunk-1",
             DocumentId = "document-1",
         };
-        var embedding = new RagEmbedding();
+        var embedding = new RagEmbedding([0.1f, 0.2f]);
 
-        var exception = await Record.ExceptionAsync(() => vectorStore.UpsertAsync(chunk, embedding));
+        var result = await vectorStore.UpsertAsync(chunk, embedding);
 
-        Assert.Null(exception);
+        Assert.True(result.Succeeded);
+        Assert.Equal(1, result.UpsertedCount);
+        Assert.Equal("chunk-1", Assert.Single(result.VectorIds));
     }
 
     [Fact]

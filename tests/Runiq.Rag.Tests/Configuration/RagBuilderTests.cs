@@ -142,12 +142,15 @@ public sealed class RagBuilderTests
             });
         }
 
-        public Task UpsertAsync(
-            RagChunk chunk,
-            RagEmbedding embedding,
+        public Task<UpsertVectorResult> UpsertAsync(
+            UpsertVectorRequest request,
             CancellationToken cancellationToken = default)
         {
-            return Task.CompletedTask;
+            return Task.FromResult(new UpsertVectorResult
+            {
+                Succeeded = true,
+                UpsertedCount = request.Records.Count,
+            });
         }
 
         public Task<IReadOnlyList<RagSearchResult>> SearchAsync(
