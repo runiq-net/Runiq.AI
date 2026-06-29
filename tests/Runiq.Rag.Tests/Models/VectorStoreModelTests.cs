@@ -194,18 +194,82 @@ public sealed class VectorStoreModelTests
     }
 
     [Fact]
-    public void DeleteVectorRequest_DefaultVectorIdsAndMetadataFilter_ShouldNotBeNull()
+    public void DeleteVectorRequest_ShouldHoldMultipleVectorIds()
     {
         var request = new DeleteVectorRequest
         {
             IndexName = "documents",
+            VectorIds = ["vector-1", "vector-2"],
         };
 
-        request.VectorIds.Add("vector-1");
-
         Assert.NotNull(request.VectorIds);
-        Assert.Single(request.VectorIds);
-        Assert.NotNull(request.MetadataFilter);
+        Assert.Equal(["vector-1", "vector-2"], request.VectorIds);
+        Assert.NotNull(request.Metadata);
+    }
+
+    [Fact]
+    public void DeleteVectorResult_ShouldCarrySuccessfulOperationOutcome()
+    {
+        var result = new DeleteVectorResult
+        {
+            Succeeded = true,
+            RequestedCount = 2,
+            DeletedCount = 2,
+            VectorIds = ["vector-1", "vector-2"],
+        };
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(2, result.RequestedCount);
+        Assert.Equal(2, result.DeletedCount);
+        Assert.Equal(["vector-1", "vector-2"], result.VectorIds);
+        Assert.Empty(result.NotFoundVectorIds);
+    }
+
+    [Fact]
+    public void DeleteVectorResult_ShouldCarryFailedOperationOutcome()
+    {
+        var result = new DeleteVectorResult
+        {
+            Succeeded = false,
+            RequestedCount = 2,
+            DeletedCount = 0,
+            NotFoundVectorIds = ["vector-1", "vector-2"],
+            Reason = "delete failed",
+        };
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(2, result.RequestedCount);
+        Assert.Equal(0, result.DeletedCount);
+        Assert.Equal(["vector-1", "vector-2"], result.NotFoundVectorIds);
+        Assert.Equal("delete failed", result.Reason);
+    }
+
+    [Fact]
+    public void DeleteVectorResult_ShouldCarryDeterministicNotFoundVectorIds()
+    {
+        var result = new DeleteVectorResult
+        {
+            Succeeded = true,
+            RequestedCount = 3,
+            DeletedCount = 2,
+            VectorIds = ["vector-1", "vector-3"],
+            NotFoundVectorIds = ["vector-2"],
+        };
+
+        Assert.Equal(3, result.RequestedCount);
+        Assert.Equal(2, result.DeletedCount);
+        Assert.Equal(["vector-2"], result.NotFoundVectorIds);
+    }
+
+    [Fact]
+    public void IRagVectorStore_ShouldExposeProviderIndependentDeleteContract()
+    {
+        var method = typeof(IRagVectorStore).GetMethod(
+            nameof(IRagVectorStore.DeleteAsync),
+            [typeof(DeleteVectorRequest), typeof(CancellationToken)]);
+
+        Assert.NotNull(method);
+        Assert.Equal(typeof(Task<DeleteVectorResult>), method.ReturnType);
     }
 
     [Fact]
@@ -225,6 +289,7 @@ public sealed class VectorStoreModelTests
         Assert.Equal(string.Empty, upsertResult.Reason);
         Assert.NotNull(deleteResult.Metadata);
         Assert.NotNull(deleteResult.VectorIds);
+        Assert.NotNull(deleteResult.NotFoundVectorIds);
         Assert.Equal(string.Empty, deleteResult.Reason);
     }
 }

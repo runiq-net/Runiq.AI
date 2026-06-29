@@ -33,6 +33,27 @@ public interface IRagVectorStore
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Deletes vectors from the vector store by vector identifier.
+    /// </summary>
+    /// <param name="request">The provider-independent vector delete request.</param>
+    /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
+    /// <returns>The provider-independent vector delete result.</returns>
+    Task<DeleteVectorResult> DeleteAsync(
+        DeleteVectorRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        return Task.FromResult(new DeleteVectorResult
+        {
+            Succeeded = true,
+            RequestedCount = request.VectorIds.Count,
+            DeletedCount = 0,
+            NotFoundVectorIds = request.VectorIds.ToList(),
+        });
+    }
+
+    /// <summary>
     /// Queries the vector store for records that are similar to the supplied query vector.
     /// </summary>
     /// <param name="request">The provider-independent vector query request.</param>

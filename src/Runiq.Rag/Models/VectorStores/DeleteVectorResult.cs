@@ -8,6 +8,7 @@ namespace Runiq.Rag.Models.VectorStores;
 public sealed class DeleteVectorResult
 {
     private IList<string> vectorIds = new List<string>();
+    private IList<string> notFoundVectorIds = new List<string>();
     private RagMetadata metadata = RagMetadata.Empty;
 
     /// <summary>
@@ -23,6 +24,11 @@ public sealed class DeleteVectorResult
     public bool Succeeded { get; init; }
 
     /// <summary>
+    /// Gets or initializes the number of vector identifiers requested for deletion.
+    /// </summary>
+    public int RequestedCount { get; init; }
+
+    /// <summary>
     /// Gets or initializes the number of records deleted.
     /// </summary>
     public int DeletedCount { get; init; }
@@ -34,6 +40,15 @@ public sealed class DeleteVectorResult
     {
         get => vectorIds;
         init => vectorIds = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    /// <summary>
+    /// Gets or initializes the identifiers that were requested but not found.
+    /// </summary>
+    public IList<string> NotFoundVectorIds
+    {
+        get => notFoundVectorIds;
+        init => notFoundVectorIds = value ?? throw new ArgumentNullException(nameof(value));
     }
 
     /// <summary>
