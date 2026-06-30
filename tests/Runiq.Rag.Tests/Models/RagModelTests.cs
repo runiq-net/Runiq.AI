@@ -274,6 +274,202 @@ public sealed class RagModelTests
     }
 
     [Fact]
+    public void RagChunk_Should_Preserve_Contract_Values()
+    {
+        var metadata = new RagChunkMetadata
+        {
+            StartIndex = 10,
+            EndIndex = 42,
+            TokenCount = 8,
+            AdditionalMetadata = new RagMetadata(new Dictionary<string, string>
+            {
+                ["section"] = "overview",
+            }),
+        };
+
+        var chunk = new RagChunk
+        {
+            Id = "chunk-1",
+            DocumentId = "document-1",
+            Index = 2,
+            Content = "Text used as embedding input.",
+            Metadata = metadata,
+        };
+
+        Assert.Equal("document-1", chunk.DocumentId);
+        Assert.Equal("chunk-1", chunk.Id);
+        Assert.Equal(2, chunk.Index);
+        Assert.Equal("Text used as embedding input.", chunk.Content);
+        Assert.Same(metadata, chunk.Metadata);
+        Assert.Equal(10, chunk.Metadata.StartIndex);
+        Assert.Equal(42, chunk.Metadata.EndIndex);
+        Assert.Equal(8, chunk.Metadata.TokenCount);
+        Assert.Equal("overview", chunk.Metadata.AdditionalMetadata.Values["section"]);
+    }
+
+    [Fact]
+    public void RagChunk_Should_Reject_Null_Id()
+    {
+        var exception = Assert.Throws<ArgumentException>(() => new RagChunk
+        {
+            Id = null!,
+            DocumentId = "document-1",
+        });
+
+        Assert.Equal("value", exception.ParamName);
+        Assert.StartsWith("Chunk id cannot be null, empty, or whitespace.", exception.Message);
+    }
+
+    [Fact]
+    public void RagChunk_Should_Reject_Empty_Id()
+    {
+        var exception = Assert.Throws<ArgumentException>(() => new RagChunk
+        {
+            Id = string.Empty,
+            DocumentId = "document-1",
+        });
+
+        Assert.Equal("value", exception.ParamName);
+        Assert.StartsWith("Chunk id cannot be null, empty, or whitespace.", exception.Message);
+    }
+
+    [Fact]
+    public void RagChunk_Should_Reject_Whitespace_Id()
+    {
+        var exception = Assert.Throws<ArgumentException>(() => new RagChunk
+        {
+            Id = "   ",
+            DocumentId = "document-1",
+        });
+
+        Assert.Equal("value", exception.ParamName);
+        Assert.StartsWith("Chunk id cannot be null, empty, or whitespace.", exception.Message);
+    }
+
+    [Fact]
+    public void RagChunk_Should_Reject_Null_DocumentId()
+    {
+        var exception = Assert.Throws<ArgumentException>(() => new RagChunk
+        {
+            Id = "chunk-1",
+            DocumentId = null!,
+        });
+
+        Assert.Equal("value", exception.ParamName);
+        Assert.StartsWith("Chunk document id cannot be null, empty, or whitespace.", exception.Message);
+    }
+
+    [Fact]
+    public void RagChunk_Should_Reject_Empty_DocumentId()
+    {
+        var exception = Assert.Throws<ArgumentException>(() => new RagChunk
+        {
+            Id = "chunk-1",
+            DocumentId = string.Empty,
+        });
+
+        Assert.Equal("value", exception.ParamName);
+        Assert.StartsWith("Chunk document id cannot be null, empty, or whitespace.", exception.Message);
+    }
+
+    [Fact]
+    public void RagChunk_Should_Reject_Whitespace_DocumentId()
+    {
+        var exception = Assert.Throws<ArgumentException>(() => new RagChunk
+        {
+            Id = "chunk-1",
+            DocumentId = "   ",
+        });
+
+        Assert.Equal("value", exception.ParamName);
+        Assert.StartsWith("Chunk document id cannot be null, empty, or whitespace.", exception.Message);
+    }
+
+    [Fact]
+    public void RagChunk_Should_Handle_Null_Content_Deterministically()
+    {
+        var exception = Assert.Throws<ArgumentNullException>(() => new RagChunk
+        {
+            Id = "chunk-1",
+            DocumentId = "document-1",
+            Content = null!,
+        });
+
+        Assert.Equal("value", exception.ParamName);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void RagChunk_Should_Handle_Empty_Content_Deterministically(string content)
+    {
+        var chunk = new RagChunk
+        {
+            Id = "chunk-1",
+            DocumentId = "document-1",
+            Content = content,
+        };
+
+        Assert.Equal(content, chunk.Content);
+    }
+
+    [Fact]
+    public void RagChunk_Should_Handle_Null_Metadata_Deterministically()
+    {
+        var exception = Assert.Throws<ArgumentNullException>(() => new RagChunk
+        {
+            Id = "chunk-1",
+            DocumentId = "document-1",
+            Metadata = null!,
+        });
+
+        Assert.Equal("value", exception.ParamName);
+    }
+
+    [Fact]
+    public void RagChunkMetadata_DefaultAdditionalMetadata_ShouldNotBeNull()
+    {
+        var metadata = new RagChunkMetadata();
+
+        Assert.NotNull(metadata.AdditionalMetadata);
+        Assert.Empty(metadata.AdditionalMetadata.Values);
+    }
+
+    [Fact]
+    public void RagChunkMetadata_Should_Handle_Null_AdditionalMetadata_Deterministically()
+    {
+        var exception = Assert.Throws<ArgumentNullException>(() => new RagChunkMetadata
+        {
+            AdditionalMetadata = null!,
+        });
+
+        Assert.Equal("value", exception.ParamName);
+    }
+
+    [Fact]
+    public void RagChunk_Should_Remain_Provider_And_Storage_Independent()
+    {
+        var properties = typeof(RagChunk).GetProperties();
+
+        Assert.Equal(
+            ["Id", "DocumentId", "Content", "Index", "Metadata"],
+            properties.Select(property => property.Name));
+        Assert.All(properties, property =>
+        {
+            var propertyType = property.PropertyType;
+
+            Assert.DoesNotContain("Provider", property.Name, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Client", property.Name, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Vector", property.Name, StringComparison.OrdinalIgnoreCase);
+            Assert.True(
+                propertyType == typeof(string)
+                    || propertyType == typeof(int)
+                    || propertyType == typeof(RagChunkMetadata),
+                $"RagChunk property '{property.Name}' uses provider or storage-specific type '{propertyType.FullName}'.");
+        });
+    }
+
+    [Fact]
     public void RagSearchResult_DefaultMetadata_ShouldNotBeNull()
     {
         var searchResult = new RagSearchResult
