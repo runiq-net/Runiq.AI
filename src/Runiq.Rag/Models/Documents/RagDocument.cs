@@ -3,10 +3,12 @@ using Runiq.Rag.Models.Metadata;
 namespace Runiq.Rag.Models.Documents;
 
 /// <summary>
-/// Represents a source document before or after chunking.
+/// Represents a source document used as the first input of the RAG ingestion pipeline.
 /// </summary>
 public sealed class RagDocument
 {
+    private string id = string.Empty;
+    private string content = string.Empty;
     private RagDocumentMetadata metadata = new();
     private IList<RagChunk> chunks = new List<RagChunk>();
 
@@ -18,17 +20,27 @@ public sealed class RagDocument
     }
 
     /// <summary>
-    /// Gets or initializes the document identifier.
+    /// Gets or initializes the stable document identifier used to correlate chunks and embeddings with the source document.
     /// </summary>
-    public required string Id { get; init; }
+    public required string Id
+    {
+        get => id;
+        init => id = string.IsNullOrWhiteSpace(value)
+            ? throw new ArgumentException("Document id cannot be null, empty, or whitespace.", nameof(value))
+            : value;
+    }
 
     /// <summary>
-    /// Gets or initializes the document content.
+    /// Gets or initializes the primary text content used by chunking.
     /// </summary>
-    public string Content { get; init; } = string.Empty;
+    public string Content
+    {
+        get => content;
+        init => content = value ?? throw new ArgumentNullException(nameof(value));
+    }
 
     /// <summary>
-    /// Gets or initializes the document metadata.
+    /// Gets or initializes source metadata carried with the document during ingestion.
     /// </summary>
     public RagDocumentMetadata Metadata
     {
