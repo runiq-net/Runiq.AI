@@ -63,6 +63,16 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public void AddRuniqRag_ShouldRegisterRagEmbeddingInputPreparer()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagEmbeddingInputPreparer));
+    }
+
+    [Fact]
     public void AddRuniqRag_ShouldRegisterRagVectorStore()
     {
         var services = new ServiceCollection();
@@ -124,6 +134,31 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         using var serviceProvider = services.BuildServiceProvider();
 
         Assert.IsType<NullEmbeddingProvider>(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveDefaultEmbeddingInputPreparer()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<DefaultRagEmbeddingInputPreparer>(
+            serviceProvider.GetRequiredService<IRagEmbeddingInputPreparer>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldNotOverwriteUserRegisteredEmbeddingInputPreparer()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IRagEmbeddingInputPreparer, TestEmbeddingInputPreparer>();
+
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<TestEmbeddingInputPreparer>(serviceProvider.GetRequiredService<IRagEmbeddingInputPreparer>());
     }
 
     [Fact]
@@ -274,6 +309,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         Assert.NotNull(serviceProvider.GetRequiredService<IRagRetriever>());
         Assert.NotNull(serviceProvider.GetRequiredService<IRagService>());
         Assert.NotNull(serviceProvider.GetRequiredService<IRagChunker>());
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagEmbeddingInputPreparer>());
     }
 
     [Fact]
@@ -541,6 +577,24 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
             CancellationToken cancellationToken = default)
         {
             return Task.FromResult(new RagEmbedding());
+        }
+    }
+
+    private sealed class TestEmbeddingInputPreparer : IRagEmbeddingInputPreparer
+    {
+        public Task<RagEmbeddingInput> PrepareAsync(
+            RagChunk chunk,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new RagEmbeddingInput
+            {
+                Id = chunk.Id,
+                ChunkId = chunk.Id,
+                DocumentId = chunk.DocumentId,
+                Content = chunk.Content,
+                ChunkIndex = chunk.Index,
+                Metadata = chunk.Metadata,
+            });
         }
     }
 

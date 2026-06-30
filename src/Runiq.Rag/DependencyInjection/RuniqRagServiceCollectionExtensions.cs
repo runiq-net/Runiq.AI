@@ -31,6 +31,7 @@ public static class RuniqRagServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.TryAddSingleton<IRagEmbeddingProvider, NullEmbeddingProvider>();
+        services.TryAddSingleton<IRagEmbeddingInputPreparer, DefaultRagEmbeddingInputPreparer>();
         services.TryAddSingleton<IRagVectorStore, NullVectorStore>();
         services.TryAddSingleton<IRagChunker, DefaultRagChunker>();
         services.TryAddScoped<IRagRetriever, DefaultRetriever>();
