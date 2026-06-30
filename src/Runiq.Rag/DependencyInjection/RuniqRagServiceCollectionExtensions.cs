@@ -37,6 +37,7 @@ public static class RuniqRagServiceCollectionExtensions
         services.TryAddSingleton<IRagChunker, DefaultRagChunker>();
         services.TryAddScoped<IRagRetriever, DefaultRetriever>();
         services.TryAddScoped<IRagService, RagService>();
+        services.TryAddScoped<IRagDocumentIngestionService, DefaultRagDocumentIngestionService>();
         services.Configure<RagOptions>(_ => { });
 
         return services;

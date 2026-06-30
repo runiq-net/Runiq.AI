@@ -43,6 +43,16 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public void AddRuniqRag_ShouldRegisterRagDocumentIngestionService()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagDocumentIngestionService));
+    }
+
+    [Fact]
     public void AddRuniqRag_ShouldRegisterRagRetriever()
     {
         var services = new ServiceCollection();
@@ -111,6 +121,17 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         using var serviceProvider = services.BuildServiceProvider();
 
         Assert.NotNull(serviceProvider.GetRequiredService<IRagService>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveRagDocumentIngestionService()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagDocumentIngestionService>());
     }
 
     [Fact]
@@ -333,6 +354,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         Assert.NotNull(serviceProvider.GetRequiredService<IRagChunker>());
         Assert.NotNull(serviceProvider.GetRequiredService<IRagEmbeddingInputPreparer>());
         Assert.NotNull(serviceProvider.GetRequiredService<IRagChunkEmbeddingGenerator>());
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagDocumentIngestionService>());
     }
 
     [Fact]
