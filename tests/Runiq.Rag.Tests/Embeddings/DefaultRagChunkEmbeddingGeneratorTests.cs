@@ -163,6 +163,21 @@ public sealed class DefaultRagChunkEmbeddingGeneratorTests
     }
 
     [Fact]
+    public async Task GenerateAsync_ShouldPassCancellationTokenToInputPreparer()
+    {
+        var chunk = CreateChunk("chunk-1", "document-1", 0, "First chunk.");
+        var preparer = new TrackingEmbeddingInputPreparer();
+        var generator = new DefaultRagChunkEmbeddingGenerator(
+            new TrackingEmbeddingProvider(new RagEmbedding([1.0f])),
+            preparer);
+        using var cancellationTokenSource = new CancellationTokenSource();
+
+        await generator.GenerateAsync([chunk], cancellationTokenSource.Token);
+
+        Assert.Equal(cancellationTokenSource.Token, preparer.CancellationTokens.Single());
+    }
+
+    [Fact]
     public async Task GenerateAsync_ShouldPropagateCancellationWithoutWrapping()
     {
         var chunk = CreateChunk("chunk-1", "document-1", 0, "First chunk.");
@@ -173,6 +188,22 @@ public sealed class DefaultRagChunkEmbeddingGeneratorTests
         var generator = new DefaultRagChunkEmbeddingGenerator(provider, new DefaultRagEmbeddingInputPreparer());
 
         await Assert.ThrowsAsync<OperationCanceledException>(() => generator.GenerateAsync([chunk]));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task GenerateAsync_ShouldPassPreparedEmptyOrWhitespaceContentToProvider(string content)
+    {
+        var chunk = CreateChunk("chunk-1", "document-1", 0, content);
+        var provider = new TrackingEmbeddingProvider(new RagEmbedding([1.0f]));
+        var preparer = new TrackingEmbeddingInputPreparer();
+        var generator = new DefaultRagChunkEmbeddingGenerator(provider, preparer);
+
+        await generator.GenerateAsync([chunk]);
+
+        Assert.Equal(["chunk-1"], preparer.PreparedChunkIds);
+        Assert.Equal([content], provider.Texts);
     }
 
     [Fact]
@@ -272,11 +303,14 @@ public sealed class DefaultRagChunkEmbeddingGeneratorTests
     {
         public IList<string> PreparedChunkIds { get; } = new List<string>();
 
+        public IList<CancellationToken> CancellationTokens { get; } = new List<CancellationToken>();
+
         public virtual Task<RagEmbeddingInput> PrepareAsync(
             RagChunk chunk,
             CancellationToken cancellationToken = default)
         {
             PreparedChunkIds.Add(chunk.Id);
+            CancellationTokens.Add(cancellationToken);
 
             return Task.FromResult(new RagEmbeddingInput
             {
@@ -304,6 +338,7 @@ public sealed class DefaultRagChunkEmbeddingGeneratorTests
             CancellationToken cancellationToken = default)
         {
             PreparedChunkIds.Add(chunk.Id);
+            CancellationTokens.Add(cancellationToken);
 
             return Task.FromResult(new RagEmbeddingInput
             {
