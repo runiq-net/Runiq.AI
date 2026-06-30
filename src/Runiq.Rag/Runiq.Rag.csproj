@@ -4,7 +4,24 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+
+    <IsPackable>true</IsPackable>
+    <PackageId>Runiq.Rag</PackageId>
+    <Version>0.1.0-preview.7</Version>
+    <Title>Runiq RAG</Title>
+    <Authors>Runiq</Authors>
+    <Company>Runiq</Company>
+    <Description>Retrieval-augmented generation primitives for Runiq.Net agents.</Description>
+    <PackageTags>ai;agents;rag;retrieval;embeddings;dotnet;runiq</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryType>git</RepositoryType>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Update="README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\assets\nuget\runiq-icon.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.8" />
