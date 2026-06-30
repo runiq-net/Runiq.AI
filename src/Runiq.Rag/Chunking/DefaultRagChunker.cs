@@ -3,6 +3,7 @@ using Runiq.Rag.Abstractions.Chunking;
 using Runiq.Rag.Configuration;
 using Runiq.Rag.Models.Documents;
 using Runiq.Rag.Models.Metadata;
+using System.Globalization;
 
 namespace Runiq.Rag.Chunking;
 
@@ -55,6 +56,7 @@ public sealed class DefaultRagChunker : IRagChunker
             var length = Math.Min(chunkingOptions.MaxChunkLength, document.Content.Length - startIndex);
             var content = document.Content.Substring(startIndex, length);
             var endIndex = startIndex + length;
+            var tokenCount = CountApproximateTokens(content);
 
             chunks.Add(new RagChunk
             {
@@ -66,7 +68,8 @@ public sealed class DefaultRagChunker : IRagChunker
                 {
                     StartIndex = startIndex,
                     EndIndex = endIndex,
-                    TokenCount = CountApproximateTokens(content),
+                    TokenCount = tokenCount,
+                    AdditionalMetadata = BuildChunkMetadata(document.Metadata, startIndex, endIndex, tokenCount),
                 },
             });
 
@@ -92,6 +95,54 @@ public sealed class DefaultRagChunker : IRagChunker
         return content
             .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
             .Length;
+    }
+
+    private static RagMetadata BuildChunkMetadata(
+        RagDocumentMetadata documentMetadata,
+        int startIndex,
+        int endIndex,
+        int tokenCount)
+    {
+        var values = new Dictionary<string, string>();
+
+        AddIfPresent(values, "sourceId", documentMetadata.SourceId);
+        AddIfPresent(values, "sourceName", documentMetadata.SourceName);
+        AddIfPresent(values, "sourceUri", documentMetadata.SourceUri);
+        AddIfPresent(values, "contentType", documentMetadata.ContentType);
+        AddIfPresent(values, "createdAt", documentMetadata.CreatedAt?.ToString("O", CultureInfo.InvariantCulture));
+        AddIfPresent(values, "updatedAt", documentMetadata.UpdatedAt?.ToString("O", CultureInfo.InvariantCulture));
+
+        foreach (var (key, value) in documentMetadata.AdditionalMetadata.Values)
+        {
+            if (IsChunkTechnicalMetadataKey(key))
+            {
+                continue;
+            }
+
+            values[key] = value;
+        }
+
+        // Technical chunk values are canonicalized so source metadata cannot spoof chunk boundaries.
+        values["startIndex"] = startIndex.ToString(CultureInfo.InvariantCulture);
+        values["endIndex"] = endIndex.ToString(CultureInfo.InvariantCulture);
+        values["tokenCount"] = tokenCount.ToString(CultureInfo.InvariantCulture);
+
+        return new RagMetadata(values);
+    }
+
+    private static void AddIfPresent(Dictionary<string, string> values, string key, string? value)
+    {
+        if (!string.IsNullOrEmpty(value))
+        {
+            values[key] = value;
+        }
+    }
+
+    private static bool IsChunkTechnicalMetadataKey(string key)
+    {
+        return string.Equals(key, "startIndex", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(key, "endIndex", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(key, "tokenCount", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void Validate(RagChunkingOptions options)
