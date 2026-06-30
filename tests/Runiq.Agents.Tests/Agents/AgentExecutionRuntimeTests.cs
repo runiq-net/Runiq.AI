@@ -136,6 +136,22 @@ public sealed class AgentExecutionRuntimeTests
     }
 
     [Fact]
+    public async Task ExecuteStreamAsync_ShouldEmitFailure_WhenRagRetrieverFails()
+    {
+        var agent = CreateRagAgent().UseRagIndex("documents");
+        var runtime = CreateRuntimeWithRag(
+            agent,
+            new FailingRagRetriever("Vector index has not been created."));
+
+        var events = await DrainAsync(runtime.ExecuteStreamAsync(agent.Id, "Find travel notes."));
+
+        var failedEvent = Assert.Single(events, item => item.Kind == AgentExecutionEventKind.Failed);
+        Assert.Equal("RagRetrievalFailed", failedEvent.ErrorCode);
+        Assert.Equal("Vector index has not been created.", failedEvent.ErrorMessage);
+        Assert.DoesNotContain(events, item => item.Kind == AgentExecutionEventKind.ContextProvided);
+    }
+
+    [Fact]
     public async Task ExecuteStreamAsync_ShouldUseRuntimeIndexNameWithRealRetriever_WhenRuntimeIndexOverridesAgentRagIndex()
     {
         var agent = CreateRagAgent().UseRagIndex("documents");
@@ -466,6 +482,23 @@ public sealed class AgentExecutionRuntimeTests
             CancellationToken cancellationToken = default)
         {
             return Task.FromResult(embedding);
+        }
+    }
+
+    private sealed class FailingRagRetriever : IRagRetriever
+    {
+        private readonly string message;
+
+        public FailingRagRetriever(string message)
+        {
+            this.message = message;
+        }
+
+        public Task<IReadOnlyList<RagSearchResult>> RetrieveAsync(
+            RagQuery query,
+            CancellationToken cancellationToken = default)
+        {
+            throw new InvalidOperationException(message);
         }
     }
 

@@ -1,5 +1,9 @@
+using Runiq.Rag.Models.Documents;
+using Runiq.Rag.Models.Embeddings;
 using Runiq.Rag.Models.Metadata;
+using Runiq.Rag.Models.Queries;
 using Runiq.Rag.Models.VectorStores;
+using Runiq.Rag.Retrieval;
 using Runiq.Rag.VectorStores.InMemory;
 
 namespace Runiq.Rag.Tests.VectorStores;
@@ -186,6 +190,184 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.True(archiveResult.Succeeded);
         Assert.Equal("shared-vector", Assert.Single(documentsResult.VectorIds));
         Assert.Equal("shared-vector", Assert.Single(archiveResult.VectorIds));
+    }
+
+    [Fact]
+    public async Task ChunkUpsertAsync_ShouldStoreChunkInRequestedIndex()
+    {
+        var vectorStore = await CreateVectorStoreAsync();
+
+        var result = await vectorStore.UpsertAsync(
+            "documents",
+            CreateChunk("chunk-1", "document chunk"),
+            new RagEmbedding([1.0f, 0.0f, 0.0f]));
+        var query = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [1.0f, 0.0f, 0.0f],
+            TopK = 1,
+        });
+
+        Assert.True(result.Succeeded);
+        var record = Assert.Single(query.Records);
+        Assert.Equal("chunk-1", record.Id);
+        Assert.Equal("document chunk", record.Content);
+    }
+
+    [Fact]
+    public async Task ChunkUpsertAsync_ShouldIsolateRequestedIndexes()
+    {
+        var vectorStore = await CreateVectorStoreWithDocumentsAndArchiveIndexesAsync();
+
+        await vectorStore.UpsertAsync(
+            "documents",
+            CreateChunk("document-chunk", "documents content"),
+            new RagEmbedding([1.0f, 0.0f, 0.0f]));
+        await vectorStore.UpsertAsync(
+            "archive",
+            CreateChunk("archive-chunk", "archive content"),
+            new RagEmbedding([1.0f, 0.0f, 0.0f]));
+
+        var documentsQuery = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [1.0f, 0.0f, 0.0f],
+            TopK = 10,
+        });
+        var archiveQuery = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "archive",
+            Values = [1.0f, 0.0f, 0.0f],
+            TopK = 10,
+        });
+
+        Assert.Equal("document-chunk", Assert.Single(documentsQuery.Records).Id);
+        Assert.Equal("archive-chunk", Assert.Single(archiveQuery.Records).Id);
+    }
+
+    [Fact]
+    public async Task ChunkUpsertAsync_ShouldAllowSameVectorIdInDifferentIndexes()
+    {
+        var vectorStore = await CreateVectorStoreWithDocumentsAndArchiveIndexesAsync();
+
+        var documentsResult = await vectorStore.UpsertAsync(
+            "documents",
+            CreateChunk("shared-chunk", "documents content"),
+            new RagEmbedding([1.0f, 0.0f, 0.0f]));
+        var archiveResult = await vectorStore.UpsertAsync(
+            "archive",
+            CreateChunk("shared-chunk", "archive content"),
+            new RagEmbedding([0.0f, 1.0f, 0.0f]));
+
+        Assert.True(documentsResult.Succeeded);
+        Assert.True(archiveResult.Succeeded);
+        Assert.Equal("shared-chunk", Assert.Single(documentsResult.VectorIds));
+        Assert.Equal("shared-chunk", Assert.Single(archiveResult.VectorIds));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task ChunkUpsertAsync_ShouldFailDeterministically_WhenIndexNameIsInvalid(string? indexName)
+    {
+        var vectorStore = await CreateVectorStoreAsync();
+
+        var result = await vectorStore.UpsertAsync(
+            indexName!,
+            CreateChunk("chunk-1", "document chunk"),
+            new RagEmbedding([1.0f, 0.0f, 0.0f]));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("Vector index name is required.", result.Reason);
+    }
+
+    [Fact]
+    public async Task ChunkUpsertAsync_ShouldFailDeterministically_WhenIndexDoesNotExist()
+    {
+        var vectorStore = await CreateVectorStoreAsync();
+
+        var result = await vectorStore.UpsertAsync(
+            "missing",
+            CreateChunk("chunk-1", "document chunk"),
+            new RagEmbedding([1.0f, 0.0f, 0.0f]));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("Vector index has not been created.", result.Reason);
+    }
+
+    [Fact]
+    public async Task SearchAsync_ShouldReturnOnlyResultsFromRequestedIndex_AfterChunkUpsert()
+    {
+        var vectorStore = await CreateVectorStoreWithDocumentsAndArchiveIndexesAsync();
+        await vectorStore.UpsertAsync(
+            "documents",
+            CreateChunk("shared-chunk", "documents content"),
+            new RagEmbedding([1.0f, 0.0f, 0.0f]));
+        await vectorStore.UpsertAsync(
+            "archive",
+            CreateChunk("shared-chunk", "archive content"),
+            new RagEmbedding([0.0f, 1.0f, 0.0f]));
+
+        var results = await vectorStore.SearchAsync(
+            new RagQuery { Text = "query", IndexName = "documents", TopK = 10 },
+            new RagEmbedding([1.0f, 0.0f, 0.0f]));
+
+        var result = Assert.Single(results);
+        Assert.Equal("shared-chunk", result.Chunk.Id);
+        Assert.Equal("documents content", result.Chunk.Content);
+    }
+
+    [Fact]
+    public async Task SearchAsync_ShouldThrow_WhenIndexDoesNotExist()
+    {
+        var vectorStore = new InMemoryRagVectorStore();
+
+        var exception = await Assert.ThrowsAsync<RagVectorStoreQueryException>(() =>
+            vectorStore.SearchAsync(
+                new RagQuery { Text = "query", IndexName = "missing" },
+                new RagEmbedding([1.0f, 0.0f, 0.0f])));
+
+        Assert.Equal("Vector index has not been created.", exception.Reason);
+        Assert.Equal("missing", exception.IndexName);
+    }
+
+    [Fact]
+    public async Task SearchAsync_ShouldThrow_WhenDimensionDoesNotMatch()
+    {
+        var vectorStore = await CreateVectorStoreAsync();
+
+        var exception = await Assert.ThrowsAsync<RagVectorStoreQueryException>(() =>
+            vectorStore.SearchAsync(
+                new RagQuery { Text = "query", IndexName = "documents" },
+                new RagEmbedding([1.0f, 0.0f])));
+
+        Assert.Equal("Vector dimension does not match the index dimensions.", exception.Reason);
+    }
+
+    [Fact]
+    public async Task SearchAsync_ShouldThrow_WhenTopKIsInvalid()
+    {
+        var vectorStore = await CreateVectorStoreAsync();
+
+        var exception = await Assert.ThrowsAsync<RagVectorStoreQueryException>(() =>
+            vectorStore.SearchAsync(
+                new RagQuery { Text = "query", IndexName = "documents", TopK = 0 },
+                new RagEmbedding([1.0f, 0.0f, 0.0f])));
+
+        Assert.Equal("TopK must be greater than zero.", exception.Reason);
+    }
+
+    [Fact]
+    public async Task SearchAsync_ShouldReturnEmptyResults_WhenQuerySucceedsButNoRecordsMatch()
+    {
+        var vectorStore = await CreateVectorStoreAsync();
+
+        var results = await vectorStore.SearchAsync(
+            new RagQuery { Text = "query", IndexName = "documents" },
+            new RagEmbedding([1.0f, 0.0f, 0.0f]));
+
+        Assert.Empty(results);
     }
 
     [Fact]
@@ -821,6 +1003,16 @@ public sealed class InMemoryRagVectorStoreTests
             Values = values,
             Content = content,
             Metadata = metadata ?? RagMetadata.Empty,
+        };
+    }
+
+    private static RagChunk CreateChunk(string id, string content)
+    {
+        return new RagChunk
+        {
+            Id = id,
+            DocumentId = "document-1",
+            Content = content,
         };
     }
 

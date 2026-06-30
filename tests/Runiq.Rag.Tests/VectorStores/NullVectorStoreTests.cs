@@ -95,7 +95,7 @@ public sealed class NullVectorStoreTests
     }
 
     [Fact]
-    public async Task LegacyUpsertAsync_ShouldReturnSuccessfulResult()
+    public async Task ChunkUpsertAsync_ShouldReturnSuccessfulResult()
     {
         var vectorStore = new NullVectorStore();
         var chunk = new RagChunk
@@ -105,11 +105,31 @@ public sealed class NullVectorStoreTests
         };
         var embedding = new RagEmbedding([0.1f, 0.2f]);
 
-        var result = await vectorStore.UpsertAsync(chunk, embedding);
+        var result = await vectorStore.UpsertAsync("documents", chunk, embedding);
 
         Assert.True(result.Succeeded);
         Assert.Equal(1, result.UpsertedCount);
         Assert.Equal("chunk-1", Assert.Single(result.VectorIds));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task ChunkUpsertAsync_ShouldFailDeterministically_WhenIndexNameIsInvalid(string? indexName)
+    {
+        var vectorStore = new NullVectorStore();
+        var chunk = new RagChunk
+        {
+            Id = "chunk-1",
+            DocumentId = "document-1",
+        };
+        var embedding = new RagEmbedding([0.1f, 0.2f]);
+
+        var result = await vectorStore.UpsertAsync(indexName!, chunk, embedding);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(InvalidIndexNameReason, result.Reason);
     }
 
     [Fact]

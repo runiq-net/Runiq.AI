@@ -75,13 +75,15 @@ public interface IRagVectorStore
     }
 
     /// <summary>
-    /// Inserts or updates a chunk and its embedding in the vector store.
+    /// Inserts or updates a chunk and its embedding in the specified vector index.
     /// </summary>
+    /// <param name="indexName">The vector index name that will receive the chunk vector.</param>
     /// <param name="chunk">The RAG chunk to store.</param>
     /// <param name="embedding">The embedding generated for the chunk content.</param>
     /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
     /// <returns>The provider-independent vector upsert result.</returns>
     Task<UpsertVectorResult> UpsertAsync(
+        string indexName,
         RagChunk chunk,
         RagEmbedding embedding,
         CancellationToken cancellationToken = default)
@@ -92,7 +94,7 @@ public interface IRagVectorStore
         return UpsertAsync(
             new UpsertVectorRequest
             {
-                IndexName = string.Empty,
+                IndexName = indexName,
                 Records =
                 [
                     new VectorRecord

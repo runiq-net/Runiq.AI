@@ -262,6 +262,7 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
 
     /// <inheritdoc />
     public Task<UpsertVectorResult> UpsertAsync(
+        string indexName,
         RagChunk chunk,
         RagEmbedding embedding,
         CancellationToken cancellationToken = default)
@@ -272,7 +273,7 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
         return UpsertAsync(
             new UpsertVectorRequest
             {
-                IndexName = string.Empty,
+                IndexName = indexName,
                 Records =
                 [
                     new VectorRecord
@@ -310,7 +311,9 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
 
         if (!result.Succeeded)
         {
-            return Array.Empty<RagSearchResult>();
+            throw new RagVectorStoreQueryException(
+                result.Reason,
+                query.IndexName ?? string.Empty);
         }
 
         return RagSearchResultMapper.Map(result.Records);

@@ -82,7 +82,7 @@ public sealed class RagAbstractionTests
     }
 
     [Fact]
-    public async Task IRagVectorStore_LegacyUpsertAsync_ShouldDelegateToRequestUpsert()
+    public async Task IRagVectorStore_ChunkUpsertAsync_ShouldDelegateToRequestUpsertWithIndexName()
     {
         IRagVectorStore vectorStore = new RequestOnlyVectorStore();
         var chunk = new RagChunk
@@ -104,11 +104,12 @@ public sealed class RagAbstractionTests
         };
         var embedding = new RagEmbedding([0.1f, 0.2f]);
 
-        var result = await vectorStore.UpsertAsync(chunk, embedding);
+        var result = await vectorStore.UpsertAsync("documents", chunk, embedding);
         var request = Assert.IsType<RequestOnlyVectorStore>(vectorStore).LastUpsertRequest;
         var record = Assert.Single(request!.Records!);
 
         Assert.True(result.Succeeded);
+        Assert.Equal("documents", request.IndexName);
         Assert.Equal("chunk-1", record.Id);
         Assert.Equal([0.1f, 0.2f], record.Values);
         Assert.Equal("chunk content", record.Content);

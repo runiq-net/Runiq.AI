@@ -10,6 +10,7 @@ using Runiq.Rag.Models.Search;
 using Runiq.Rag.Models.VectorStores;
 using Runiq.Rag.Retrieval;
 using Runiq.Rag.VectorStores;
+using Runiq.Rag.VectorStores.InMemory;
 
 namespace Runiq.Rag.Tests.Retrieval;
 
@@ -161,6 +162,20 @@ public sealed class DefaultRetrieverTests
 
         Assert.NotNull(results);
         Assert.Empty(results);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_ShouldPropagateVectorStoreQueryFailure()
+    {
+        var retriever = new DefaultRetriever(
+            new TrackingEmbeddingProvider(new RagEmbedding([1.0f, 0.0f, 0.0f])),
+            new InMemoryRagVectorStore());
+
+        var exception = await Assert.ThrowsAsync<RagVectorStoreQueryException>(() =>
+            retriever.RetrieveAsync(new RagQuery { Text = "search text", IndexName = "missing-index" }));
+
+        Assert.Equal("Vector index has not been created.", exception.Reason);
+        Assert.Equal("missing-index", exception.IndexName);
     }
 
     private sealed class TrackingEmbeddingProvider : IRagEmbeddingProvider

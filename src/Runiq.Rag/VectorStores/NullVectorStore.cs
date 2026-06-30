@@ -133,17 +133,28 @@ public sealed class NullVectorStore : IRagVectorStore
     /// <summary>
     /// Completes successfully without storing the chunk or embedding.
     /// </summary>
+    /// <param name="indexName">The vector index name that would receive the chunk vector.</param>
     /// <param name="chunk">The RAG chunk to store.</param>
     /// <param name="embedding">The embedding generated for the chunk content.</param>
     /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
     /// <returns>A successful vector upsert result.</returns>
     public Task<UpsertVectorResult> UpsertAsync(
+        string indexName,
         RagChunk chunk,
         RagEmbedding embedding,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(chunk);
         ArgumentNullException.ThrowIfNull(embedding);
+
+        if (string.IsNullOrWhiteSpace(indexName))
+        {
+            return Task.FromResult(new UpsertVectorResult
+            {
+                Succeeded = false,
+                Reason = InvalidIndexNameReason,
+            });
+        }
 
         return Task.FromResult(new UpsertVectorResult
         {
