@@ -15,6 +15,7 @@ using Runiq.Rag.Models.Embeddings;
 using Runiq.Rag.Models.Queries;
 using Runiq.Rag.Models.Search;
 using Runiq.Rag.Models.VectorStores;
+using Runiq.Rag.Services;
 using Runiq.Rag.VectorStores;
 using Runiq.Rag.VectorStores.InMemory;
 
@@ -214,6 +215,56 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public void AddRuniqRag_ShouldResolveIngestionDependenciesForConsumerScenario()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<DefaultRagChunker>(serviceProvider.GetRequiredService<IRagChunker>());
+        Assert.IsType<DefaultRagEmbeddingInputPreparer>(
+            serviceProvider.GetRequiredService<IRagEmbeddingInputPreparer>());
+        Assert.IsType<DefaultRagChunkEmbeddingGenerator>(
+            serviceProvider.GetRequiredService<IRagChunkEmbeddingGenerator>());
+        Assert.IsType<DefaultRagDocumentIngestionService>(
+            serviceProvider.GetRequiredService<IRagDocumentIngestionService>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldNotRegisterProviderSpecificIngestionServices()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        var providerSpecificNames = new[]
+        {
+            "OpenAI",
+            "Azure",
+            "Ollama",
+            "Pinecone",
+            "Qdrant",
+            "Weaviate",
+        };
+
+        var registeredRagTypes = services
+            .SelectMany(descriptor => new[]
+            {
+                descriptor.ServiceType,
+                descriptor.ImplementationType,
+                descriptor.ImplementationInstance?.GetType(),
+            })
+            .Where(type => type is not null && type.Namespace?.StartsWith("Runiq.Rag", StringComparison.Ordinal) == true)
+            .Select(type => type!.FullName ?? type.Name);
+
+        Assert.DoesNotContain(
+            registeredRagTypes,
+            registeredType => providerSpecificNames.Any(
+                providerName => registeredType.Contains(providerName, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [Fact]
     public void AddRuniqRag_ShouldNotOverwriteUserRegisteredEmbeddingInputPreparer()
     {
         var services = new ServiceCollection();
@@ -261,6 +312,82 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         using var serviceProvider = services.BuildServiceProvider();
 
         Assert.IsType<TestVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+    }
+
+    [Fact]
+    public void AddRagEmbeddingProvider_ShouldRegisterCustomEmbeddingProvider()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRagEmbeddingProvider<TestEmbeddingProvider>();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<TestEmbeddingProvider>(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+    }
+
+    [Fact]
+    public void AddRagEmbeddingProvider_ShouldOverrideDefaultEmbeddingProvider_WhenRegisteredAfterAddRuniqRag()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+        services.AddRagEmbeddingProvider<TestEmbeddingProvider>();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<TestEmbeddingProvider>(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+    }
+
+    [Fact]
+    public void AddRagEmbeddingProviderWithFactory_ShouldRegisterCustomEmbeddingProviderInstance()
+    {
+        var services = new ServiceCollection();
+        var provider = new TestEmbeddingProvider();
+
+        services.AddRagEmbeddingProvider(_ => provider);
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.Same(provider, serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+    }
+
+    [Fact]
+    public void AddRagChunker_ShouldRegisterCustomChunker()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRagChunker<TestChunker>();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<TestChunker>(serviceProvider.GetRequiredService<IRagChunker>());
+    }
+
+    [Fact]
+    public void AddRagChunker_ShouldOverrideDefaultChunker_WhenRegisteredAfterAddRuniqRag()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+        services.AddRagChunker<TestChunker>();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<TestChunker>(serviceProvider.GetRequiredService<IRagChunker>());
+    }
+
+    [Fact]
+    public void AddRagChunkerWithFactory_ShouldRegisterCustomChunkerInstance()
+    {
+        var services = new ServiceCollection();
+        var chunker = new TestChunker();
+
+        services.AddRagChunker(_ => chunker);
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.Same(chunker, serviceProvider.GetRequiredService<IRagChunker>());
     }
 
     [Fact]

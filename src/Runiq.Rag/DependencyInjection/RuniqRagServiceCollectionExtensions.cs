@@ -45,6 +45,74 @@ public static class RuniqRagServiceCollectionExtensions
     }
 
     /// <summary>
+    /// Registers the specified RAG embedding provider implementation.
+    /// </summary>
+    /// <typeparam name="TProvider">The provider-neutral embedding provider implementation type.</typeparam>
+    /// <param name="services">The service collection to add the embedding provider to.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddRagEmbeddingProvider<TProvider>(this IServiceCollection services)
+        where TProvider : class, IRagEmbeddingProvider
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.Replace(ServiceDescriptor.Singleton<IRagEmbeddingProvider, TProvider>());
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers a RAG embedding provider using the specified factory.
+    /// </summary>
+    /// <param name="services">The service collection to add the embedding provider to.</param>
+    /// <param name="factory">The factory used to create the embedding provider.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddRagEmbeddingProvider(
+        this IServiceCollection services,
+        Func<IServiceProvider, IRagEmbeddingProvider> factory)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(factory);
+
+        services.Replace(ServiceDescriptor.Singleton(factory));
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the specified RAG chunker implementation.
+    /// </summary>
+    /// <typeparam name="TChunker">The provider-neutral chunker implementation type.</typeparam>
+    /// <param name="services">The service collection to add the chunker to.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddRagChunker<TChunker>(this IServiceCollection services)
+        where TChunker : class, IRagChunker
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.Replace(ServiceDescriptor.Singleton<IRagChunker, TChunker>());
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers a RAG chunker using the specified factory.
+    /// </summary>
+    /// <param name="services">The service collection to add the chunker to.</param>
+    /// <param name="factory">The factory used to create the chunker.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddRagChunker(
+        this IServiceCollection services,
+        Func<IServiceProvider, IRagChunker> factory)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(factory);
+
+        services.Replace(ServiceDescriptor.Singleton(factory));
+
+        return services;
+    }
+
+    /// <summary>
     /// Registers the in-memory RAG vector store.
     /// </summary>
     /// <param name="services">The service collection to add the vector store to.</param>

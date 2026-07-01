@@ -32,7 +32,7 @@ public sealed class RagBuilder
     public RagBuilder UseEmbedding<TProvider>()
         where TProvider : class, IRagEmbeddingProvider
     {
-        services.Replace(ServiceDescriptor.Singleton<IRagEmbeddingProvider, TProvider>());
+        services.AddRagEmbeddingProvider<TProvider>();
 
         return this;
     }
@@ -96,7 +96,7 @@ public sealed class RagBuilder
     public RagBuilder UseChunker<TChunker>()
         where TChunker : class, IRagChunker
     {
-        services.Replace(ServiceDescriptor.Singleton<IRagChunker, TChunker>());
+        services.AddRagChunker<TChunker>();
 
         return this;
     }
