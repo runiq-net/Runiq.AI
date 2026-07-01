@@ -44,6 +44,11 @@ public sealed class UpsertVectorRequest
     }
 
     /// <summary>
+    /// Gets or initializes the provider-independent vector dimension count expected by the target index for this upsert request.
+    /// </summary>
+    public int? ExpectedDimensions { get; init; }
+
+    /// <summary>
     /// Gets or initializes provider-independent request metadata that can flow through the upsert pipeline without binding to a specific vector store provider.
     /// </summary>
     public RagMetadata Metadata

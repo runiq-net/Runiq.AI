@@ -34,7 +34,8 @@ public static class RuniqRagServiceCollectionExtensions
         services.TryAddSingleton<IRagEmbeddingInputPreparer, DefaultRagEmbeddingInputPreparer>();
         services.TryAddScoped<IRagChunkEmbeddingGenerator, DefaultRagChunkEmbeddingGenerator>();
         services.TryAddScoped<IRagVectorRecordMapper, DefaultRagVectorRecordMapper>();
-        services.TryAddSingleton<IRagVectorStore, NullVectorStore>();
+        services.TryAddSingleton<IRagVectorRecordDimensionValidator, DefaultRagVectorRecordDimensionValidator>();
+        services.TryAddDefaultRagVectorStore();
         services.TryAddSingleton<IRagChunker, DefaultRagChunker>();
         services.TryAddScoped<IRagRetriever, DefaultRetriever>();
         services.TryAddScoped<IRagService, RagService>();
@@ -133,7 +134,7 @@ public static class RuniqRagServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.Replace(ServiceDescriptor.Singleton<IRagVectorStore, TVectorStore>());
+        services.ReplaceRagVectorStore(ServiceDescriptor.Singleton<IRagVectorStore, TVectorStore>());
 
         return services;
     }
@@ -151,7 +152,7 @@ public static class RuniqRagServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(factory);
 
-        services.Replace(ServiceDescriptor.Singleton(factory));
+        services.ReplaceRagVectorStore(ServiceDescriptor.Singleton(factory));
 
         return services;
     }
@@ -218,5 +219,70 @@ public static class RuniqRagServiceCollectionExtensions
         configure(builder);
 
         return services;
+    }
+
+    private static void TryAddDefaultRagVectorStore(this IServiceCollection services)
+    {
+        if (services.Any(descriptor => descriptor.ServiceType == typeof(RagVectorStoreProviderRegistration)))
+        {
+            return;
+        }
+
+        var existingVectorStoreDescriptor = services.LastOrDefault(
+            descriptor => descriptor.ServiceType == typeof(IRagVectorStore));
+
+        if (existingVectorStoreDescriptor is null)
+        {
+            services.ReplaceRagVectorStore(ServiceDescriptor.Singleton<IRagVectorStore, NullVectorStore>());
+            return;
+        }
+
+        services.ReplaceRagVectorStore(existingVectorStoreDescriptor);
+    }
+
+    private static void ReplaceRagVectorStore(
+        this IServiceCollection services,
+        ServiceDescriptor vectorStoreDescriptor)
+    {
+        services.TryAddSingleton<IRagVectorRecordDimensionValidator, DefaultRagVectorRecordDimensionValidator>();
+        services.RemoveAll<IRagVectorStore>();
+        services.RemoveAll<RagVectorStoreProviderRegistration>();
+
+        services.Add(ServiceDescriptor.Describe(
+            typeof(RagVectorStoreProviderRegistration),
+            serviceProvider => new RagVectorStoreProviderRegistration(
+                CreateVectorStore(vectorStoreDescriptor, serviceProvider)),
+            vectorStoreDescriptor.Lifetime));
+
+        services.Add(ServiceDescriptor.Describe(
+            typeof(IRagVectorStore),
+            serviceProvider => new ValidatingRagVectorStore(
+                serviceProvider.GetRequiredService<RagVectorStoreProviderRegistration>().VectorStore,
+                serviceProvider.GetRequiredService<IRagVectorRecordDimensionValidator>()),
+            vectorStoreDescriptor.Lifetime));
+    }
+
+    private static IRagVectorStore CreateVectorStore(
+        ServiceDescriptor descriptor,
+        IServiceProvider serviceProvider)
+    {
+        if (descriptor.ImplementationInstance is IRagVectorStore instance)
+        {
+            return instance;
+        }
+
+        if (descriptor.ImplementationFactory is not null)
+        {
+            return (IRagVectorStore)descriptor.ImplementationFactory(serviceProvider)!;
+        }
+
+        if (descriptor.ImplementationType is not null)
+        {
+            return (IRagVectorStore)ActivatorUtilities.CreateInstance(
+                serviceProvider,
+                descriptor.ImplementationType);
+        }
+
+        throw new InvalidOperationException("The RAG vector store registration is invalid.");
     }
 }

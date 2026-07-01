@@ -1,9 +1,11 @@
+using Runiq.Rag.Abstractions.VectorStores;
 using Runiq.Rag.Models.Documents;
 using Runiq.Rag.Models.Embeddings;
 using Runiq.Rag.Models.Metadata;
 using Runiq.Rag.Models.Queries;
 using Runiq.Rag.Models.VectorStores;
 using Runiq.Rag.Retrieval;
+using Runiq.Rag.VectorStores;
 using Runiq.Rag.VectorStores.InMemory;
 
 namespace Runiq.Rag.Tests.VectorStores;
@@ -703,7 +705,15 @@ public sealed class InMemoryRagVectorStoreTests
     [Fact]
     public async Task Operations_ShouldFailDeterministically_WhenDimensionDoesNotMatch()
     {
-        var vectorStore = await CreateVectorStoreAsync();
+        var vectorStore = new ValidatingRagVectorStore(
+            new InMemoryRagVectorStore(),
+            new DefaultRagVectorRecordDimensionValidator());
+
+        await vectorStore.CreateIndexAsync(new CreateVectorIndexRequest
+        {
+            IndexName = "documents",
+            Dimensions = 3,
+        });
 
         var upsertResult = await vectorStore.UpsertAsync(new UpsertVectorRequest
         {
@@ -720,6 +730,88 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.False(queryResult.Succeeded);
         Assert.Equal("Vector dimension does not match the index dimensions.", upsertResult.Reason);
         Assert.Equal(upsertResult.Reason, queryResult.Reason);
+    }
+
+    [Fact]
+    public async Task ValidatingUpsertAsync_ShouldPreserveDimensionValidationDiagnostics_WhenDimensionDoesNotMatch()
+    {
+        var vectorStore = new ValidatingRagVectorStore(
+            new InMemoryRagVectorStore(),
+            new Runiq.Rag.VectorStores.DefaultRagVectorRecordDimensionValidator());
+        await vectorStore.CreateIndexAsync(new CreateVectorIndexRequest
+        {
+            IndexName = "documents",
+            Dimensions = 3,
+        });
+
+        var result = await vectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            Records = [CreateRecord("vector-1", [1.0f, 0.0f])],
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("Vector dimension does not match the index dimensions.", result.Reason);
+        Assert.Equal("documents", result.IndexName);
+        Assert.Equal("vector-1", result.RecordId);
+        Assert.Equal(3, result.ExpectedDimensions);
+        Assert.Equal(2, result.ActualDimensions);
+    }
+
+    [Fact]
+    public async Task ValidatingUpsertAsync_ShouldNotWriteAnyRecord_WhenMultiRecordRequestContainsInvalidDimensions()
+    {
+        var vectorStore = new ValidatingRagVectorStore(
+            new InMemoryRagVectorStore(),
+            new Runiq.Rag.VectorStores.DefaultRagVectorRecordDimensionValidator());
+        await vectorStore.CreateIndexAsync(new CreateVectorIndexRequest
+        {
+            IndexName = "documents",
+            Dimensions = 3,
+        });
+
+        var upsertResult = await vectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            Records =
+            [
+                CreateRecord("valid-vector", [1.0f, 0.0f, 0.0f]),
+                CreateRecord("invalid-vector", [1.0f, 0.0f]),
+            ],
+        });
+        var queryResult = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [1.0f, 0.0f, 0.0f],
+            TopK = 10,
+        });
+
+        Assert.False(upsertResult.Succeeded);
+        Assert.Equal("invalid-vector", upsertResult.RecordId);
+        Assert.Empty(queryResult.Records);
+    }
+
+    [Fact]
+    public async Task ValidatingUpsertAsync_ShouldUseProviderIndependentDimensionValidator()
+    {
+        var validator = new TrackingDimensionValidator();
+        var vectorStore = new ValidatingRagVectorStore(new InMemoryRagVectorStore(), validator);
+
+        await vectorStore.CreateIndexAsync(new CreateVectorIndexRequest
+        {
+            IndexName = "documents",
+            Dimensions = 3,
+        });
+
+        await vectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            Records = [CreateRecord("vector-1", [1.0f, 0.0f, 0.0f])],
+        });
+
+        Assert.True(validator.WasCalled);
+        Assert.Equal("documents", validator.IndexName);
+        Assert.Equal(3, validator.ExpectedDimensions);
     }
 
     [Theory]
@@ -1012,5 +1104,30 @@ public sealed class InMemoryRagVectorStoreTests
     private static RagMetadata CreateMetadata(params (string Key, string Value)[] values)
     {
         return new RagMetadata(values.ToDictionary(value => value.Key, value => value.Value));
+    }
+
+    private sealed class TrackingDimensionValidator : IRagVectorRecordDimensionValidator
+    {
+        public bool WasCalled { get; private set; }
+
+        public string IndexName { get; private set; } = string.Empty;
+
+        public int ExpectedDimensions { get; private set; }
+
+        public VectorRecordDimensionValidationResult Validate(
+            UpsertVectorRequest request,
+            int expectedDimensions)
+        {
+            WasCalled = true;
+            IndexName = request.IndexName;
+            ExpectedDimensions = expectedDimensions;
+
+            return new VectorRecordDimensionValidationResult
+            {
+                Succeeded = true,
+                IndexName = request.IndexName,
+                ExpectedDimensions = expectedDimensions,
+            };
+        }
     }
 }

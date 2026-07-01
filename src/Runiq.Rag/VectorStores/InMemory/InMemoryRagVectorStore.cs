@@ -27,6 +27,13 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
     private readonly object gate = new();
     private readonly Dictionary<string, InMemoryVectorIndex> indexes = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="InMemoryRagVectorStore"/> class.
+    /// </summary>
+    public InMemoryRagVectorStore()
+    {
+    }
+
     /// <inheritdoc />
     public Task<CreateVectorIndexResult> CreateIndexAsync(
         CreateVectorIndexRequest request,
@@ -116,12 +123,6 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
             if (!indexes.TryGetValue(request.IndexName, out var index))
             {
                 return Task.FromResult(CreateFailedUpsertResult(IndexNotFoundReason));
-            }
-
-            var dimensionMismatch = request.Records.Any(record => record.Values.Count != index.Dimensions);
-            if (dimensionMismatch)
-            {
-                return Task.FromResult(CreateFailedUpsertResult(DimensionMismatchReason));
             }
 
             foreach (var record in request.Records)
