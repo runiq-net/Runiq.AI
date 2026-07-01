@@ -56,6 +56,26 @@ public sealed class UpsertVectorResult
     public string Reason { get; init; } = string.Empty;
 
     /// <summary>
+    /// Gets or initializes the vector index name associated with an upsert failure when available.
+    /// </summary>
+    public string IndexName { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the vector record identifier associated with an upsert failure when available.
+    /// </summary>
+    public string RecordId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets or initializes the dimension count expected by the target vector index when dimension validation fails.
+    /// </summary>
+    public int? ExpectedDimensions { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the actual dimension count calculated from the vector record values when dimension validation fails.
+    /// </summary>
+    public int? ActualDimensions { get; init; }
+
+    /// <summary>
     /// Gets or initializes provider-independent result metadata that describes the upsert outcome without exposing provider-specific exception types.
     /// </summary>
     public RagMetadata Metadata

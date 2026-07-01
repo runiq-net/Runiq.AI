@@ -48,7 +48,7 @@ public sealed class RagBuilderTests
         builder.UseVectorStore<TestVectorStore>();
 
         var descriptor = Assert.Single(services, service => service.ServiceType == typeof(IRagVectorStore));
-        Assert.Equal(typeof(TestVectorStore), descriptor.ImplementationType);
+        Assert.NotNull(descriptor.ImplementationFactory);
         Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
     }
 
@@ -62,7 +62,7 @@ public sealed class RagBuilderTests
         builder.UseInMemoryVectorStore();
 
         var descriptor = Assert.Single(services, service => service.ServiceType == typeof(IRagVectorStore));
-        Assert.Equal(typeof(InMemoryRagVectorStore), descriptor.ImplementationType);
+        Assert.NotNull(descriptor.ImplementationFactory);
         Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
     }
 

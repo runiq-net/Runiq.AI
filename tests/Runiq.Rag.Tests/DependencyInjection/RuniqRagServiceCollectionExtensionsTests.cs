@@ -114,6 +114,16 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public void AddRuniqRag_ShouldRegisterRagVectorRecordDimensionValidator()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagVectorRecordDimensionValidator));
+    }
+
+    [Fact]
     public void AddRuniqRag_ShouldRegisterRagChunker()
     {
         var services = new ServiceCollection();
@@ -215,6 +225,18 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public void AddRuniqRag_ShouldResolveDefaultRagVectorRecordDimensionValidator()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<DefaultRagVectorRecordDimensionValidator>(
+            serviceProvider.GetRequiredService<IRagVectorRecordDimensionValidator>());
+    }
+
+    [Fact]
     public void AddRuniqRag_ShouldResolveIngestionDependenciesForConsumerScenario()
     {
         var services = new ServiceCollection();
@@ -285,7 +307,41 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
 
         using var serviceProvider = services.BuildServiceProvider();
 
-        Assert.IsType<NullVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+        Assert.IsType<ValidatingRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+    }
+
+    [Fact]
+    public async Task AddRuniqRag_ShouldValidateDefaultVectorStoreBeforeUpsert()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var vectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
+
+        await vectorStore.CreateIndexAsync(new CreateVectorIndexRequest
+        {
+            IndexName = "documents",
+            Dimensions = 3,
+        });
+        var result = await vectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            Records =
+            [
+                new VectorRecord
+                {
+                    Id = "vector-1",
+                    Values = [0.1f, 0.2f],
+                },
+            ],
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("documents", result.IndexName);
+        Assert.Equal("vector-1", result.RecordId);
+        Assert.Equal(3, result.ExpectedDimensions);
+        Assert.Equal(2, result.ActualDimensions);
     }
 
     [Fact]
@@ -302,16 +358,35 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddRuniqRag_ShouldNotOverwriteUserRegisteredVectorStore()
+    public async Task AddRuniqRag_ShouldWrapUserRegisteredVectorStore()
     {
         var services = new ServiceCollection();
-        services.AddSingleton<IRagVectorStore, TestVectorStore>();
+        var vectorStore = new TrackingVectorStore();
+        services.AddSingleton<IRagVectorStore>(vectorStore);
 
         services.AddRuniqRag();
 
         using var serviceProvider = services.BuildServiceProvider();
+        var resolvedVectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
+        var result = await resolvedVectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            ExpectedDimensions = 3,
+            Records =
+            [
+                new VectorRecord
+                {
+                    Id = "vector-1",
+                    Values = [0.1f, 0.2f],
+                },
+            ],
+        });
 
-        Assert.IsType<TestVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+        Assert.IsType<ValidatingRagVectorStore>(resolvedVectorStore);
+        Assert.False(result.Succeeded);
+        Assert.False(vectorStore.UpsertWasCalled);
+        Assert.Equal("documents", result.IndexName);
+        Assert.Equal("vector-1", result.RecordId);
     }
 
     [Fact]
@@ -399,7 +474,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
 
         using var serviceProvider = services.BuildServiceProvider();
 
-        Assert.IsType<InMemoryRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+        Assert.IsType<ValidatingRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
     }
 
     [Fact]
@@ -412,7 +487,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
 
         using var serviceProvider = services.BuildServiceProvider();
 
-        Assert.IsType<InMemoryRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+        Assert.IsType<ValidatingRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
     }
 
     [Fact]
@@ -424,8 +499,67 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
 
         using var serviceProvider = services.BuildServiceProvider();
 
-        Assert.IsType<InMemoryRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+        Assert.IsType<ValidatingRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
         Assert.NotNull(serviceProvider.GetRequiredService<IRagService>());
+    }
+
+    [Fact]
+    public async Task AddInMemoryRagVectorStore_ShouldValidateThroughDecoratorBeforeProviderUpsert()
+    {
+        var services = new ServiceCollection();
+        services.AddInMemoryRagVectorStore();
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var vectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
+
+        await vectorStore.CreateIndexAsync(new CreateVectorIndexRequest
+        {
+            IndexName = "documents",
+            Dimensions = 3,
+        });
+        var result = await vectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            Records =
+            [
+                new VectorRecord
+                {
+                    Id = "vector-1",
+                    Values = [0.1f, 0.2f],
+                },
+            ],
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("vector-1", result.RecordId);
+    }
+
+    [Fact]
+    public async Task AddInMemoryRagVectorStore_ShouldFailFast_WhenExpectedDimensionsAreMissing()
+    {
+        var services = new ServiceCollection();
+        services.AddInMemoryRagVectorStore();
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var vectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
+
+        var result = await vectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            Records =
+            [
+                new VectorRecord
+                {
+                    Id = "vector-1",
+                    Values = [0.1f, 0.2f],
+                },
+            ],
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("Vector expected dimensions are required for upsert validation.", result.Reason);
+        Assert.Equal("documents", result.IndexName);
+        Assert.Equal("vector-1", result.RecordId);
     }
 
     [Fact]
@@ -437,20 +571,38 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
 
         using var serviceProvider = services.BuildServiceProvider();
 
-        Assert.IsType<TestVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+        Assert.IsType<ValidatingRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
     }
 
     [Fact]
-    public void AddRagVectorStoreWithFactory_ShouldRegisterCustomVectorStoreInstance()
+    public async Task AddRagVectorStoreWithFactory_ShouldWrapCustomVectorStoreInstance()
     {
         var services = new ServiceCollection();
-        var vectorStore = new TestVectorStore();
+        var vectorStore = new TrackingVectorStore();
 
         services.AddRagVectorStore(_ => vectorStore);
 
         using var serviceProvider = services.BuildServiceProvider();
+        var resolvedVectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
+        var result = await resolvedVectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            ExpectedDimensions = 3,
+            Records =
+            [
+                new VectorRecord
+                {
+                    Id = "vector-1",
+                    Values = [0.1f, 0.2f],
+                },
+            ],
+        });
 
-        Assert.Same(vectorStore, serviceProvider.GetRequiredService<IRagVectorStore>());
+        Assert.IsType<ValidatingRagVectorStore>(resolvedVectorStore);
+        Assert.False(result.Succeeded);
+        Assert.False(vectorStore.UpsertWasCalled);
+        Assert.Equal("documents", result.IndexName);
+        Assert.Equal("vector-1", result.RecordId);
     }
 
     [Fact]
@@ -463,7 +615,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
 
         using var serviceProvider = services.BuildServiceProvider();
 
-        Assert.IsType<InMemoryRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+        Assert.IsType<ValidatingRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
     }
 
     [Fact]
@@ -497,7 +649,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         using var serviceProvider = services.BuildServiceProvider();
 
         Assert.IsType<NullEmbeddingProvider>(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
-        Assert.IsType<NullVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+        Assert.IsType<ValidatingRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
         Assert.NotNull(serviceProvider.GetRequiredService<IRagRetriever>());
         Assert.NotNull(serviceProvider.GetRequiredService<IRagService>());
         Assert.NotNull(serviceProvider.GetRequiredService<IRagChunker>());
@@ -527,7 +679,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
 
         using var serviceProvider = services.BuildServiceProvider();
 
-        Assert.IsType<TestVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+        Assert.IsType<ValidatingRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
     }
 
     [Fact]
@@ -539,20 +691,38 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
 
         using var serviceProvider = services.BuildServiceProvider();
 
-        Assert.IsType<InMemoryRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+        Assert.IsType<ValidatingRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
     }
 
     [Fact]
-    public void AddRuniqRagWithConfigure_ShouldAllowCustomVectorStoreFactory()
+    public async Task AddRuniqRagWithConfigure_ShouldWrapCustomVectorStoreFactory()
     {
         var services = new ServiceCollection();
-        var vectorStore = new TestVectorStore();
+        var vectorStore = new TrackingVectorStore();
 
         services.AddRuniqRag(rag => rag.UseVectorStore(_ => vectorStore));
 
         using var serviceProvider = services.BuildServiceProvider();
+        var resolvedVectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
+        var result = await resolvedVectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            ExpectedDimensions = 3,
+            Records =
+            [
+                new VectorRecord
+                {
+                    Id = "vector-1",
+                    Values = [0.1f, 0.2f],
+                },
+            ],
+        });
 
-        Assert.Same(vectorStore, serviceProvider.GetRequiredService<IRagVectorStore>());
+        Assert.IsType<ValidatingRagVectorStore>(resolvedVectorStore);
+        Assert.False(result.Succeeded);
+        Assert.False(vectorStore.UpsertWasCalled);
+        Assert.Equal("documents", result.IndexName);
+        Assert.Equal("vector-1", result.RecordId);
     }
 
     [Fact]
@@ -759,7 +929,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
 
         Assert.Equal(9, serviceProvider.GetRequiredService<IOptions<RagOptions>>().Value.DefaultTopK);
         Assert.IsType<TestEmbeddingProvider>(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
-        Assert.IsType<TestVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+        Assert.IsType<ValidatingRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
         Assert.IsType<TestRetriever>(serviceProvider.GetRequiredService<IRagRetriever>());
         Assert.IsType<TestChunker>(serviceProvider.GetRequiredService<IRagChunker>());
     }
@@ -809,6 +979,43 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
             UpsertVectorRequest request,
             CancellationToken cancellationToken = default)
         {
+            return Task.FromResult(new UpsertVectorResult
+            {
+                Succeeded = true,
+                UpsertedCount = request.Records?.Count ?? 0,
+            });
+        }
+
+        public Task<IReadOnlyList<RagSearchResult>> SearchAsync(
+            RagQuery query,
+            RagEmbedding embedding,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<RagSearchResult>>(Array.Empty<RagSearchResult>());
+        }
+    }
+
+    private sealed class TrackingVectorStore : IRagVectorStore
+    {
+        public bool UpsertWasCalled { get; private set; }
+
+        public Task<CreateVectorIndexResult> CreateIndexAsync(
+            CreateVectorIndexRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new CreateVectorIndexResult
+            {
+                IndexName = request.IndexName,
+                Succeeded = true,
+            });
+        }
+
+        public Task<UpsertVectorResult> UpsertAsync(
+            UpsertVectorRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            UpsertWasCalled = true;
+
             return Task.FromResult(new UpsertVectorResult
             {
                 Succeeded = true,

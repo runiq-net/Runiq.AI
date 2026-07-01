@@ -39,12 +39,14 @@ public sealed class VectorStoreModelTests
         var request = new UpsertVectorRequest
         {
             IndexName = "documents",
+            ExpectedDimensions = 2,
             Records = records,
         };
 
         records.Clear();
 
         Assert.Equal("documents", request.IndexName);
+        Assert.Equal(2, request.ExpectedDimensions);
         Assert.Equal(2, request.Records.Count);
         Assert.Equal(["vector-1", "vector-2"], request.Records.Select(record => record.Id));
     }
@@ -140,12 +142,20 @@ public sealed class VectorStoreModelTests
             Succeeded = false,
             ProcessedCount = 1,
             Reason = "provider-independent failure",
+            IndexName = "documents",
+            RecordId = "vector-1",
+            ExpectedDimensions = 3,
+            ActualDimensions = 2,
         };
 
         Assert.False(result.Succeeded);
         Assert.Equal(1, result.ProcessedCount);
         Assert.Equal(1, result.UpsertedCount);
         Assert.Equal("provider-independent failure", result.Reason);
+        Assert.Equal("documents", result.IndexName);
+        Assert.Equal("vector-1", result.RecordId);
+        Assert.Equal(3, result.ExpectedDimensions);
+        Assert.Equal(2, result.ActualDimensions);
     }
 
     [Fact]
