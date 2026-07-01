@@ -22,9 +22,42 @@ public sealed class VectorStoreModelTests
     [Fact]
     public void UpsertVectorRequest_ShouldHoldMultipleVectorRecords()
     {
+        var records = new List<VectorRecord>
+        {
+            new()
+            {
+                Id = "vector-1",
+                Values = [0.1f, 0.2f],
+            },
+            new()
+            {
+                Id = "vector-2",
+                Values = [0.3f, 0.4f],
+            },
+        };
+
         var request = new UpsertVectorRequest
         {
             IndexName = "documents",
+            Records = records,
+        };
+
+        records.Clear();
+
+        Assert.Equal("documents", request.IndexName);
+        Assert.Equal(2, request.Records.Count);
+        Assert.Equal(["vector-1", "vector-2"], request.Records.Select(record => record.Id));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void UpsertVectorRequest_ShouldFailFast_WhenIndexNameIsInvalid(string? indexName)
+    {
+        var exception = Assert.Throws<ArgumentException>(() => new UpsertVectorRequest
+        {
+            IndexName = indexName!,
             Records =
             [
                 new VectorRecord
@@ -32,16 +65,10 @@ public sealed class VectorStoreModelTests
                     Id = "vector-1",
                     Values = [0.1f, 0.2f],
                 },
-                new VectorRecord
-                {
-                    Id = "vector-2",
-                    Values = [0.3f, 0.4f],
-                },
             ],
-        };
+        });
 
-        Assert.Equal(2, request.Records.Count);
-        Assert.Equal(["vector-1", "vector-2"], request.Records.Select(record => record.Id));
+        Assert.Equal(nameof(UpsertVectorRequest.IndexName), exception.ParamName);
     }
 
     [Fact]
@@ -51,6 +78,19 @@ public sealed class VectorStoreModelTests
         {
             IndexName = "documents",
             Records = null!,
+        };
+
+        Assert.NotNull(request.Records);
+        Assert.Empty(request.Records);
+    }
+
+    [Fact]
+    public void UpsertVectorRequest_ShouldAllowEmptyRecordsCollection()
+    {
+        var request = new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            Records = [],
         };
 
         Assert.NotNull(request.Records);
@@ -87,8 +127,38 @@ public sealed class VectorStoreModelTests
         };
 
         Assert.True(result.Succeeded);
+        Assert.Equal(2, result.ProcessedCount);
         Assert.Equal(2, result.UpsertedCount);
         Assert.Equal(["vector-1", "vector-2"], result.VectorIds);
+    }
+
+    [Fact]
+    public void UpsertVectorResult_ShouldCarryFailedOperationOutcome()
+    {
+        var result = new UpsertVectorResult
+        {
+            Succeeded = false,
+            ProcessedCount = 1,
+            Reason = "provider-independent failure",
+        };
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(1, result.ProcessedCount);
+        Assert.Equal(1, result.UpsertedCount);
+        Assert.Equal("provider-independent failure", result.Reason);
+    }
+
+    [Fact]
+    public void UpsertVectorResult_ShouldPreserveProcessedCountFromCompatibilityAlias()
+    {
+        var result = new UpsertVectorResult
+        {
+            Succeeded = true,
+            UpsertedCount = 3,
+        };
+
+        Assert.Equal(3, result.ProcessedCount);
+        Assert.Equal(3, result.UpsertedCount);
     }
 
     [Fact]
