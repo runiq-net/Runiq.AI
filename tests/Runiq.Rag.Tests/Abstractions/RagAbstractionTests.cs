@@ -122,6 +122,28 @@ public sealed class RagAbstractionTests
     }
 
     [Fact]
+    public async Task IRagVectorStore_ChunkUpsertAsync_ShouldPassCancellationTokenToRequestUpsert()
+    {
+        IRagVectorStore vectorStore = new RequestOnlyVectorStore();
+        using var cancellationTokenSource = new CancellationTokenSource();
+
+        await vectorStore.UpsertAsync(
+            "documents",
+            new RagChunk
+            {
+                Id = "chunk-1",
+                DocumentId = "document-1",
+                Content = "chunk content",
+            },
+            new RagEmbedding([0.1f, 0.2f]),
+            cancellationTokenSource.Token);
+
+        Assert.Equal(
+            cancellationTokenSource.Token,
+            Assert.IsType<RequestOnlyVectorStore>(vectorStore).LastUpsertCancellationToken);
+    }
+
+    [Fact]
     public async Task IRagVectorStore_DefaultQueryAsync_ShouldReturnFailedNotImplementedResult()
     {
         IRagVectorStore vectorStore = new RequestOnlyVectorStore();
@@ -266,6 +288,8 @@ public sealed class RagAbstractionTests
     {
         public UpsertVectorRequest? LastUpsertRequest { get; private set; }
 
+        public CancellationToken LastUpsertCancellationToken { get; private set; }
+
         public Task<CreateVectorIndexResult> CreateIndexAsync(
             CreateVectorIndexRequest request,
             CancellationToken cancellationToken = default)
@@ -282,6 +306,7 @@ public sealed class RagAbstractionTests
             CancellationToken cancellationToken = default)
         {
             LastUpsertRequest = request;
+            LastUpsertCancellationToken = cancellationToken;
 
             return Task.FromResult(new UpsertVectorResult
             {
