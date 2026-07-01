@@ -24,6 +24,7 @@ public sealed class DefaultRetriever : IRagRetriever
     /// </summary>
     /// <param name="embeddingProvider">The embedding provider used to embed query text.</param>
     /// <param name="vectorStore">The vector store used to search for matching chunks.</param>
+    /// <param name="options">The RAG options used to resolve default retrieval settings.</param>
     public DefaultRetriever(
         IRagEmbeddingProvider embeddingProvider,
         IRagVectorStore vectorStore,
