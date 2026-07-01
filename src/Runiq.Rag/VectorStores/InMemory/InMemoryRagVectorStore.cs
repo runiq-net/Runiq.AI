@@ -270,6 +270,11 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
         ArgumentNullException.ThrowIfNull(chunk);
         ArgumentNullException.ThrowIfNull(embedding);
 
+        if (string.IsNullOrWhiteSpace(indexName))
+        {
+            return Task.FromResult(CreateFailedUpsertResult(InvalidIndexNameReason));
+        }
+
         return UpsertAsync(
             new UpsertVectorRequest
             {

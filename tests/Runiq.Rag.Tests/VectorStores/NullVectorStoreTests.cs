@@ -73,11 +73,9 @@ public sealed class NullVectorStoreTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public async Task UpsertAsync_ShouldFailDeterministically_WhenIndexNameIsInvalid(string? indexName)
+    public void UpsertAsync_ShouldFailFast_WhenRequestIndexNameIsInvalid(string? indexName)
     {
-        var vectorStore = new NullVectorStore();
-
-        var result = await vectorStore.UpsertAsync(new UpsertVectorRequest
+        var exception = Assert.Throws<ArgumentException>(() => new UpsertVectorRequest
         {
             IndexName = indexName!,
             Records =
@@ -90,8 +88,7 @@ public sealed class NullVectorStoreTests
             ],
         });
 
-        Assert.False(result.Succeeded);
-        Assert.Equal(InvalidIndexNameReason, result.Reason);
+        Assert.Equal(nameof(UpsertVectorRequest.IndexName), exception.ParamName);
     }
 
     [Fact]

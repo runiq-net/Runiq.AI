@@ -3,10 +3,11 @@ using Runiq.Rag.Models.Metadata;
 namespace Runiq.Rag.Models.VectorStores;
 
 /// <summary>
-/// Represents the result of inserting or updating vector records.
+/// Carries the provider-independent outcome of a Vector Store upsert pipeline operation.
 /// </summary>
 public sealed class UpsertVectorResult
 {
+    private int processedCount;
     private IList<string> vectorIds = new List<string>();
     private RagMetadata metadata = RagMetadata.Empty;
 
@@ -18,31 +19,44 @@ public sealed class UpsertVectorResult
     }
 
     /// <summary>
-    /// Gets or initializes a value indicating whether the operation completed successfully.
+    /// Gets or initializes a value indicating whether the provider-independent upsert operation completed successfully.
     /// </summary>
     public bool Succeeded { get; init; }
 
     /// <summary>
-    /// Gets or initializes the number of records inserted or updated.
+    /// Gets or initializes the number of vector records processed by the upsert operation, regardless of provider implementation details.
     /// </summary>
-    public int UpsertedCount { get; init; }
+    public int ProcessedCount
+    {
+        get => processedCount;
+        init => processedCount = value;
+    }
 
     /// <summary>
-    /// Gets or initializes the identifiers affected by the operation.
+    /// Gets or initializes the number of vector records inserted or updated. This property is kept as a compatibility alias for <see cref="ProcessedCount" />.
+    /// </summary>
+    public int UpsertedCount
+    {
+        get => processedCount;
+        init => processedCount = value;
+    }
+
+    /// <summary>
+    /// Gets or initializes the vector identifiers affected by the provider-independent upsert operation.
     /// </summary>
     public IList<string> VectorIds
     {
         get => vectorIds;
-        init => vectorIds = value ?? throw new ArgumentNullException(nameof(value));
+        init => vectorIds = value?.ToList() ?? throw new ArgumentNullException(nameof(value));
     }
 
     /// <summary>
-    /// Gets or initializes a provider-independent failure reason when the operation did not succeed.
+    /// Gets or initializes a provider-independent failure reason when the upsert operation did not succeed.
     /// </summary>
     public string Reason { get; init; } = string.Empty;
 
     /// <summary>
-    /// Gets or initializes result metadata.
+    /// Gets or initializes provider-independent result metadata that describes the upsert outcome without exposing provider-specific exception types.
     /// </summary>
     public RagMetadata Metadata
     {

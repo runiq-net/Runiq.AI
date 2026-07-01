@@ -735,11 +735,6 @@ public sealed class InMemoryRagVectorStoreTests
             IndexName = indexName!,
             Dimensions = 3,
         });
-        var upsertResult = await vectorStore.UpsertAsync(new UpsertVectorRequest
-        {
-            IndexName = indexName!,
-            Records = [CreateRecord("vector-1", [1.0f, 0.0f, 0.0f])],
-        });
         var queryResult = await vectorStore.QueryAsync(new QueryVectorRequest
         {
             IndexName = indexName!,
@@ -752,11 +747,9 @@ public sealed class InMemoryRagVectorStoreTests
         });
 
         Assert.False(createResult.Succeeded);
-        Assert.False(upsertResult.Succeeded);
         Assert.False(queryResult.Succeeded);
         Assert.False(deleteResult.Succeeded);
         Assert.Equal("Vector index name is required.", createResult.Reason);
-        Assert.Equal(createResult.Reason, upsertResult.Reason);
         Assert.Equal(createResult.Reason, queryResult.Reason);
         Assert.Equal(createResult.Reason, deleteResult.Reason);
     }
