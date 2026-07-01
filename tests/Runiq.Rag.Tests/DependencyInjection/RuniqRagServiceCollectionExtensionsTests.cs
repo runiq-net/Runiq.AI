@@ -103,6 +103,16 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public void AddRuniqRag_ShouldRegisterRagVectorRecordMapper()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagVectorRecordMapper));
+    }
+
+    [Fact]
     public void AddRuniqRag_ShouldRegisterRagChunker()
     {
         var services = new ServiceCollection();
@@ -189,6 +199,18 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
 
         Assert.IsType<DefaultRagChunkEmbeddingGenerator>(
             serviceProvider.GetRequiredService<IRagChunkEmbeddingGenerator>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveDefaultRagVectorRecordMapper()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<DefaultRagVectorRecordMapper>(
+            serviceProvider.GetRequiredService<IRagVectorRecordMapper>());
     }
 
     [Fact]
