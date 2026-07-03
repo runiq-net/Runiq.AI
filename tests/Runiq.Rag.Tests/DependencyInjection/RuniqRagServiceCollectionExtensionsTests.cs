@@ -147,6 +147,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     [Fact]
     public void AddRuniqRag_ShouldResolveDefaultRagVectorStoreUpsertPipeline()
     {
+        // Verifies that the default RAG registration exposes the upsert pipeline through DI.
         var services = new ServiceCollection();
         services.AddRuniqRag();
 
@@ -154,6 +155,61 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
 
         Assert.IsType<DefaultRagVectorStoreUpsertPipeline>(
             serviceProvider.GetRequiredService<IRagVectorStoreUpsertPipeline>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveDefaultRagUpsertVectorRequestMapper()
+    {
+        // Verifies that the default RAG registration exposes the upsert request mapper through DI.
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<DefaultRagUpsertVectorRequestMapper>(
+            serviceProvider.GetRequiredService<IRagUpsertVectorRequestMapper>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterUpsertPipelineServicesWithExpectedLifetimes()
+    {
+        // Verifies that upsert pipeline registrations follow the existing RAG service lifetime pattern.
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Equal(
+            ServiceLifetime.Scoped,
+            services.Single(descriptor => descriptor.ServiceType == typeof(IRagVectorStoreUpsertPipeline)).Lifetime);
+        Assert.Equal(
+            ServiceLifetime.Scoped,
+            services.Single(descriptor => descriptor.ServiceType == typeof(IRagUpsertVectorRequestMapper)).Lifetime);
+        Assert.Equal(
+            ServiceLifetime.Singleton,
+            services.Single(descriptor => descriptor.ServiceType == typeof(IRagVectorRecordDimensionValidator)).Lifetime);
+        Assert.Equal(
+            ServiceLifetime.Singleton,
+            services.Single(descriptor => descriptor.ServiceType == typeof(IRagVectorStore)).Lifetime);
+    }
+
+    [Fact]
+    public async Task AddRagVectorStore_ShouldRouteUpsertPipelineWritesToCustomVectorStore_WhenRegisteredAfterAddRuniqRag()
+    {
+        // Verifies that a custom vector store override receives upsert pipeline writes instead of the default store.
+        var services = new ServiceCollection();
+        var vectorStore = new TrackingVectorStore();
+        services.AddRuniqRag();
+        services.AddRagVectorStore(_ => vectorStore);
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var pipeline = serviceProvider.GetRequiredService<IRagVectorStoreUpsertPipeline>();
+        var ingestionResult = CreateSingleChunkIngestionResult([0.1f, 0.2f]);
+
+        var result = await pipeline.UpsertAsync(ingestionResult, "documents", expectedDimensions: 2);
+
+        Assert.True(result.Succeeded);
+        Assert.True(vectorStore.UpsertWasCalled);
+        Assert.Equal(1, result.ProcessedCount);
     }
 
     [Fact]
