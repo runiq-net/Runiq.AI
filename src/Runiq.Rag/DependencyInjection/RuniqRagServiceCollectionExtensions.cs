@@ -156,7 +156,7 @@ public static class RuniqRagServiceCollectionExtensions
 
         services.ReplaceRagVectorStore(ServiceDescriptor.Singleton(factory));
 
-        return services;
+        return services; 
     }
 
     /// <summary>
