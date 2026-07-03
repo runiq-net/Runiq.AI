@@ -10,7 +10,12 @@ using Runiq.Rag.Retrieval;
 namespace Runiq.Rag.VectorStores.InMemory;
 
 /// <summary>
-/// Provides a deterministic in-memory vector store for tests and samples.
+/// Provides a deterministic in-memory vector store intended for development, tests, and samples — not production use.
+/// Upsert operations are all-or-nothing: every record in a request is validated before any record is written, so a
+/// failed batch never leaves partial state. The upsert <see cref="CancellationToken"/> is observed before any state
+/// is mutated. Stored vector values and metadata are defensively copied, so later mutation of the source request does
+/// not affect stored records. Dimension validation is not performed here; it remains the responsibility of
+/// <see cref="ValidatingRagVectorStore"/>.
 /// </summary>
 public sealed class InMemoryRagVectorStore : IRagVectorStore
 {
@@ -86,35 +91,45 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// A null request is a programming error and throws <see cref="ArgumentNullException"/>. The cancellation token
+    /// is observed before validation and before any record is written; a cancelled token therefore never leaves
+    /// partial state. All records are validated before the first write, so a failed batch is a full failure with
+    /// <see cref="UpsertVectorResult.ProcessedCount"/> of zero.
+    /// </remarks>
     public Task<UpsertVectorResult> UpsertAsync(
         UpsertVectorRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (request is null)
-        {
-            return Task.FromResult(CreateFailedUpsertResult(RequestRequiredReason));
-        }
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var attemptedCount = request.Records?.Count ?? 0;
 
         if (string.IsNullOrWhiteSpace(request.IndexName))
         {
-            return Task.FromResult(CreateFailedUpsertResult(InvalidIndexNameReason));
+            return Task.FromResult(CreateFailedUpsertResult(
+                VectorStoreUpsertErrorCode.ValidationFailed, InvalidIndexNameReason, attemptedCount));
         }
 
         if (request.Records is null || request.Records.Count == 0)
         {
-            return Task.FromResult(CreateFailedUpsertResult(RecordsRequiredReason));
+            return Task.FromResult(CreateFailedUpsertResult(
+                VectorStoreUpsertErrorCode.ValidationFailed, RecordsRequiredReason, attemptedCount));
         }
 
         foreach (var record in request.Records)
         {
             if (record is null || string.IsNullOrWhiteSpace(record.Id))
             {
-                return Task.FromResult(CreateFailedUpsertResult(InvalidVectorIdReason));
+                return Task.FromResult(CreateFailedUpsertResult(
+                    VectorStoreUpsertErrorCode.ValidationFailed, InvalidVectorIdReason, attemptedCount));
             }
 
             if (record.Values is null || record.Values.Count == 0)
             {
-                return Task.FromResult(CreateFailedUpsertResult(InvalidVectorValuesReason));
+                return Task.FromResult(CreateFailedUpsertResult(
+                    VectorStoreUpsertErrorCode.ValidationFailed, InvalidVectorValuesReason, attemptedCount));
             }
         }
 
@@ -122,7 +137,8 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
         {
             if (!indexes.TryGetValue(request.IndexName, out var index))
             {
-                return Task.FromResult(CreateFailedUpsertResult(IndexNotFoundReason));
+                return Task.FromResult(CreateFailedUpsertResult(
+                    VectorStoreUpsertErrorCode.StoreFailed, IndexNotFoundReason, attemptedCount));
             }
 
             foreach (var record in request.Records)
@@ -133,7 +149,11 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
             return Task.FromResult(new UpsertVectorResult
             {
                 Succeeded = true,
-                UpsertedCount = request.Records.Count,
+                ErrorCode = VectorStoreUpsertErrorCode.None,
+                ProcessedCount = request.Records.Count,
+                AttemptedCount = request.Records.Count,
+                FailedCount = 0,
+                SupportsPartialSuccess = false,
                 VectorIds = request.Records.Select(record => record.Id).ToList(),
             });
         }
@@ -262,6 +282,10 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// The cancellation token is observed before the chunk is converted into an upsert request and again by the
+    /// request-based overload before any record is written, so a cancelled token never mutates store state.
+    /// </remarks>
     public Task<UpsertVectorResult> UpsertAsync(
         string indexName,
         RagChunk chunk,
@@ -270,10 +294,12 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
     {
         ArgumentNullException.ThrowIfNull(chunk);
         ArgumentNullException.ThrowIfNull(embedding);
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (string.IsNullOrWhiteSpace(indexName))
         {
-            return Task.FromResult(CreateFailedUpsertResult(InvalidIndexNameReason));
+            return Task.FromResult(CreateFailedUpsertResult(
+                VectorStoreUpsertErrorCode.ValidationFailed, InvalidIndexNameReason, attemptedCount: 1));
         }
 
         return UpsertAsync(
@@ -375,12 +401,24 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
         };
     }
 
-    private static UpsertVectorResult CreateFailedUpsertResult(string reason)
+    /// <summary>
+    /// Builds a full-failure upsert result that satisfies the standard upsert contract: no record is reported as
+    /// processed, every attempted record is reported as failed, and partial success is never indicated.
+    /// </summary>
+    private static UpsertVectorResult CreateFailedUpsertResult(
+        VectorStoreUpsertErrorCode errorCode,
+        string reason,
+        int attemptedCount)
     {
         return new UpsertVectorResult
         {
             Succeeded = false,
+            ErrorCode = errorCode,
             Reason = reason,
+            ProcessedCount = 0,
+            AttemptedCount = attemptedCount,
+            FailedCount = attemptedCount,
+            SupportsPartialSuccess = false,
         };
     }
 
