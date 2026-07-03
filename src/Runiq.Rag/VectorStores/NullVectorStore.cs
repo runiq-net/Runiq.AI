@@ -13,6 +13,9 @@ namespace Runiq.Rag.VectorStores;
 public sealed class NullVectorStore : IRagVectorStore
 {
     private const string InvalidIndexNameReason = "Vector index name is required.";
+    private const string RequestRequiredReason = "Request is required.";
+    private const string InvalidVectorValuesReason = "Vector values are required.";
+    private const string InvalidTopKReason = "TopK must be greater than zero.";
 
     /// <summary>
     /// Initializes a new instance of the <see cref="NullVectorStore"/> class.
@@ -106,22 +109,42 @@ public sealed class NullVectorStore : IRagVectorStore
     }
 
     /// <summary>
-    /// Returns a successful empty vector query result without querying external services.
+    /// Validates the query request and returns a successful empty vector query result without querying external
+    /// services.
     /// </summary>
+    /// <remarks>
+    /// Invalid requests are rejected with a failure result so that this no-op store never reports invalid input as a
+    /// successful query, matching the invalid-request behavior of the in-memory store. A valid request returns a
+    /// successful empty result because the no-op store holds no records. The cancellation token is observed before
+    /// any work is performed, consistent with the in-memory query operation.
+    /// </remarks>
     /// <param name="request">The vector query request.</param>
     /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
-    /// <returns>A successful empty vector query result.</returns>
+    /// <returns>A failure result for invalid requests; otherwise a successful empty vector query result.</returns>
     public Task<QueryVectorResult> QueryAsync(
         QueryVectorRequest request,
         CancellationToken cancellationToken = default)
     {
+        if (request is null)
+        {
+            return Task.FromResult(CreateFailedQueryResult(RequestRequiredReason));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (string.IsNullOrWhiteSpace(request.IndexName))
         {
-            return Task.FromResult(new QueryVectorResult
-            {
-                Succeeded = false,
-                Reason = InvalidIndexNameReason,
-            });
+            return Task.FromResult(CreateFailedQueryResult(InvalidIndexNameReason));
+        }
+
+        if (request.Values is null || request.Values.Count == 0)
+        {
+            return Task.FromResult(CreateFailedQueryResult(InvalidVectorValuesReason));
+        }
+
+        if (request.TopK <= 0)
+        {
+            return Task.FromResult(CreateFailedQueryResult(InvalidTopKReason));
         }
 
         return Task.FromResult(new QueryVectorResult
@@ -177,5 +200,14 @@ public sealed class NullVectorStore : IRagVectorStore
         CancellationToken cancellationToken = default)
     {
         return Task.FromResult<IReadOnlyList<RagSearchResult>>(Array.Empty<RagSearchResult>());
+    }
+
+    private static QueryVectorResult CreateFailedQueryResult(string reason)
+    {
+        return new QueryVectorResult
+        {
+            Succeeded = false,
+            Reason = reason,
+        };
     }
 }

@@ -55,8 +55,10 @@ public interface IRagVectorStore
     }
 
     /// <summary>
-    /// Queries the vector store for records that are similar to the supplied query vector.
-    /// Results are expected to be returned best match first.
+    /// Queries the vector store for records that are similar to the supplied query vector. This is the retrieval
+    /// entry point of the vector store contract: the search is isolated to the request's index, ordered best match
+    /// first, and truncated to <see cref="QueryVectorRequest.TopK"/>. A query that matches no records is a successful,
+    /// empty result rather than a failure. Similarity is reported as a provider-independent, higher-is-better score.
     /// </summary>
     /// <param name="request">The provider-independent vector query request.</param>
     /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>

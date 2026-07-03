@@ -193,6 +193,26 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Empty(query.Records);
     }
 
+    // Verifies that a query with an already-cancelled token fails fast with OperationCanceledException,
+    // matching the repo-standard cancellation behavior used by the upsert operations.
+    [Fact]
+    public async Task QueryAsync_ShouldThrow_WhenCancellationIsAlreadyRequested()
+    {
+        var vectorStore = await CreateVectorStoreAsync();
+        using var cancellationTokenSource = new CancellationTokenSource();
+        cancellationTokenSource.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            vectorStore.QueryAsync(
+                new QueryVectorRequest
+                {
+                    IndexName = "documents",
+                    Values = [1.0f, 0.0f, 0.0f],
+                    TopK = 10,
+                },
+                cancellationTokenSource.Token));
+    }
+
     // Verifies that the request model rejects an invalid index name at construction time, so a request-based
     // upsert can never reach the store with a null, empty, or whitespace index name, and store state is untouched.
     [Theory]
@@ -570,6 +590,8 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Empty(results);
     }
 
+    // Verifies that vector search is isolated to the requested index and never returns records stored under a
+    // different index in the same store.
     [Fact]
     public async Task QueryAsync_ShouldNotMixRecordsBetweenIndexes()
     {
@@ -628,6 +650,7 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Equal("archive record", Assert.Single(archiveQuery.Records).Content);
     }
 
+    // Verifies that query results are ordered by similarity score with the best match returned first.
     [Fact]
     public async Task QueryAsync_ShouldReturnMostSimilarRecordsFirst()
     {
@@ -644,6 +667,7 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Equal(["vector-a", "vector-c", "vector-b"], result.Records.Select(record => record.Id));
     }
 
+    // Verifies that a closer vector match is exposed with a strictly higher similarity score than weaker matches.
     [Fact]
     public async Task QueryAsync_ShouldExposeHigherScoreForBetterMatch()
     {
@@ -660,6 +684,7 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.True(result.Records[1].Score > result.Records[2].Score);
     }
 
+    // Verifies that only records whose metadata satisfies the equality filter are returned.
     [Fact]
     public async Task QueryAsync_ShouldReturnMatchingRecords_WhenMetadataFilterMatches()
     {
@@ -677,6 +702,7 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Equal(["vector-a", "vector-c"], result.Records.Select(record => record.Id));
     }
 
+    // Verifies that a metadata filter with no matching records yields a successful but empty result.
     [Fact]
     public async Task QueryAsync_ShouldNotReturnRecords_WhenMetadataFilterDoesNotMatch()
     {
@@ -694,6 +720,8 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Empty(result.Records);
     }
 
+    // Verifies that multiple metadata filter entries are combined with AND semantics, so a record must match every
+    // filter key to be returned.
     [Fact]
     public async Task QueryAsync_ShouldApplyMetadataFilterWithAndSemantics()
     {
@@ -711,6 +739,7 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Equal("vector-a", Assert.Single(result.Records).Id);
     }
 
+    // Verifies that an empty metadata filter does not exclude any record, preserving unfiltered query behavior.
     [Fact]
     public async Task QueryAsync_ShouldPreserveExistingBehavior_WhenMetadataFilterIsEmpty()
     {
@@ -727,6 +756,7 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Equal(["vector-a", "vector-c", "vector-b"], result.Records.Select(record => record.Id));
     }
 
+    // Verifies that TopK limits the number of returned matches to the best-scoring records.
     [Fact]
     public async Task QueryAsync_ShouldLimitResultsByTopK()
     {
@@ -743,6 +773,7 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Equal(["vector-a", "vector-c"], result.Records.Select(record => record.Id));
     }
 
+    // Verifies that each query result carries the identifier of the matched vector record.
     [Fact]
     public async Task QueryAsync_ShouldIncludeVectorId()
     {
@@ -754,6 +785,7 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Equal("vector-1", result.Id);
     }
 
+    // Verifies that each query result carries the provider-independent similarity score for the match.
     [Fact]
     public async Task QueryAsync_ShouldIncludeScore()
     {
@@ -836,6 +868,7 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Equal(["vector-a", "vector-b"], result.VectorIds);
     }
 
+    // Verifies that a record removed by delete is no longer returned by a subsequent vector search.
     [Fact]
     public async Task QueryAsync_ShouldNotReturnDeletedVector()
     {
@@ -1169,6 +1202,7 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Empty(emptyValuesResult.VectorIds);
     }
 
+    // Verifies that a null or empty query vector is rejected deterministically before a vector search is performed.
     [Fact]
     public async Task QueryAsync_ShouldFailDeterministically_WhenVectorValuesAreNullOrEmpty()
     {
@@ -1191,6 +1225,7 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Equal(nullValuesResult.Reason, emptyValuesResult.Reason);
     }
 
+    // Verifies that a non-positive TopK is rejected deterministically with a failure result and no matches.
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
