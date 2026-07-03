@@ -27,4 +27,18 @@ public enum RetrievalErrorCode
     /// messages, and SDK details are never surfaced through this error code.
     /// </summary>
     RetrievalFailed = 2,
+
+    /// <summary>
+    /// The query text could not be turned into a query vector: the embedding abstraction either failed or
+    /// produced an empty embedding. When retrieval reports this category the vector store was never queried.
+    /// Provider-specific exception types, messages, and SDK details are never surfaced through this error code.
+    /// </summary>
+    EmbeddingFailed = 3,
+
+    /// <summary>
+    /// The query vector was produced successfully but the vector store query itself failed — either the store
+    /// reported an unsuccessful result or raised an error while executing the query. Provider-specific
+    /// exception types, messages, and SDK details are never surfaced through this error code.
+    /// </summary>
+    VectorStoreQueryFailed = 4,
 }

@@ -14,8 +14,10 @@ using Runiq.Rag.Models.Documents;
 using Runiq.Rag.Models.Embeddings;
 using Runiq.Rag.Models.Ingestion;
 using Runiq.Rag.Models.Queries;
+using Runiq.Rag.Models.Retrieval;
 using Runiq.Rag.Models.Search;
 using Runiq.Rag.Models.VectorStores;
+using Runiq.Rag.Retrieval;
 using Runiq.Rag.Services;
 using Runiq.Rag.VectorStores;
 using Runiq.Rag.VectorStores.InMemory;
@@ -142,6 +144,70 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         services.AddRuniqRag();
 
         Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagVectorStoreUpsertPipeline));
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterRagRetrievalPipeline()
+    {
+        // Verifies that the default RAG registration includes the retrieval pipeline contract.
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagRetrievalPipeline));
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveDefaultRagRetrievalPipeline()
+    {
+        // Verifies that the default RAG registration exposes the retrieval pipeline through DI.
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<DefaultRagRetrievalPipeline>(
+            serviceProvider.GetRequiredService<IRagRetrievalPipeline>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterRetrievalPipelineWithScopedLifetime()
+    {
+        // Verifies that the retrieval pipeline registration follows the existing RAG pipeline lifetime pattern.
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Equal(
+            ServiceLifetime.Scoped,
+            services.Single(descriptor => descriptor.ServiceType == typeof(IRagRetrievalPipeline)).Lifetime);
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldNotOverwriteUserRegisteredRetrievalPipeline()
+    {
+        // Verifies that a retrieval pipeline registered before AddRuniqRag is preserved as a custom override.
+        var services = new ServiceCollection();
+        services.AddScoped<IRagRetrievalPipeline, TestRetrievalPipeline>();
+
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<TestRetrievalPipeline>(serviceProvider.GetRequiredService<IRagRetrievalPipeline>());
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigure_ShouldAllowCustomRetrievalPipeline()
+    {
+        // Verifies that the fluent builder can replace the default retrieval pipeline implementation.
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(rag => rag.UseRetrievalPipeline<TestRetrievalPipeline>());
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<TestRetrievalPipeline>(serviceProvider.GetRequiredService<IRagRetrievalPipeline>());
     }
 
     [Fact]
@@ -1200,6 +1266,16 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
             CancellationToken cancellationToken = default)
         {
             return Task.FromResult<IReadOnlyList<RagSearchResult>>(Array.Empty<RagSearchResult>());
+        }
+    }
+
+    private sealed class TestRetrievalPipeline : IRagRetrievalPipeline
+    {
+        public Task<RetrievalResult> RetrieveAsync(
+            RetrievalRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(RetrievalResult.Success());
         }
     }
 

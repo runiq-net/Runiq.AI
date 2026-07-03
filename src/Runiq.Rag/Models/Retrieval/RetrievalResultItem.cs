@@ -19,6 +19,13 @@ public sealed class RetrievalResultItem
     }
 
     /// <summary>
+    /// Gets or initializes the provider-independent identifier of the retrieved record, typically the chunk id
+    /// the record was stored under. It lets callers correlate a match with the stored chunk without depending
+    /// on any vector store provider.
+    /// </summary>
+    public string RecordId { get; init; } = string.Empty;
+
+    /// <summary>
     /// Gets or initializes the retrieved chunk content that this match represents.
     /// </summary>
     public string Content { get; init; } = string.Empty;

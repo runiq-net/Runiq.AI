@@ -89,6 +89,19 @@ public sealed class RagBuilder
     }
 
     /// <summary>
+    /// Replaces the configured retrieval pipeline with the specified pipeline type.
+    /// </summary>
+    /// <typeparam name="TPipeline">The retrieval pipeline implementation type.</typeparam>
+    /// <returns>The same builder instance so calls can be chained.</returns>
+    public RagBuilder UseRetrievalPipeline<TPipeline>()
+        where TPipeline : class, IRagRetrievalPipeline
+    {
+        services.Replace(ServiceDescriptor.Scoped<IRagRetrievalPipeline, TPipeline>());
+
+        return this;
+    }
+
+    /// <summary>
     /// Replaces the configured chunker with the specified chunker type.
     /// </summary>
     /// <typeparam name="TChunker">The chunker implementation type.</typeparam>
