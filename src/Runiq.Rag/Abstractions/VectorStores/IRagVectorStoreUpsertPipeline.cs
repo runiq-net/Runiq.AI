@@ -11,6 +11,17 @@ namespace Runiq.Rag.Abstractions.VectorStores;
 /// must remain provider-independent and must not perform document chunking, embedding generation, or contain
 /// provider-specific vector store logic.
 /// </summary>
+/// <remarks>
+/// Null arguments and an already-cancelled <see cref="CancellationToken"/> are programming errors and are
+/// surfaced as exceptions. Every other failure — mapping failures, dimension validation failures, exceptions
+/// raised by the underlying vector store, and a vector store result that reports
+/// <see cref="UpsertVectorResult.Succeeded"/> as <see langword="false"/> without throwing — must be normalized
+/// into a standard failed <see cref="UpsertVectorResult"/> without leaking any provider-specific exception type,
+/// message, SDK detail, or raw provider result. A successful vector store result must be normalized the same
+/// way, so the returned counts and partial-success fields never depend on what a specific vector store
+/// implementation reports. Implementations do not support partial success: an upsert either fully succeeds for
+/// every attempted record or is reported as a full failure.
+/// </remarks>
 public interface IRagVectorStoreUpsertPipeline
 {
     /// <summary>

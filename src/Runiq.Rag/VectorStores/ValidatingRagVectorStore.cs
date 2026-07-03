@@ -65,7 +65,7 @@ public sealed class ValidatingRagVectorStore : IRagVectorStore
         var expectedDimensionsResult = ResolveExpectedDimensions(request);
         if (!expectedDimensionsResult.Succeeded)
         {
-            return CreateFailedUpsertResult(expectedDimensionsResult);
+            return CreateFailedUpsertResult(expectedDimensionsResult, request.Records.Count);
         }
 
             var validationResult = await dimensionValidator.ValidateAsync(
@@ -75,7 +75,7 @@ public sealed class ValidatingRagVectorStore : IRagVectorStore
 
         if (!validationResult.Succeeded)
         {
-            return CreateFailedUpsertResult(validationResult);
+            return CreateFailedUpsertResult(validationResult, request.Records.Count);
         }
 
         return await innerVectorStore.UpsertAsync(request, cancellationToken).ConfigureAwait(false);
@@ -198,16 +198,22 @@ public sealed class ValidatingRagVectorStore : IRagVectorStore
         };
     }
 
-    private static UpsertVectorResult CreateFailedUpsertResult(VectorRecordDimensionValidationResult validationResult)
+    private static UpsertVectorResult CreateFailedUpsertResult(
+        VectorRecordDimensionValidationResult validationResult,
+        int attemptedCount)
     {
         return new UpsertVectorResult
         {
             Succeeded = false,
+            ErrorCode = VectorStoreUpsertErrorCode.ValidationFailed,
             Reason = validationResult.Reason,
             IndexName = validationResult.IndexName,
             RecordId = validationResult.RecordId,
             ExpectedDimensions = validationResult.ExpectedDimensions,
             ActualDimensions = validationResult.ActualDimensions,
+            ProcessedCount = 0,
+            AttemptedCount = attemptedCount,
+            FailedCount = attemptedCount,
         };
     }
 
