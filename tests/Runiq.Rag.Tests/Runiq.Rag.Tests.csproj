@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\samples\Runiq.Rag.IngestionSample\Runiq.Rag.IngestionSample.csproj" />
+    <ProjectReference Include="..\..\samples\Runiq.Rag.UpsertPipelineSample\Runiq.Rag.UpsertPipelineSample.csproj" />
     <ProjectReference Include="..\..\src\Runiq.Rag\Runiq.Rag.csproj" />
   </ItemGroup>
 
