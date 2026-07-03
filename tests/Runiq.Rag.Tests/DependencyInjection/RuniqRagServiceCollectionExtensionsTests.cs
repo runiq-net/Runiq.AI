@@ -193,7 +193,8 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         var result = await pipeline.UpsertAsync(ingestionResult, "documents");
 
         Assert.False(result.Succeeded);
-        Assert.Equal("Vector expected dimensions are required for upsert validation.", result.Reason);
+        Assert.Equal(VectorStoreUpsertErrorCode.StoreFailed, result.ErrorCode);
+        Assert.NotEqual("Vector expected dimensions are required for upsert validation.", result.Reason);
     }
 
     private static RagDocumentIngestionResult CreateSingleChunkIngestionResult(IReadOnlyList<float> vectorValues)

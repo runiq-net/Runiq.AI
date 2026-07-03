@@ -159,6 +159,37 @@ public sealed class VectorStoreModelTests
     }
 
     [Fact]
+    public void UpsertVectorResult_DefaultErrorDiagnostics_ShouldIndicateNoErrorAndNoPartialSuccessSupport()
+    {
+        var result = new UpsertVectorResult();
+
+        Assert.Equal(VectorStoreUpsertErrorCode.None, result.ErrorCode);
+        Assert.Equal(0, result.AttemptedCount);
+        Assert.Equal(0, result.FailedCount);
+        Assert.False(result.SupportsPartialSuccess);
+    }
+
+    [Fact]
+    public void UpsertVectorResult_ShouldCarryProviderIndependentErrorDiagnostics()
+    {
+        var result = new UpsertVectorResult
+        {
+            Succeeded = false,
+            ErrorCode = VectorStoreUpsertErrorCode.StoreFailed,
+            Reason = "Vector store upsert failed.",
+            ProcessedCount = 0,
+            AttemptedCount = 3,
+            FailedCount = 3,
+        };
+
+        Assert.Equal(VectorStoreUpsertErrorCode.StoreFailed, result.ErrorCode);
+        Assert.Equal(3, result.AttemptedCount);
+        Assert.Equal(3, result.FailedCount);
+        Assert.Equal(0, result.ProcessedCount);
+        Assert.False(result.SupportsPartialSuccess);
+    }
+
+    [Fact]
     public void UpsertVectorResult_ShouldPreserveProcessedCountFromCompatibilityAlias()
     {
         var result = new UpsertVectorResult

@@ -194,10 +194,93 @@ public sealed class DefaultRagVectorStoreUpsertPipelineTests
         Assert.Equal("document-1:chunk:0", result.RecordId);
         Assert.Equal(3, result.ExpectedDimensions);
         Assert.Equal(1, result.ActualDimensions);
+        Assert.Equal(VectorStoreUpsertErrorCode.ValidationFailed, result.ErrorCode);
+        Assert.Equal(0, result.ProcessedCount);
+        Assert.Equal(1, result.AttemptedCount);
+        Assert.Equal(1, result.FailedCount);
+        Assert.False(result.SupportsPartialSuccess);
     }
 
     [Fact]
-    public async Task UpsertAsync_ShouldReflectVectorStoreSuccessResult()
+    public async Task UpsertAsync_ShouldReturnMappingFailureResult_WithoutCallingVectorStore_WhenMapperThrows()
+    {
+        var vectorStore = new TrackingVectorStore();
+        var pipeline = new DefaultRagVectorStoreUpsertPipeline(
+            new ThrowingUpsertVectorRequestMapper(),
+            new TrackingDimensionValidator(),
+            vectorStore);
+        var ingestionResult = CreateIngestionResult(
+            CreateItem("document-1", "document-1:chunk:0", 0, [0.1f]),
+            CreateItem("document-1", "document-1:chunk:1", 1, [0.2f]));
+
+        var result = await pipeline.UpsertAsync(ingestionResult, "documents-index");
+
+        Assert.False(vectorStore.UpsertWasCalled);
+        Assert.False(result.Succeeded);
+        Assert.Equal(VectorStoreUpsertErrorCode.MappingFailed, result.ErrorCode);
+        Assert.Equal("documents-index", result.IndexName);
+        Assert.Equal(0, result.ProcessedCount);
+        Assert.Equal(2, result.AttemptedCount);
+        Assert.Equal(2, result.FailedCount);
+        Assert.False(result.SupportsPartialSuccess);
+    }
+
+    [Fact]
+    public async Task UpsertAsync_ShouldNormalizeStoreException_WithoutLeakingProviderDetails()
+    {
+        var mapper = CreateMapper();
+        var vectorStore = new ThrowingVectorStore();
+        var pipeline = new DefaultRagVectorStoreUpsertPipeline(mapper, new TrackingDimensionValidator(), vectorStore);
+        var ingestionResult = CreateIngestionResult(
+            CreateItem("document-1", "document-1:chunk:0", 0, [0.1f]));
+
+        var result = await pipeline.UpsertAsync(ingestionResult, "documents-index");
+
+        Assert.True(vectorStore.UpsertWasCalled);
+        Assert.False(result.Succeeded);
+        Assert.Equal(VectorStoreUpsertErrorCode.StoreFailed, result.ErrorCode);
+        Assert.Equal("documents-index", result.IndexName);
+        Assert.False(string.IsNullOrWhiteSpace(result.Reason));
+        Assert.DoesNotContain("Pinecone", result.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("sk-live", result.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(nameof(FakeProviderSdkException), result.Reason, StringComparison.Ordinal);
+        Assert.DoesNotContain("unexpected provider error", result.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task UpsertAsync_ShouldTreatEntireBatchAsFailed_WhenVectorStoreThrows_BecausePartialSuccessIsNotSupported()
+    {
+        var mapper = CreateMapper();
+        var vectorStore = new ThrowingVectorStore();
+        var pipeline = new DefaultRagVectorStoreUpsertPipeline(mapper, new TrackingDimensionValidator(), vectorStore);
+        var ingestionResult = CreateIngestionResult(
+            CreateItem("document-1", "document-1:chunk:0", 0, [0.1f]),
+            CreateItem("document-1", "document-1:chunk:1", 1, [0.2f]),
+            CreateItem("document-1", "document-1:chunk:2", 2, [0.3f]));
+
+        var result = await pipeline.UpsertAsync(ingestionResult, "documents-index");
+
+        Assert.False(result.Succeeded);
+        Assert.False(result.SupportsPartialSuccess);
+        Assert.Equal(0, result.ProcessedCount);
+        Assert.Equal(3, result.AttemptedCount);
+        Assert.Equal(3, result.FailedCount);
+    }
+
+    [Fact]
+    public async Task UpsertAsync_ShouldPropagateOperationCanceledException_WhenVectorStoreThrowsCancellation()
+    {
+        var mapper = CreateMapper();
+        var pipeline = new DefaultRagVectorStoreUpsertPipeline(mapper, new TrackingDimensionValidator(), new CancellingVectorStore());
+        var ingestionResult = CreateIngestionResult(
+            CreateItem("document-1", "document-1:chunk:0", 0, [0.1f]));
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            pipeline.UpsertAsync(ingestionResult, "documents-index"));
+    }
+
+    [Fact]
+    public async Task UpsertAsync_ShouldNormalizeVectorStoreSuccessResult()
     {
         var mapper = CreateMapper();
         var vectorStore = new TrackingVectorStore
@@ -216,20 +299,55 @@ public sealed class DefaultRagVectorStoreUpsertPipelineTests
         var result = await pipeline.UpsertAsync(ingestionResult, "documents-index");
 
         Assert.True(result.Succeeded);
+        Assert.Equal(VectorStoreUpsertErrorCode.None, result.ErrorCode);
         Assert.Equal(1, result.ProcessedCount);
+        Assert.Equal(1, result.AttemptedCount);
+        Assert.Equal(0, result.FailedCount);
+        Assert.False(result.SupportsPartialSuccess);
         Assert.Equal(["document-1:chunk:0"], result.VectorIds);
     }
 
     [Fact]
-    public async Task UpsertAsync_ShouldReflectVectorStoreFailureResult()
+    public async Task UpsertAsync_ShouldNormalizeVectorStoreSuccessResult_WhenProviderUnderreportsAttemptedOrFailedCounts()
     {
         var mapper = CreateMapper();
         var vectorStore = new TrackingVectorStore
         {
             ForcedResult = new UpsertVectorResult
             {
+                Succeeded = true,
+                UpsertedCount = 0,
+                FailedCount = 1,
+                AttemptedCount = 0,
+                SupportsPartialSuccess = true,
+                VectorIds = ["document-1:chunk:0"],
+            },
+        };
+        var pipeline = new DefaultRagVectorStoreUpsertPipeline(mapper, new TrackingDimensionValidator(), vectorStore);
+        var ingestionResult = CreateIngestionResult(
+            CreateItem("document-1", "document-1:chunk:0", 0, [0.1f]));
+
+        var result = await pipeline.UpsertAsync(ingestionResult, "documents-index");
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(VectorStoreUpsertErrorCode.None, result.ErrorCode);
+        Assert.Equal(1, result.ProcessedCount);
+        Assert.Equal(1, result.AttemptedCount);
+        Assert.Equal(0, result.FailedCount);
+        Assert.False(result.SupportsPartialSuccess);
+    }
+
+    [Fact]
+    public async Task UpsertAsync_ShouldNormalizeVectorStoreFailureResult_WithoutLeakingRawProviderReason()
+    {
+        var mapper = CreateMapper();
+        var rawProviderReason = "Qdrant gRPC status Unavailable: connection refused (10.0.0.5:6334).";
+        var vectorStore = new TrackingVectorStore
+        {
+            ForcedResult = new UpsertVectorResult
+            {
                 Succeeded = false,
-                Reason = "Vector index has not been created.",
+                Reason = rawProviderReason,
                 IndexName = "documents-index",
             },
         };
@@ -240,8 +358,90 @@ public sealed class DefaultRagVectorStoreUpsertPipelineTests
         var result = await pipeline.UpsertAsync(ingestionResult, "documents-index");
 
         Assert.False(result.Succeeded);
-        Assert.Equal("Vector index has not been created.", result.Reason);
+        Assert.Equal(VectorStoreUpsertErrorCode.StoreFailed, result.ErrorCode);
+        Assert.False(string.IsNullOrWhiteSpace(result.Reason));
+        Assert.NotEqual(rawProviderReason, result.Reason);
+        Assert.DoesNotContain("Qdrant", result.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("10.0.0.5", result.Reason, StringComparison.Ordinal);
+        Assert.DoesNotContain("unexpected provider error", result.Reason, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("documents-index", result.IndexName);
+        Assert.Equal(0, result.ProcessedCount);
+        Assert.Equal(1, result.AttemptedCount);
+        Assert.Equal(1, result.FailedCount);
+        Assert.False(result.SupportsPartialSuccess);
+    }
+
+    [Fact]
+    public async Task UpsertAsync_ShouldNormalizeVectorStoreFailureResult_WhenProviderReportsPartialSuccess()
+    {
+        var mapper = CreateMapper();
+        var vectorStore = new TrackingVectorStore
+        {
+            ForcedResult = new UpsertVectorResult
+            {
+                Succeeded = false,
+                Reason = "2 of 3 records failed.",
+                ProcessedCount = 2,
+                FailedCount = 1,
+                SupportsPartialSuccess = true,
+            },
+        };
+        var pipeline = new DefaultRagVectorStoreUpsertPipeline(mapper, new TrackingDimensionValidator(), vectorStore);
+        var ingestionResult = CreateIngestionResult(
+            CreateItem("document-1", "document-1:chunk:0", 0, [0.1f]),
+            CreateItem("document-1", "document-1:chunk:1", 1, [0.2f]),
+            CreateItem("document-1", "document-1:chunk:2", 2, [0.3f]));
+
+        var result = await pipeline.UpsertAsync(ingestionResult, "documents-index");
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(VectorStoreUpsertErrorCode.StoreFailed, result.ErrorCode);
+        Assert.NotEqual("2 of 3 records failed.", result.Reason);
+        Assert.False(result.SupportsPartialSuccess);
+        Assert.Equal(0, result.ProcessedCount);
+        Assert.Equal(3, result.AttemptedCount);
+        Assert.Equal(3, result.FailedCount);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task UpsertAsync_ShouldReturnDeterministicMappingFailure_WhenIndexNameIsEmptyOrWhitespace(string indexName)
+    {
+        var mapper = CreateMapper();
+        var vectorStore = new TrackingVectorStore();
+        var pipeline = new DefaultRagVectorStoreUpsertPipeline(mapper, new TrackingDimensionValidator(), vectorStore);
+        var ingestionResult = CreateIngestionResult(
+            CreateItem("document-1", "document-1:chunk:0", 0, [0.1f]),
+            CreateItem("document-1", "document-1:chunk:1", 1, [0.2f]));
+
+        var result = await pipeline.UpsertAsync(ingestionResult, indexName);
+
+        Assert.False(vectorStore.UpsertWasCalled);
+        Assert.False(result.Succeeded);
+        Assert.Equal(VectorStoreUpsertErrorCode.MappingFailed, result.ErrorCode);
+        Assert.False(string.IsNullOrWhiteSpace(result.Reason));
+        Assert.Equal(0, result.ProcessedCount);
+        Assert.Equal(2, result.AttemptedCount);
+        Assert.Equal(2, result.FailedCount);
+        Assert.False(result.SupportsPartialSuccess);
+    }
+
+    [Fact]
+    public async Task UpsertAsync_ShouldThrow_WhenIndexNameIsNull()
+    {
+        var mapper = CreateMapper();
+        var vectorStore = new TrackingVectorStore();
+        var pipeline = new DefaultRagVectorStoreUpsertPipeline(mapper, new TrackingDimensionValidator(), vectorStore);
+        var ingestionResult = CreateIngestionResult(
+            CreateItem("document-1", "document-1:chunk:0", 0, [0.1f]));
+
+        var exception = await Assert.ThrowsAsync<ArgumentNullException>(() =>
+            pipeline.UpsertAsync(ingestionResult, null!));
+
+        Assert.Equal("indexName", exception.ParamName);
+        Assert.False(mapper.WasCalled);
+        Assert.False(vectorStore.UpsertWasCalled);
     }
 
     [Fact]
@@ -348,7 +548,10 @@ public sealed class DefaultRagVectorStoreUpsertPipelineTests
         Assert.True(vectorStore.UpsertWasCalled);
         Assert.Empty(vectorStore.LastRequest?.Records ?? []);
         Assert.False(result.Succeeded);
-        Assert.Equal("At least one vector record is required.", result.Reason);
+        Assert.Equal(VectorStoreUpsertErrorCode.StoreFailed, result.ErrorCode);
+        Assert.NotEqual("At least one vector record is required.", result.Reason);
+        Assert.Equal(0, result.AttemptedCount);
+        Assert.Equal(0, result.FailedCount);
     }
 
     [Fact]
@@ -444,6 +647,81 @@ public sealed class DefaultRagVectorStoreUpsertPipelineTests
             LastDocumentMetadata = documentMetadata;
 
             return innerMapper.Map(ingestionResult, indexName, documentMetadata);
+        }
+    }
+
+    private sealed class ThrowingUpsertVectorRequestMapper : IRagUpsertVectorRequestMapper
+    {
+        public UpsertVectorRequest Map(
+            RagDocumentIngestionResult ingestionResult,
+            string indexName,
+            RagDocumentMetadata? documentMetadata = null)
+        {
+            throw new InvalidOperationException(
+                "Vector record mapping expected embedding result for chunk 'document-1:chunk:0' but received 'document-1:chunk:1'.");
+        }
+    }
+
+    private sealed class FakeProviderSdkException : Exception
+    {
+        public FakeProviderSdkException(string message)
+            : base(message)
+        {
+        }
+    }
+
+    private sealed class ThrowingVectorStore : IRagVectorStore
+    {
+        public bool UpsertWasCalled { get; private set; }
+
+        public Task<CreateVectorIndexResult> CreateIndexAsync(
+            CreateVectorIndexRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("Vector store index creation should not be called by the upsert pipeline.");
+        }
+
+        public Task<UpsertVectorResult> UpsertAsync(
+            UpsertVectorRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            UpsertWasCalled = true;
+
+            throw new FakeProviderSdkException(
+                "Pinecone API key rejected: sk-live-12345 at https://internal-pinecone-host/upsert");
+        }
+
+        public Task<IReadOnlyList<RagSearchResult>> SearchAsync(
+            RagQuery query,
+            RagEmbedding embedding,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("Vector store search should not be called by the upsert pipeline.");
+        }
+    }
+
+    private sealed class CancellingVectorStore : IRagVectorStore
+    {
+        public Task<CreateVectorIndexResult> CreateIndexAsync(
+            CreateVectorIndexRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("Vector store index creation should not be called by the upsert pipeline.");
+        }
+
+        public Task<UpsertVectorResult> UpsertAsync(
+            UpsertVectorRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            throw new OperationCanceledException();
+        }
+
+        public Task<IReadOnlyList<RagSearchResult>> SearchAsync(
+            RagQuery query,
+            RagEmbedding embedding,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("Vector store search should not be called by the upsert pipeline.");
         }
     }
 
