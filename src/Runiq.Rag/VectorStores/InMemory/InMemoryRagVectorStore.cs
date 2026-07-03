@@ -3,6 +3,7 @@ using Runiq.Rag.Models.Documents;
 using Runiq.Rag.Models.Embeddings;
 using Runiq.Rag.Models.Metadata;
 using Runiq.Rag.Models.Queries;
+using Runiq.Rag.Models.Retrieval;
 using Runiq.Rag.Models.Search;
 using Runiq.Rag.Models.VectorStores;
 using Runiq.Rag.Retrieval;
@@ -28,6 +29,7 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
     private const string InvalidVectorIdReason = "Vector identifier is required.";
     private const string InvalidVectorValuesReason = "Vector values are required.";
     private const string InvalidTopKReason = "TopK must be greater than zero.";
+    private const string UnsupportedFilterOperatorReason = "Metadata filter operator is not supported.";
 
     private readonly object gate = new();
     private readonly Dictionary<string, InMemoryVectorIndex> indexes = new(StringComparer.Ordinal);
@@ -226,9 +228,11 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
     /// A null request is reported through the returned result model rather than throwing. The cancellation token is
     /// observed before any index state is read, so a cancelled token fails fast with
     /// <see cref="OperationCanceledException"/>. The query is isolated to the requested index, evaluates only the
-    /// records under that index, applies exact-match metadata filtering, orders matches best score first, and returns
-    /// at most <see cref="QueryVectorRequest.TopK"/> results. An empty or fully filtered index is a successful, empty
-    /// result. Query state is read-only, so existing upsert behavior is never affected.
+    /// records under that index, applies the provider-independent metadata filter before similarity scoring so
+    /// filtered-out records never enter scoring, orders the remaining matches best score first, and returns at most
+    /// <see cref="QueryVectorRequest.TopK"/> results. An empty or fully filtered index is a successful, empty result.
+    /// A filter carrying an operator this store does not support fails deterministically with a failure result.
+    /// Query state is read-only, so existing upsert behavior is never affected.
     /// </remarks>
     public Task<QueryVectorResult> QueryAsync(
         QueryVectorRequest request,
@@ -254,6 +258,11 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
         if (request.TopK <= 0)
         {
             return Task.FromResult(CreateFailedQueryResult(InvalidTopKReason));
+        }
+
+        if (HasUnsupportedFilterOperator(request.MetadataFilter))
+        {
+            return Task.FromResult(CreateFailedQueryResult(UnsupportedFilterOperatorReason));
         }
 
         lock (gate)
@@ -345,7 +354,7 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
                 IndexName = query.IndexName ?? string.Empty,
                 Values = embedding.Values,
                 TopK = query.TopK,
-                MetadataFilter = query.Metadata,
+                MetadataFilter = new RetrievalMetadataFilter(query.Metadata.Values),
                 Metadata = query.Metadata,
                 IncludeMetadata = true,
             },
@@ -377,28 +386,44 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
         return new RagMetadata(metadata.Values);
     }
 
-    private static bool MatchesMetadataFilter(VectorRecord record, RagMetadata metadataFilter)
+    /// <summary>
+    /// Determines whether the store supports every operator carried by the filter. Operator support is a
+    /// per-store decision; this in-memory store currently supports only exact-match equality, and any other
+    /// operator value is reported as a deterministic query failure rather than being silently ignored.
+    /// </summary>
+    private static bool HasUnsupportedFilterOperator(RetrievalMetadataFilter metadataFilter)
     {
-        if (metadataFilter.Values.Count == 0)
+        return metadataFilter.Criteria.Any(
+            criterion => criterion.Operator != RetrievalMetadataFilterOperator.Equal);
+    }
+
+    /// <summary>
+    /// Applies the provider-independent metadata filter to a stored record with logical AND semantics: every
+    /// criterion must match for the record to enter similarity scoring. An empty filter retains every record.
+    /// </summary>
+    private static bool MatchesMetadataFilter(VectorRecord record, RetrievalMetadataFilter metadataFilter)
+    {
+        if (metadataFilter.IsEmpty)
         {
             return true;
         }
 
-        if (record.Metadata.Values.Count == 0)
-        {
-            return false;
-        }
+        return metadataFilter.Criteria.All(criterion => MatchesCriterion(record.Metadata, criterion));
+    }
 
-        foreach (var filter in metadataFilter.Values)
+    /// <summary>
+    /// Evaluates a single criterion against record metadata using deterministic ordinal comparison. A record
+    /// that does not carry the criterion key never matches.
+    /// </summary>
+    private static bool MatchesCriterion(RagMetadata metadata, RetrievalMetadataFilterCriterion criterion)
+    {
+        return criterion.Operator switch
         {
-            if (!record.Metadata.Values.TryGetValue(filter.Key, out var value) ||
-                !StringComparer.Ordinal.Equals(value, filter.Value))
-            {
-                return false;
-            }
-        }
-
-        return true;
+            RetrievalMetadataFilterOperator.Equal =>
+                metadata.Values.TryGetValue(criterion.Key, out var value) &&
+                StringComparer.Ordinal.Equals(value, criterion.Value),
+            _ => false,
+        };
     }
 
     private static CreateVectorIndexResult CreateFailedIndexResult(string indexName, string reason)

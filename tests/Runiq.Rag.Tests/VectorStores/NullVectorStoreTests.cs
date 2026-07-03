@@ -1,6 +1,7 @@
 using Runiq.Rag.Models.Documents;
 using Runiq.Rag.Models.Embeddings;
 using Runiq.Rag.Models.Queries;
+using Runiq.Rag.Models.Retrieval;
 using Runiq.Rag.Models.VectorStores;
 using Runiq.Rag.VectorStores;
 
@@ -241,6 +242,28 @@ public sealed class NullVectorStoreTests
 
         Assert.False(result.Succeeded);
         Assert.Equal(InvalidTopKReason, result.Reason);
+    }
+
+    // Verifies that a metadata filter carrying an unsupported operator is rejected with a deterministic failure
+    // result, matching the invalid-request behavior of the in-memory store.
+    [Fact]
+    public async Task QueryAsync_ShouldFailDeterministically_WhenFilterOperatorIsUnsupported()
+    {
+        var vectorStore = new NullVectorStore();
+
+        var result = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [0.1f, 0.2f],
+            TopK = 3,
+            MetadataFilter = new RetrievalMetadataFilter(
+            [
+                new RetrievalMetadataFilterCriterion("tenant", "runiq", (RetrievalMetadataFilterOperator)999),
+            ]),
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("Metadata filter operator is not supported.", result.Reason);
     }
 
     // Verifies that a query with an already-cancelled token fails fast with OperationCanceledException,
