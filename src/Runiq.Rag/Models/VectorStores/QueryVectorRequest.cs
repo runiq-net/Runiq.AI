@@ -3,7 +3,9 @@ using Runiq.Rag.Models.Metadata;
 namespace Runiq.Rag.Models.VectorStores;
 
 /// <summary>
-/// Represents a request to query vector records by similarity.
+/// Represents a provider-independent request to retrieve vector records by similarity to a query vector.
+/// This is the query-time counterpart of the upsert contract: the retrieval pipeline uses it to ask a vector store
+/// for the records that best match a query embedding within a single index.
 /// </summary>
 public sealed class QueryVectorRequest
 {
@@ -18,22 +20,27 @@ public sealed class QueryVectorRequest
     }
 
     /// <summary>
-    /// Gets or initializes the vector index name to query.
+    /// Gets or initializes the name of the vector index to search. The query is isolated to this index; records in
+    /// other indexes are never considered.
     /// </summary>
     public required string IndexName { get; init; }
 
     /// <summary>
-    /// Gets or initializes the query vector values.
+    /// Gets or initializes the query vector values that stored records are scored against. The dimension must match
+    /// the dimension of the target index.
     /// </summary>
     public required IReadOnlyList<float> Values { get; init; }
 
     /// <summary>
-    /// Gets or initializes the maximum number of matches to return. Query results are returned best match first.
+    /// Gets or initializes the maximum number of matches to return. Results are ordered best match first and are
+    /// truncated to this count. Must be greater than zero.
     /// </summary>
     public int TopK { get; init; } = 5;
 
     /// <summary>
-    /// Gets or initializes exact-match metadata filters for the query.
+    /// Gets or initializes provider-independent exact-match metadata filters for the query. Filters are carried as
+    /// plain key/value pairs so they remain provider-agnostic; a record must match every entry to be returned, and an
+    /// empty filter applies no restriction.
     /// </summary>
     public RagMetadata MetadataFilter
     {

@@ -3,7 +3,8 @@ using Runiq.Rag.Models.Metadata;
 namespace Runiq.Rag.Models.VectorStores;
 
 /// <summary>
-/// Represents a vector record returned by a similarity query.
+/// Represents a single vector record returned by a similarity query, carrying the data the retrieval pipeline needs
+/// to build context: the record id, its stored content, its metadata, and a provider-independent similarity score.
 /// </summary>
 public sealed class VectorSearchResult
 {

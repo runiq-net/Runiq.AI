@@ -9,6 +9,9 @@ namespace Runiq.Rag.Tests.VectorStores;
 public sealed class NullVectorStoreTests
 {
     private const string InvalidIndexNameReason = "Vector index name is required.";
+    private const string RequestRequiredReason = "Request is required.";
+    private const string InvalidVectorValuesReason = "Vector values are required.";
+    private const string InvalidTopKReason = "TopK must be greater than zero.";
 
     [Fact]
     public async Task CreateIndexAsync_ShouldReturnSuccessfulResult()
@@ -129,6 +132,8 @@ public sealed class NullVectorStoreTests
         Assert.Equal(InvalidIndexNameReason, result.Reason);
     }
 
+    // Verifies that a valid query against the no-op store returns a successful, non-null, empty result
+    // because the store holds no records.
     [Fact]
     public async Task QueryAsync_ShouldReturnSuccessfulEmptyResult()
     {
@@ -148,6 +153,21 @@ public sealed class NullVectorStoreTests
         Assert.Equal(string.Empty, result.Reason);
     }
 
+    // Verifies that a null query request is rejected with a deterministic failure result rather than
+    // being treated as a successful empty query.
+    [Fact]
+    public async Task QueryAsync_ShouldFailDeterministically_WhenRequestIsNull()
+    {
+        var vectorStore = new NullVectorStore();
+
+        var result = await vectorStore.QueryAsync(null!);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(RequestRequiredReason, result.Reason);
+    }
+
+    // Verifies that null, empty, or whitespace index names are rejected with a deterministic failure result,
+    // so the no-op store never reports an invalid index name as a successful query.
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -165,6 +185,82 @@ public sealed class NullVectorStoreTests
 
         Assert.False(result.Succeeded);
         Assert.Equal(InvalidIndexNameReason, result.Reason);
+    }
+
+    // Verifies that a null query vector is rejected with a deterministic failure result before any query result
+    // is produced, matching the in-memory store's invalid-request behavior.
+    [Fact]
+    public async Task QueryAsync_ShouldFailDeterministically_WhenValuesAreNull()
+    {
+        var vectorStore = new NullVectorStore();
+
+        var result = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = null!,
+            TopK = 3,
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(InvalidVectorValuesReason, result.Reason);
+    }
+
+    // Verifies that an empty query vector is rejected with a deterministic failure result before any query result
+    // is produced, matching the in-memory store's invalid-request behavior.
+    [Fact]
+    public async Task QueryAsync_ShouldFailDeterministically_WhenValuesAreEmpty()
+    {
+        var vectorStore = new NullVectorStore();
+
+        var result = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [],
+            TopK = 3,
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(InvalidVectorValuesReason, result.Reason);
+    }
+
+    // Verifies that a non-positive TopK is rejected with a deterministic failure result, so the no-op store
+    // never reports an invalid TopK as a successful query.
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task QueryAsync_ShouldFailDeterministically_WhenTopKIsInvalid(int topK)
+    {
+        var vectorStore = new NullVectorStore();
+
+        var result = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [0.1f, 0.2f],
+            TopK = topK,
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(InvalidTopKReason, result.Reason);
+    }
+
+    // Verifies that a query with an already-cancelled token fails fast with OperationCanceledException,
+    // matching the repo-standard cancellation behavior of the in-memory query operation.
+    [Fact]
+    public async Task QueryAsync_ShouldThrow_WhenCancellationIsAlreadyRequested()
+    {
+        var vectorStore = new NullVectorStore();
+        using var cancellationTokenSource = new CancellationTokenSource();
+        cancellationTokenSource.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            vectorStore.QueryAsync(
+                new QueryVectorRequest
+                {
+                    IndexName = "documents",
+                    Values = [0.1f, 0.2f],
+                    TopK = 3,
+                },
+                cancellationTokenSource.Token));
     }
 
     [Fact]

@@ -213,6 +213,8 @@ public sealed class VectorStoreModelTests
         Assert.Equal(typeof(Task<UpsertVectorResult>), method.ReturnType);
     }
 
+    // Verifies that the query request carries provider-independent inputs (index, vector, TopK, metadata filter)
+    // and exposes stable default include options.
     [Fact]
     public void QueryVectorRequest_DefaultOptions_ShouldBeProviderIndependent()
     {
@@ -238,6 +240,7 @@ public sealed class VectorStoreModelTests
         Assert.NotNull(request.Metadata);
     }
 
+    // Verifies that TopK defaults to a positive value and the metadata filter defaults to a non-null empty filter.
     [Fact]
     public void QueryVectorRequest_DefaultTopKAndMetadataFilter_ShouldNotBeNull()
     {
@@ -252,6 +255,8 @@ public sealed class VectorStoreModelTests
         Assert.Empty(request.MetadataFilter.Values);
     }
 
+    // Verifies that a successful query result exposes a non-null record collection and can represent an empty
+    // (no-match) result as success.
     [Fact]
     public void QueryVectorResult_DefaultRecords_ShouldNotBeNullAndShouldAllowEmptyResults()
     {
@@ -265,6 +270,8 @@ public sealed class VectorStoreModelTests
         Assert.Empty(result.Records);
     }
 
+    // Verifies that a query result item carries the vector id, similarity score, content, metadata, and optional
+    // vector values.
     [Fact]
     public void QueryVectorResult_ShouldHoldVectorIdScoreAndOptionalMetadata()
     {
@@ -292,6 +299,8 @@ public sealed class VectorStoreModelTests
         Assert.Equal([0.1f, 0.2f], searchResult.Values);
     }
 
+    // Verifies that a query result item defaults metadata to a non-null empty collection and leaves vector values
+    // absent unless requested.
     [Fact]
     public void VectorSearchResult_DefaultMetadata_ShouldSupportOptionalMetadata()
     {
@@ -306,6 +315,8 @@ public sealed class VectorStoreModelTests
         Assert.Null(result.Values);
     }
 
+    // Verifies that the vector store abstraction exposes a provider-independent query operation returning a
+    // QueryVectorResult.
     [Fact]
     public void IRagVectorStore_ShouldExposeProviderIndependentQueryContract()
     {

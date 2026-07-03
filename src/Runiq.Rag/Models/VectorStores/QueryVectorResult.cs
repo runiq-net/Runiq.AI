@@ -3,7 +3,10 @@ using Runiq.Rag.Models.Metadata;
 namespace Runiq.Rag.Models.VectorStores;
 
 /// <summary>
-/// Represents the result of a vector similarity query.
+/// Represents the provider-independent result of a vector similarity query. A query that matches no records is still
+/// a success: <see cref="Succeeded"/> is <see langword="true"/> with an empty <see cref="Records"/> collection.
+/// Invalid requests or store failures are reported with <see cref="Succeeded"/> set to <see langword="false"/> and a
+/// populated <see cref="Reason"/>.
 /// </summary>
 public sealed class QueryVectorResult
 {
@@ -18,7 +21,8 @@ public sealed class QueryVectorResult
     }
 
     /// <summary>
-    /// Gets or initializes the matching vector records ordered best match first.
+    /// Gets or initializes the matching vector records ordered best match first. The collection is empty when the
+    /// query matched no records.
     /// </summary>
     public IList<VectorSearchResult> Records
     {

@@ -222,6 +222,14 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// A null request is reported through the returned result model rather than throwing. The cancellation token is
+    /// observed before any index state is read, so a cancelled token fails fast with
+    /// <see cref="OperationCanceledException"/>. The query is isolated to the requested index, evaluates only the
+    /// records under that index, applies exact-match metadata filtering, orders matches best score first, and returns
+    /// at most <see cref="QueryVectorRequest.TopK"/> results. An empty or fully filtered index is a successful, empty
+    /// result. Query state is read-only, so existing upsert behavior is never affected.
+    /// </remarks>
     public Task<QueryVectorResult> QueryAsync(
         QueryVectorRequest request,
         CancellationToken cancellationToken = default)
@@ -230,6 +238,8 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
         {
             return Task.FromResult(CreateFailedQueryResult(RequestRequiredReason));
         }
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (string.IsNullOrWhiteSpace(request.IndexName))
         {
