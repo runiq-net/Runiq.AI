@@ -12,6 +12,7 @@ using Runiq.Rag.DependencyInjection;
 using Runiq.Rag.Embeddings;
 using Runiq.Rag.Models.Documents;
 using Runiq.Rag.Models.Embeddings;
+using Runiq.Rag.Models.Ingestion;
 using Runiq.Rag.Models.Queries;
 using Runiq.Rag.Models.Search;
 using Runiq.Rag.Models.VectorStores;
@@ -131,6 +132,99 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         services.AddRuniqRag();
 
         Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagVectorRecordDimensionValidator));
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterRagVectorStoreUpsertPipeline()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagVectorStoreUpsertPipeline));
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveDefaultRagVectorStoreUpsertPipeline()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<DefaultRagVectorStoreUpsertPipeline>(
+            serviceProvider.GetRequiredService<IRagVectorStoreUpsertPipeline>());
+    }
+
+    [Fact]
+    public async Task AddRuniqRag_ShouldUpsertThroughDiResolvedPipelineAndValidatingVectorStoreChain()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag(rag => rag.UseInMemoryVectorStore());
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var vectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
+        await vectorStore.CreateIndexAsync(new CreateVectorIndexRequest
+        {
+            IndexName = "documents",
+            Dimensions = 2,
+        });
+
+        var pipeline = serviceProvider.GetRequiredService<IRagVectorStoreUpsertPipeline>();
+        var ingestionResult = CreateSingleChunkIngestionResult([0.1f, 0.2f]);
+
+        var result = await pipeline.UpsertAsync(ingestionResult, "documents", expectedDimensions: 2);
+
+        Assert.IsType<ValidatingRagVectorStore>(vectorStore);
+        Assert.True(result.Succeeded);
+        Assert.Equal(1, result.ProcessedCount);
+    }
+
+    [Fact]
+    public async Task AddRuniqRag_ShouldFailFastThroughValidatingVectorStore_WhenPipelineCallOmitsExpectedDimensions()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag(rag => rag.UseInMemoryVectorStore());
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var pipeline = serviceProvider.GetRequiredService<IRagVectorStoreUpsertPipeline>();
+        var ingestionResult = CreateSingleChunkIngestionResult([0.1f, 0.2f]);
+
+        var result = await pipeline.UpsertAsync(ingestionResult, "documents");
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("Vector expected dimensions are required for upsert validation.", result.Reason);
+    }
+
+    private static RagDocumentIngestionResult CreateSingleChunkIngestionResult(IReadOnlyList<float> vectorValues)
+    {
+        var chunk = new RagChunk
+        {
+            Id = "document-1:chunk:0",
+            DocumentId = "document-1",
+            Content = "Chunk content.",
+            Index = 0,
+        };
+
+        return new RagDocumentIngestionResult
+        {
+            DocumentId = chunk.DocumentId,
+            Chunks = [chunk],
+            Items =
+            [
+                new RagDocumentIngestionItem
+                {
+                    Chunk = chunk,
+                    EmbeddingResult = new RagChunkEmbeddingResult
+                    {
+                        ChunkId = chunk.Id,
+                        DocumentId = chunk.DocumentId,
+                        ChunkIndex = chunk.Index,
+                        Embedding = new RagEmbedding(vectorValues),
+                    },
+                },
+            ],
+        };
     }
 
     [Fact]
