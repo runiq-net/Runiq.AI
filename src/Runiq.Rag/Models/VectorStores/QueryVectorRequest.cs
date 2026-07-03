@@ -1,4 +1,5 @@
 using Runiq.Rag.Models.Metadata;
+using Runiq.Rag.Models.Retrieval;
 
 namespace Runiq.Rag.Models.VectorStores;
 
@@ -10,7 +11,7 @@ namespace Runiq.Rag.Models.VectorStores;
 public sealed class QueryVectorRequest
 {
     private RagMetadata metadata = RagMetadata.Empty;
-    private RagMetadata metadataFilter = RagMetadata.Empty;
+    private RetrievalMetadataFilter metadataFilter = RetrievalMetadataFilter.Empty;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="QueryVectorRequest"/> class.
@@ -38,11 +39,14 @@ public sealed class QueryVectorRequest
     public int TopK { get; init; } = 5;
 
     /// <summary>
-    /// Gets or initializes provider-independent exact-match metadata filters for the query. Filters are carried as
-    /// plain key/value pairs so they remain provider-agnostic; a record must match every entry to be returned, and an
-    /// empty filter applies no restriction.
+    /// Gets or initializes the provider-independent metadata filter applied to candidate records before
+    /// similarity scoring. The filter is a list of criteria combined with logical AND semantics: a record must
+    /// satisfy every criterion to be returned. An empty filter applies no restriction, and a null value is
+    /// rejected so vector stores can always rely on a non-null filter; use
+    /// <see cref="RetrievalMetadataFilter.Empty"/> to express "no filtering".
     /// </summary>
-    public RagMetadata MetadataFilter
+    /// <exception cref="ArgumentNullException">Thrown when the value is null.</exception>
+    public RetrievalMetadataFilter MetadataFilter
     {
         get => metadataFilter;
         init => metadataFilter = value ?? throw new ArgumentNullException(nameof(value));

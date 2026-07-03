@@ -90,7 +90,9 @@ public sealed class RetrievalModelTests
         };
 
         Assert.Same(filter, request.MetadataFilter);
-        Assert.Equal("runiq", request.MetadataFilter.EqualityFilters["tenant"]);
+        var criterion = Assert.Single(request.MetadataFilter.Criteria);
+        Assert.Equal("tenant", criterion.Key);
+        Assert.Equal("runiq", criterion.Value);
     }
 
     [Fact]
@@ -197,7 +199,8 @@ public sealed class RetrievalModelTests
     [Fact]
     public void RetrievalMetadataFilter_ShouldBuildFromExactMatchPairs_WithoutProviderSyntax()
     {
-        // Verifies that a metadata filter is composed purely of provider-independent exact-match key/value pairs.
+        // Verifies that key/value pairs are mapped to provider-independent equality criteria without any
+        // provider-specific query syntax.
         var filter = new RetrievalMetadataFilter(new Dictionary<string, string>
         {
             ["tenant"] = "runiq",
@@ -205,8 +208,25 @@ public sealed class RetrievalModelTests
         });
 
         Assert.False(filter.IsEmpty);
-        Assert.Equal("runiq", filter.EqualityFilters["tenant"]);
-        Assert.Equal("release-notes", filter.EqualityFilters["category"]);
+        Assert.Equal(2, filter.Criteria.Count);
+        Assert.All(filter.Criteria, criterion => Assert.Equal(RetrievalMetadataFilterOperator.Equal, criterion.Operator));
+        Assert.Contains(filter.Criteria, criterion => criterion.Key == "tenant" && criterion.Value == "runiq");
+        Assert.Contains(filter.Criteria, criterion => criterion.Key == "category" && criterion.Value == "release-notes");
+    }
+
+    [Fact]
+    public void RetrievalMetadataFilter_ShouldBuildFromCriteria_AndPreserveOperator()
+    {
+        // Verifies that a filter built from explicit criteria preserves each criterion's key, value, and operator.
+        var filter = new RetrievalMetadataFilter(
+        [
+            new RetrievalMetadataFilterCriterion("tenant", "runiq", RetrievalMetadataFilterOperator.Equal),
+        ]);
+
+        var criterion = Assert.Single(filter.Criteria);
+        Assert.Equal("tenant", criterion.Key);
+        Assert.Equal("runiq", criterion.Value);
+        Assert.Equal(RetrievalMetadataFilterOperator.Equal, criterion.Operator);
     }
 
     [Fact]
@@ -221,7 +241,7 @@ public sealed class RetrievalModelTests
         var filter = new RetrievalMetadataFilter(source);
         source["tenant"] = "changed";
 
-        Assert.Equal("runiq", filter.EqualityFilters["tenant"]);
+        Assert.Equal("runiq", Assert.Single(filter.Criteria).Value);
     }
 
     [Fact]
@@ -229,14 +249,74 @@ public sealed class RetrievalModelTests
     {
         // Verifies that the shared empty filter represents "no filtering".
         Assert.True(RetrievalMetadataFilter.Empty.IsEmpty);
-        Assert.Empty(RetrievalMetadataFilter.Empty.EqualityFilters);
+        Assert.Empty(RetrievalMetadataFilter.Empty.Criteria);
     }
 
     [Fact]
     public void RetrievalMetadataFilter_ShouldRejectNullEqualityFilters_Deterministically()
     {
-        // Verifies that constructing a filter from a null dictionary is rejected rather than silently accepted.
-        Assert.Throws<ArgumentNullException>(() => new RetrievalMetadataFilter(null!));
+        // Verifies that constructing a filter from a null key/value pair collection is rejected rather than
+        // silently accepted.
+        Assert.Throws<ArgumentNullException>(() =>
+            new RetrievalMetadataFilter((IEnumerable<KeyValuePair<string, string>>)null!));
+    }
+
+    [Fact]
+    public void RetrievalMetadataFilter_ShouldRejectNullCriteriaCollection_Deterministically()
+    {
+        // Verifies that constructing a filter from a null criteria collection is rejected rather than
+        // silently accepted.
+        Assert.Throws<ArgumentNullException>(() =>
+            new RetrievalMetadataFilter((IEnumerable<RetrievalMetadataFilterCriterion>)null!));
+    }
+
+    [Fact]
+    public void RetrievalMetadataFilter_ShouldRejectNullCriterionEntry_Deterministically()
+    {
+        // Verifies that a criteria collection containing a null criterion fails fast at construction, so a
+        // filter can never carry a null criterion into a vector store query.
+        var exception = Assert.Throws<ArgumentException>(() => new RetrievalMetadataFilter(
+        [
+            new RetrievalMetadataFilterCriterion("tenant", "runiq"),
+            null!,
+        ]));
+
+        Assert.Equal("criteria", exception.ParamName);
+    }
+
+    [Fact]
+    public void RetrievalMetadataFilterCriterion_ShouldDefaultToEqualityOperator()
+    {
+        // Verifies that a criterion built without an explicit operator defaults to exact-match equality.
+        var criterion = new RetrievalMetadataFilterCriterion("tenant", "runiq");
+
+        Assert.Equal("tenant", criterion.Key);
+        Assert.Equal("runiq", criterion.Value);
+        Assert.Equal(RetrievalMetadataFilterOperator.Equal, criterion.Operator);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void RetrievalMetadataFilterCriterion_ShouldFailFast_WhenKeyIsInvalid(string? key)
+    {
+        // Verifies that null, empty, and whitespace metadata keys are rejected deterministically at
+        // construction, so an invalid key can never reach a vector store query.
+        var exception = Assert.Throws<ArgumentException>(() =>
+            new RetrievalMetadataFilterCriterion(key!, "runiq"));
+
+        Assert.Equal("key", exception.ParamName);
+    }
+
+    [Fact]
+    public void RetrievalMetadataFilterCriterion_ShouldFailFast_WhenValueIsNull()
+    {
+        // Verifies that a null expected metadata value is rejected deterministically at construction.
+        var exception = Assert.Throws<ArgumentNullException>(() =>
+            new RetrievalMetadataFilterCriterion("tenant", null!));
+
+        Assert.Equal("value", exception.ParamName);
     }
 
     [Fact]

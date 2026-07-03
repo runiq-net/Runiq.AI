@@ -1,5 +1,6 @@
 using Runiq.Rag.Abstractions.VectorStores;
 using Runiq.Rag.Models.Metadata;
+using Runiq.Rag.Models.Retrieval;
 using Runiq.Rag.Models.VectorStores;
 
 namespace Runiq.Rag.Tests.Models;
@@ -218,7 +219,7 @@ public sealed class VectorStoreModelTests
     [Fact]
     public void QueryVectorRequest_DefaultOptions_ShouldBeProviderIndependent()
     {
-        var metadataFilter = new RagMetadata(new Dictionary<string, string>
+        var metadataFilter = new RetrievalMetadataFilter(new Dictionary<string, string>
         {
             ["tenant"] = "runiq",
         });
@@ -236,11 +237,15 @@ public sealed class VectorStoreModelTests
         Assert.True(request.IncludeMetadata);
         Assert.False(request.IncludeVectors);
         Assert.Same(metadataFilter, request.MetadataFilter);
-        Assert.Equal("runiq", request.MetadataFilter.Values["tenant"]);
+        var criterion = Assert.Single(request.MetadataFilter.Criteria);
+        Assert.Equal("tenant", criterion.Key);
+        Assert.Equal("runiq", criterion.Value);
+        Assert.Equal(RetrievalMetadataFilterOperator.Equal, criterion.Operator);
         Assert.NotNull(request.Metadata);
     }
 
-    // Verifies that TopK defaults to a positive value and the metadata filter defaults to a non-null empty filter.
+    // Verifies that TopK defaults to a positive value and the metadata filter defaults to a non-null empty filter
+    // that applies no constraints.
     [Fact]
     public void QueryVectorRequest_DefaultTopKAndMetadataFilter_ShouldNotBeNull()
     {
@@ -252,7 +257,22 @@ public sealed class VectorStoreModelTests
 
         Assert.Equal(5, request.TopK);
         Assert.NotNull(request.MetadataFilter);
-        Assert.Empty(request.MetadataFilter.Values);
+        Assert.True(request.MetadataFilter.IsEmpty);
+    }
+
+    // Verifies that a null metadata filter is rejected deterministically at construction, so vector stores can
+    // always rely on a non-null filter and treat the empty filter as "no filtering".
+    [Fact]
+    public void QueryVectorRequest_ShouldRejectNullMetadataFilter_Deterministically()
+    {
+        var exception = Assert.Throws<ArgumentNullException>(() => new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [0.1f, 0.2f],
+            MetadataFilter = null!,
+        });
+
+        Assert.Equal("value", exception.ParamName);
     }
 
     // Verifies that a successful query result exposes a non-null record collection and can represent an empty

@@ -2,6 +2,7 @@ using Runiq.Rag.Abstractions.VectorStores;
 using Runiq.Rag.Models.Documents;
 using Runiq.Rag.Models.Embeddings;
 using Runiq.Rag.Models.Queries;
+using Runiq.Rag.Models.Retrieval;
 using Runiq.Rag.Models.Search;
 using Runiq.Rag.Models.VectorStores;
 
@@ -16,6 +17,7 @@ public sealed class NullVectorStore : IRagVectorStore
     private const string RequestRequiredReason = "Request is required.";
     private const string InvalidVectorValuesReason = "Vector values are required.";
     private const string InvalidTopKReason = "TopK must be greater than zero.";
+    private const string UnsupportedFilterOperatorReason = "Metadata filter operator is not supported.";
 
     /// <summary>
     /// Initializes a new instance of the <see cref="NullVectorStore"/> class.
@@ -113,8 +115,9 @@ public sealed class NullVectorStore : IRagVectorStore
     /// services.
     /// </summary>
     /// <remarks>
-    /// Invalid requests are rejected with a failure result so that this no-op store never reports invalid input as a
-    /// successful query, matching the invalid-request behavior of the in-memory store. A valid request returns a
+    /// Invalid requests, including metadata filters that carry an unsupported operator, are rejected with a failure
+    /// result so that this no-op store never reports invalid input as a successful query, matching the
+    /// invalid-request behavior of the in-memory store. A valid request returns a
     /// successful empty result because the no-op store holds no records. The cancellation token is observed before
     /// any work is performed, consistent with the in-memory query operation.
     /// </remarks>
@@ -145,6 +148,12 @@ public sealed class NullVectorStore : IRagVectorStore
         if (request.TopK <= 0)
         {
             return Task.FromResult(CreateFailedQueryResult(InvalidTopKReason));
+        }
+
+        if (request.MetadataFilter.Criteria.Any(
+                criterion => criterion.Operator != RetrievalMetadataFilterOperator.Equal))
+        {
+            return Task.FromResult(CreateFailedQueryResult(UnsupportedFilterOperatorReason));
         }
 
         return Task.FromResult(new QueryVectorResult

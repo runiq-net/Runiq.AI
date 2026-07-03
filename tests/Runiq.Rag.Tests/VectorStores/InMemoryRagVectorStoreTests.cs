@@ -3,6 +3,7 @@ using Runiq.Rag.Models.Documents;
 using Runiq.Rag.Models.Embeddings;
 using Runiq.Rag.Models.Metadata;
 using Runiq.Rag.Models.Queries;
+using Runiq.Rag.Models.Retrieval;
 using Runiq.Rag.Models.VectorStores;
 using Runiq.Rag.Retrieval;
 using Runiq.Rag.VectorStores;
@@ -684,7 +685,7 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.True(result.Records[1].Score > result.Records[2].Score);
     }
 
-    // Verifies that only records whose metadata satisfies the equality filter are returned.
+    // Verifies that a single equality criterion returns only the records whose metadata satisfies the filter.
     [Fact]
     public async Task QueryAsync_ShouldReturnMatchingRecords_WhenMetadataFilterMatches()
     {
@@ -695,7 +696,7 @@ public sealed class InMemoryRagVectorStoreTests
             IndexName = "documents",
             Values = [1.0f, 0.0f, 0.0f],
             TopK = 3,
-            MetadataFilter = CreateMetadata(("tenant", "runiq")),
+            MetadataFilter = CreateFilter(("tenant", "runiq")),
         });
 
         Assert.True(result.Succeeded);
@@ -713,15 +714,15 @@ public sealed class InMemoryRagVectorStoreTests
             IndexName = "documents",
             Values = [1.0f, 0.0f, 0.0f],
             TopK = 3,
-            MetadataFilter = CreateMetadata(("tenant", "missing")),
+            MetadataFilter = CreateFilter(("tenant", "missing")),
         });
 
         Assert.True(result.Succeeded);
         Assert.Empty(result.Records);
     }
 
-    // Verifies that multiple metadata filter entries are combined with AND semantics, so a record must match every
-    // filter key to be returned.
+    // Verifies that multiple equality criteria are combined with AND semantics, so a record must match every
+    // criterion to be returned.
     [Fact]
     public async Task QueryAsync_ShouldApplyMetadataFilterWithAndSemantics()
     {
@@ -732,11 +733,152 @@ public sealed class InMemoryRagVectorStoreTests
             IndexName = "documents",
             Values = [1.0f, 0.0f, 0.0f],
             TopK = 3,
-            MetadataFilter = CreateMetadata(("tenant", "runiq"), ("source", "docs")),
+            MetadataFilter = CreateFilter(("tenant", "runiq"), ("source", "docs")),
         });
 
         Assert.True(result.Succeeded);
         Assert.Equal("vector-a", Assert.Single(result.Records).Id);
+    }
+
+    // Verifies that metadata filtering is applied before similarity ordering and TopK selection: the overall
+    // best-scoring record is filtered out, so TopK=1 returns the best match of the filtered subset instead of
+    // an empty result.
+    [Fact]
+    public async Task QueryAsync_ShouldApplyMetadataFilterBeforeSimilarityOrderingAndTopK()
+    {
+        var vectorStore = await CreateVectorStoreWithMetadataAsync();
+
+        // For query [0,1,0] the best overall match is vector-b, but vector-b belongs to tenant "other".
+        var result = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [0.0f, 1.0f, 0.0f],
+            TopK = 1,
+            MetadataFilter = CreateFilter(("tenant", "runiq")),
+        });
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("vector-c", Assert.Single(result.Records).Id);
+    }
+
+    // Verifies that after metadata filtering the surviving records remain ordered by similarity score in
+    // descending order.
+    [Fact]
+    public async Task QueryAsync_ShouldKeepFilteredResultsOrderedByDescendingScore()
+    {
+        var vectorStore = await CreateVectorStoreWithMetadataAsync();
+
+        var result = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [1.0f, 0.0f, 0.0f],
+            TopK = 3,
+            MetadataFilter = CreateFilter(("tenant", "runiq")),
+        });
+
+        Assert.Equal(2, result.Records.Count);
+        Assert.Equal(["vector-a", "vector-c"], result.Records.Select(record => record.Id));
+        Assert.True(result.Records[0].Score > result.Records[1].Score);
+    }
+
+    // Verifies that a record whose metadata does not contain the criterion key never matches the filter.
+    [Fact]
+    public async Task QueryAsync_ShouldNotMatchRecord_WhenMetadataKeyIsMissingOnRecord()
+    {
+        var vectorStore = await CreateVectorStoreAsync();
+        await UpsertRecordsAsync(
+            vectorStore,
+            CreateRecord("vector-with-key", [1.0f, 0.0f, 0.0f], metadata: CreateMetadata(("tenant", "runiq"))),
+            CreateRecord("vector-without-key", [1.0f, 0.0f, 0.0f], metadata: CreateMetadata(("source", "docs"))));
+
+        var result = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [1.0f, 0.0f, 0.0f],
+            TopK = 3,
+            MetadataFilter = CreateFilter(("tenant", "runiq")),
+        });
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("vector-with-key", Assert.Single(result.Records).Id);
+    }
+
+    // Verifies that a record carrying no metadata at all never matches a non-empty filter.
+    [Fact]
+    public async Task QueryAsync_ShouldNotMatchRecord_WhenRecordHasNoMetadata()
+    {
+        var vectorStore = await CreateVectorStoreAsync();
+        await UpsertRecordsAsync(vectorStore, CreateRecord("vector-1", [1.0f, 0.0f, 0.0f]));
+
+        var result = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [1.0f, 0.0f, 0.0f],
+            TopK = 3,
+            MetadataFilter = CreateFilter(("tenant", "runiq")),
+        });
+
+        Assert.True(result.Succeeded);
+        Assert.Empty(result.Records);
+    }
+
+    // Verifies that a filter carrying an operator the in-memory store does not support fails deterministically
+    // with a failure result instead of being silently ignored or partially applied.
+    [Fact]
+    public async Task QueryAsync_ShouldFailDeterministically_WhenFilterOperatorIsUnsupported()
+    {
+        var vectorStore = await CreateVectorStoreWithMetadataAsync();
+
+        var result = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [1.0f, 0.0f, 0.0f],
+            TopK = 3,
+            MetadataFilter = new RetrievalMetadataFilter(
+            [
+                new RetrievalMetadataFilterCriterion("tenant", "runiq", (RetrievalMetadataFilterOperator)999),
+            ]),
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Empty(result.Records);
+        Assert.Equal("Metadata filter operator is not supported.", result.Reason);
+    }
+
+    // Verifies that metadata filtering stays isolated per index: the same filter applied to different indexes
+    // only ever matches records stored under the queried index.
+    [Fact]
+    public async Task QueryAsync_ShouldNotMixMetadataFilterMatchesBetweenIndexes()
+    {
+        var vectorStore = await CreateVectorStoreWithDocumentsAndArchiveIndexesAsync();
+        await vectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            Records = [CreateRecord("documents-vector", [1.0f, 0.0f, 0.0f], metadata: CreateMetadata(("tenant", "runiq")))],
+        });
+        await vectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "archive",
+            Records = [CreateRecord("archive-vector", [1.0f, 0.0f, 0.0f], metadata: CreateMetadata(("tenant", "runiq")))],
+        });
+
+        var documentsResult = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [1.0f, 0.0f, 0.0f],
+            TopK = 10,
+            MetadataFilter = CreateFilter(("tenant", "runiq")),
+        });
+        var archiveResult = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "archive",
+            Values = [1.0f, 0.0f, 0.0f],
+            TopK = 10,
+            MetadataFilter = CreateFilter(("tenant", "runiq")),
+        });
+
+        Assert.Equal("documents-vector", Assert.Single(documentsResult.Records).Id);
+        Assert.Equal("archive-vector", Assert.Single(archiveResult.Records).Id);
     }
 
     // Verifies that an empty metadata filter does not exclude any record, preserving unfiltered query behavior.
@@ -1372,6 +1514,12 @@ public sealed class InMemoryRagVectorStoreTests
     private static RagMetadata CreateMetadata(params (string Key, string Value)[] values)
     {
         return new RagMetadata(values.ToDictionary(value => value.Key, value => value.Value));
+    }
+
+    private static RetrievalMetadataFilter CreateFilter(params (string Key, string Value)[] criteria)
+    {
+        return new RetrievalMetadataFilter(
+            criteria.Select(criterion => new RetrievalMetadataFilterCriterion(criterion.Key, criterion.Value)));
     }
 
     private sealed class TrackingDimensionValidator : IRagVectorRecordDimensionValidator
