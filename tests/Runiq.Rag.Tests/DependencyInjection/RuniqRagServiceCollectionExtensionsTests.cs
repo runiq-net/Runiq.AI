@@ -114,6 +114,16 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public void AddRuniqRag_ShouldRegisterRagUpsertVectorRequestMapper()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagUpsertVectorRequestMapper));
+    }
+
+    [Fact]
     public void AddRuniqRag_ShouldRegisterRagVectorRecordDimensionValidator()
     {
         var services = new ServiceCollection();
