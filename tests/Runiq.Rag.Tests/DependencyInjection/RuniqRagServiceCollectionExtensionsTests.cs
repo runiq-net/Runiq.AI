@@ -211,6 +211,77 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public async Task AddRagVectorStore_ShouldRouteRetrievalPipelineQueriesToCustomVectorStore_WhenRegisteredAfterAddRuniqRag()
+    {
+        // Verifies that the retrieval pipeline resolved from the service provider forwards its query to a custom vector store registered after AddRuniqRag.
+        var services = new ServiceCollection();
+        var vectorStore = new QueryRecordingVectorStore();
+        services.AddRuniqRag();
+        services.AddRagVectorStore(_ => vectorStore);
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var pipeline = serviceProvider.GetRequiredService<IRagRetrievalPipeline>();
+
+        var result = await pipeline.RetrieveAsync(new RetrievalRequest
+        {
+            IndexName = "documents",
+            QueryVector = [0.1f, 0.2f],
+        });
+
+        Assert.True(result.Succeeded);
+        Assert.True(vectorStore.QueryWasCalled);
+        Assert.Equal("documents", vectorStore.LastQueryRequest?.IndexName);
+        Assert.Equal([0.1f, 0.2f], vectorStore.LastQueryRequest?.Values);
+    }
+
+    [Fact]
+    public async Task AddRagEmbeddingProvider_ShouldMakeRetrievalPipelineEmbedThroughCustomEmbeddingProvider_WhenRegisteredAfterAddRuniqRag()
+    {
+        // Verifies that the retrieval pipeline resolved from the service provider embeds the query text with a custom embedding provider and forwards the resulting vector to the vector store.
+        var services = new ServiceCollection();
+        var embeddingProvider = new RecordingEmbeddingProvider();
+        var vectorStore = new QueryRecordingVectorStore();
+        services.AddRuniqRag();
+        services.AddRagEmbeddingProvider(_ => embeddingProvider);
+        services.AddRagVectorStore(_ => vectorStore);
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var pipeline = serviceProvider.GetRequiredService<IRagRetrievalPipeline>();
+
+        var result = await pipeline.RetrieveAsync(new RetrievalRequest
+        {
+            IndexName = "documents",
+            QueryText = "how does retrieval resolve dependencies?",
+        });
+
+        Assert.True(result.Succeeded);
+        Assert.True(embeddingProvider.WasCalled);
+        Assert.Equal("how does retrieval resolve dependencies?", embeddingProvider.LastText);
+        Assert.Equal([0.5f, 0.6f], vectorStore.LastQueryRequest?.Values);
+    }
+
+    [Fact]
+    public async Task AddRuniqRag_ShouldResolveRetrievalPipelineDependenciesWithoutManualWiring()
+    {
+        // Verifies that the retrieval pipeline and its embedding and vector store dependencies resolve from the default registration without any manual service wiring.
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var pipeline = serviceProvider.GetRequiredService<IRagRetrievalPipeline>();
+
+        var result = await pipeline.RetrieveAsync(new RetrievalRequest
+        {
+            IndexName = "documents",
+            QueryText = "query text",
+        });
+
+        // The default null embedding provider returns an empty embedding, so the pipeline reports a managed embedding failure rather than throwing, which proves the whole dependency graph resolved and executed end to end.
+        Assert.False(result.Succeeded);
+        Assert.Equal(RetrievalErrorCode.EmbeddingFailed, result.ErrorCode);
+    }
+
+    [Fact]
     public void AddRuniqRag_ShouldResolveDefaultRagVectorStoreUpsertPipeline()
     {
         // Verifies that the default RAG registration exposes the upsert pipeline through DI.
@@ -1276,6 +1347,74 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
             CancellationToken cancellationToken = default)
         {
             return Task.FromResult(RetrievalResult.Success());
+        }
+    }
+
+    private sealed class RecordingEmbeddingProvider : IRagEmbeddingProvider
+    {
+        public bool WasCalled { get; private set; }
+
+        public string? LastText { get; private set; }
+
+        public Task<RagEmbedding> GenerateAsync(
+            string text,
+            CancellationToken cancellationToken = default)
+        {
+            WasCalled = true;
+            LastText = text;
+
+            return Task.FromResult(new RagEmbedding([0.5f, 0.6f]));
+        }
+    }
+
+    private sealed class QueryRecordingVectorStore : IRagVectorStore
+    {
+        public bool QueryWasCalled { get; private set; }
+
+        public QueryVectorRequest? LastQueryRequest { get; private set; }
+
+        public Task<CreateVectorIndexResult> CreateIndexAsync(
+            CreateVectorIndexRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new CreateVectorIndexResult
+            {
+                IndexName = request.IndexName,
+                Succeeded = true,
+            });
+        }
+
+        public Task<UpsertVectorResult> UpsertAsync(
+            UpsertVectorRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new UpsertVectorResult
+            {
+                Succeeded = true,
+                UpsertedCount = request.Records?.Count ?? 0,
+            });
+        }
+
+        public Task<QueryVectorResult> QueryAsync(
+            QueryVectorRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            QueryWasCalled = true;
+            LastQueryRequest = request;
+
+            return Task.FromResult(new QueryVectorResult
+            {
+                Succeeded = true,
+                Records = [],
+            });
+        }
+
+        public Task<IReadOnlyList<RagSearchResult>> SearchAsync(
+            RagQuery query,
+            RagEmbedding embedding,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<RagSearchResult>>(Array.Empty<RagSearchResult>());
         }
     }
 
