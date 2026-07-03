@@ -34,6 +34,7 @@ public static class RuniqRagServiceCollectionExtensions
         services.TryAddSingleton<IRagEmbeddingInputPreparer, DefaultRagEmbeddingInputPreparer>();
         services.TryAddScoped<IRagChunkEmbeddingGenerator, DefaultRagChunkEmbeddingGenerator>();
         services.TryAddScoped<IRagVectorRecordMapper, DefaultRagVectorRecordMapper>();
+        services.TryAddScoped<IRagUpsertVectorRequestMapper, DefaultRagUpsertVectorRequestMapper>();
         services.TryAddSingleton<IRagVectorRecordDimensionValidator, DefaultRagVectorRecordDimensionValidator>();
         services.TryAddDefaultRagVectorStore();
         services.TryAddSingleton<IRagChunker, DefaultRagChunker>();
