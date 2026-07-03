@@ -2,16 +2,16 @@ namespace Runiq.Rag.Models.Retrieval;
 
 /// <summary>
 /// Carries the provider-independent inputs required to run a single query-time retrieval against a vector
-/// index. The request stays free of embedding provider and vector store details: it can express the query as
-/// raw text (to be embedded later by the retrieval pipeline), as a pre-computed query vector, or both. It fails
-/// fast on structurally invalid values such as a missing index name or invalid result limit, while
-/// <see cref="HasRetrievableQuery"/> identifies semantically empty query input for deterministic result-based
-/// handling by the retrieval layer.
+/// index. The request is a plain carrier contract: it stores whatever values the caller supplies — including a
+/// missing index name or a non-positive result limit — without throwing, and stays free of embedding provider
+/// and vector store details. Semantic validation is owned by the retrieval pipeline, which represents an
+/// invalid request deterministically as a failed retrieval result with
+/// <see cref="RetrievalErrorCode.InvalidRequest"/> instead of surfacing exceptions. The query can be expressed
+/// as raw text (to be embedded later by the retrieval pipeline), as a pre-computed query vector, or both;
+/// <see cref="HasRetrievableQuery"/> identifies semantically empty query input.
 /// </summary>
 public sealed class RetrievalRequest
 {
-    private string indexName = null!;
-    private int topK = 5;
     private RetrievalMetadataFilter metadataFilter = RetrievalMetadataFilter.Empty;
 
     /// <summary>
@@ -22,18 +22,11 @@ public sealed class RetrievalRequest
     }
 
     /// <summary>
-    /// Gets or initializes the target vector index that the retrieval should query.
+    /// Gets or initializes the target vector index that the retrieval should query. The request stores the
+    /// value as supplied; a null, empty, or whitespace index name is not rejected here — the retrieval
+    /// pipeline reports it as an <see cref="RetrievalErrorCode.InvalidRequest"/> failure result.
     /// </summary>
-    /// <exception cref="ArgumentException">
-    /// Thrown when the index name is null, empty, or contains only whitespace.
-    /// </exception>
-    public required string IndexName
-    {
-        get => indexName;
-        init => indexName = string.IsNullOrWhiteSpace(value)
-            ? throw new ArgumentException("Retrieval request index name is required.", nameof(IndexName))
-            : value;
-    }
+    public required string IndexName { get; init; }
 
     /// <summary>
     /// Gets or initializes the natural-language query text to retrieve against. This value is optional: a
@@ -51,27 +44,20 @@ public sealed class RetrievalRequest
 
     /// <summary>
     /// Gets a value indicating whether the request carries data that is meaningful for retrieval, namely
-    /// non-whitespace query text or a non-empty query vector. Callers use this to represent a semantically
-    /// empty request deterministically as <see cref="RetrievalErrorCode.InvalidRequest"/> rather than issuing
-    /// a query that cannot match anything.
+    /// non-whitespace query text or a non-empty query vector. The retrieval pipeline uses this to represent a
+    /// semantically empty request deterministically as <see cref="RetrievalErrorCode.InvalidRequest"/> rather
+    /// than issuing a query that cannot match anything.
     /// </summary>
     public bool HasRetrievableQuery =>
         !string.IsNullOrWhiteSpace(QueryText) || QueryVector is { Count: > 0 };
 
     /// <summary>
     /// Gets or initializes the maximum number of matches the retrieval should return, ordered best match
-    /// first. Defaults to five.
+    /// first. Defaults to five. The request stores the value as supplied; a zero or negative value is not
+    /// rejected here — the retrieval pipeline reports it as an
+    /// <see cref="RetrievalErrorCode.InvalidRequest"/> failure result.
     /// </summary>
-    /// <exception cref="ArgumentOutOfRangeException">
-    /// Thrown when the value is zero or negative.
-    /// </exception>
-    public int TopK
-    {
-        get => topK;
-        init => topK = value <= 0
-            ? throw new ArgumentOutOfRangeException(nameof(TopK), value, "Retrieval request TopK must be greater than zero.")
-            : value;
-    }
+    public int TopK { get; init; } = 5;
 
     /// <summary>
     /// Gets or initializes the provider-independent metadata filter applied to candidate matches. A null value

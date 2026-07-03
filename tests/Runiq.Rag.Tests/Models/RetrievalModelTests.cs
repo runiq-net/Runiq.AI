@@ -113,32 +113,34 @@ public sealed class RetrievalModelTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public void Constructor_ShouldFailFast_WhenIndexNameIsInvalid(string? indexName)
+    public void Constructor_ShouldCarryInvalidIndexNameWithoutThrowing(string? indexName)
     {
-        // Verifies that null, empty, and whitespace index names are rejected deterministically at construction.
-        var exception = Assert.Throws<ArgumentException>(() => new RetrievalRequest
+        // Verifies that the request is a plain carrier contract: an invalid index name is stored as supplied
+        // and reported by the retrieval pipeline as a managed invalid request failure, not as an exception.
+        var request = new RetrievalRequest
         {
             IndexName = indexName!,
             QueryText = "What is Runiq?",
-        });
+        };
 
-        Assert.Equal(nameof(RetrievalRequest.IndexName), exception.ParamName);
+        Assert.Equal(indexName, request.IndexName);
     }
 
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
-    public void Constructor_ShouldFailFast_WhenTopKIsInvalid(int topK)
+    public void Constructor_ShouldCarryInvalidTopKWithoutThrowing(int topK)
     {
-        // Verifies that a zero or negative TopK is rejected deterministically at construction.
-        var exception = Assert.Throws<ArgumentOutOfRangeException>(() => new RetrievalRequest
+        // Verifies that the request is a plain carrier contract: a zero or negative TopK is stored as supplied
+        // and reported by the retrieval pipeline as a managed invalid request failure, not as an exception.
+        var request = new RetrievalRequest
         {
             IndexName = "documents",
             QueryText = "What is Runiq?",
             TopK = topK,
-        });
+        };
 
-        Assert.Equal(nameof(RetrievalRequest.TopK), exception.ParamName);
+        Assert.Equal(topK, request.TopK);
     }
 
     [Fact]
@@ -455,5 +457,40 @@ public sealed class RetrievalModelTests
         });
 
         Assert.Equal("value", exception.ParamName);
+    }
+
+    [Fact]
+    public void RetrievalResultItem_ShouldCarryRecordId()
+    {
+        // Verifies that a result item preserves the provider-independent record id of the retrieved chunk.
+        var item = new RetrievalResultItem
+        {
+            RecordId = "document-1:chunk:0",
+            Content = "retrieved chunk content",
+        };
+
+        Assert.Equal("document-1:chunk:0", item.RecordId);
+    }
+
+    [Fact]
+    public void RetrievalResultItem_DefaultRecordId_ShouldBeEmpty()
+    {
+        // Verifies that a result item exposes a non-null, empty record id by default.
+        var item = new RetrievalResultItem();
+
+        Assert.Equal(string.Empty, item.RecordId);
+    }
+
+    [Theory]
+    [InlineData(RetrievalErrorCode.EmbeddingFailed)]
+    [InlineData(RetrievalErrorCode.VectorStoreQueryFailed)]
+    public void RetrievalResult_Failure_ShouldSupportPipelineErrorCodes(RetrievalErrorCode errorCode)
+    {
+        // Verifies that the retrieval pipeline's embedding and vector store failure categories produce failed results.
+        var result = RetrievalResult.Failure(errorCode, "Retrieval pipeline step failed.");
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(errorCode, result.ErrorCode);
+        Assert.Empty(result.Items);
     }
 }

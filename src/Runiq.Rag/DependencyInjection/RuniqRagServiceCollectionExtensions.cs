@@ -40,6 +40,7 @@ public static class RuniqRagServiceCollectionExtensions
         services.TryAddScoped<IRagVectorStoreUpsertPipeline, DefaultRagVectorStoreUpsertPipeline>();
         services.TryAddSingleton<IRagChunker, DefaultRagChunker>();
         services.TryAddScoped<IRagRetriever, DefaultRetriever>();
+        services.TryAddScoped<IRagRetrievalPipeline, DefaultRagRetrievalPipeline>();
         services.TryAddScoped<IRagService, RagService>();
         services.TryAddScoped<IRagDocumentIngestionService, DefaultRagDocumentIngestionService>();
         services.Configure<RagOptions>(_ => { });
