@@ -49,6 +49,8 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Equal("archive", archiveResult.IndexName);
     }
 
+    // Verifies that a single record can be written to an index and that the successful result exposes the
+    // complete standard upsert result contract (error code, counts, and partial-success flag).
     [Fact]
     public async Task UpsertAsync_ShouldStoreSingleVectorRecord()
     {
@@ -64,10 +66,18 @@ public sealed class InMemoryRagVectorStoreTests
         });
 
         Assert.True(result.Succeeded);
+        Assert.Equal(VectorStoreUpsertErrorCode.None, result.ErrorCode);
         Assert.Equal(1, result.UpsertedCount);
+        Assert.Equal(1, result.ProcessedCount);
+        Assert.Equal(1, result.AttemptedCount);
+        Assert.Equal(0, result.FailedCount);
+        Assert.False(result.SupportsPartialSuccess);
+        Assert.Equal(string.Empty, result.Reason);
         Assert.Equal("vector-1", Assert.Single(result.VectorIds));
     }
 
+    // Verifies that multiple records can be written to the same index in one request and that the successful
+    // result reports every attempted record as processed.
     [Fact]
     public async Task UpsertAsync_ShouldStoreMultipleVectorRecords()
     {
@@ -84,10 +94,15 @@ public sealed class InMemoryRagVectorStoreTests
         });
 
         Assert.True(result.Succeeded);
+        Assert.Equal(VectorStoreUpsertErrorCode.None, result.ErrorCode);
         Assert.Equal(2, result.UpsertedCount);
+        Assert.Equal(2, result.AttemptedCount);
+        Assert.Equal(0, result.FailedCount);
+        Assert.False(result.SupportsPartialSuccess);
         Assert.Equal(["vector-1", "vector-2"], result.VectorIds);
     }
 
+    // Verifies that upserting the same record id into the same index again replaces the stored record content.
     [Fact]
     public async Task UpsertAsync_ShouldUpdateRecord_WhenSameVectorIdIsUpsertedAgain()
     {
@@ -107,6 +122,176 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Equal("after", record.Content);
     }
 
+    // Verifies that upserting the same record id twice does not create a duplicate: the total number of records
+    // stored in the index stays at one, which a TopK=1 read alone could not prove.
+    [Fact]
+    public async Task UpsertAsync_ShouldNotIncreaseRecordCount_WhenSameVectorIdIsUpsertedAgain()
+    {
+        var vectorStore = await CreateVectorStoreAsync();
+        await UpsertRecordsAsync(vectorStore, CreateRecord("vector-1", [1.0f, 0.0f, 0.0f], content: "before"));
+
+        await UpsertRecordsAsync(vectorStore, CreateRecord("vector-1", [0.0f, 1.0f, 0.0f], content: "after"));
+        var result = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [0.0f, 1.0f, 0.0f],
+            TopK = 10,
+        });
+
+        var record = Assert.Single(result.Records);
+        Assert.Equal("vector-1", record.Id);
+        Assert.Equal("after", record.Content);
+    }
+
+    // Verifies that a request-based upsert with an already-cancelled token throws and does not write any record.
+    [Fact]
+    public async Task UpsertAsync_ShouldThrowAndWriteNothing_WhenCancellationIsAlreadyRequested()
+    {
+        var vectorStore = await CreateVectorStoreAsync();
+        using var cancellationTokenSource = new CancellationTokenSource();
+        cancellationTokenSource.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            vectorStore.UpsertAsync(
+                new UpsertVectorRequest
+                {
+                    IndexName = "documents",
+                    Records = [CreateRecord("vector-1", [1.0f, 0.0f, 0.0f])],
+                },
+                cancellationTokenSource.Token));
+
+        var query = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [1.0f, 0.0f, 0.0f],
+            TopK = 10,
+        });
+        Assert.Empty(query.Records);
+    }
+
+    // Verifies that a chunk-based upsert with an already-cancelled token throws and does not write any record.
+    [Fact]
+    public async Task ChunkUpsertAsync_ShouldThrowAndWriteNothing_WhenCancellationIsAlreadyRequested()
+    {
+        var vectorStore = await CreateVectorStoreAsync();
+        using var cancellationTokenSource = new CancellationTokenSource();
+        cancellationTokenSource.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            vectorStore.UpsertAsync(
+                "documents",
+                CreateChunk("chunk-1", "document chunk"),
+                new RagEmbedding([1.0f, 0.0f, 0.0f]),
+                cancellationTokenSource.Token));
+
+        var query = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [1.0f, 0.0f, 0.0f],
+            TopK = 10,
+        });
+        Assert.Empty(query.Records);
+    }
+
+    // Verifies that the request model rejects an invalid index name at construction time, so a request-based
+    // upsert can never reach the store with a null, empty, or whitespace index name, and store state is untouched.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task UpsertAsync_RequestConstruction_ShouldFailFast_WhenIndexNameIsInvalid(string? indexName)
+    {
+        var vectorStore = await CreateVectorStoreAsync();
+
+        var exception = Assert.Throws<ArgumentException>(() => new UpsertVectorRequest
+        {
+            IndexName = indexName!,
+            Records = [CreateRecord("vector-1", [1.0f, 0.0f, 0.0f])],
+        });
+
+        Assert.Equal(nameof(UpsertVectorRequest.IndexName), exception.ParamName);
+
+        var query = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [1.0f, 0.0f, 0.0f],
+            TopK = 10,
+        });
+        Assert.Empty(query.Records);
+    }
+
+    // Verifies the all-or-nothing guarantee of the raw in-memory store: an invalid record later in the batch is
+    // detected before any write, so earlier valid records are not stored and the whole batch is reported as failed.
+    [Fact]
+    public async Task UpsertAsync_ShouldWriteNothing_WhenLaterRecordInBatchIsInvalid()
+    {
+        var vectorStore = await CreateVectorStoreAsync();
+
+        var result = await vectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            Records =
+            [
+                CreateRecord("valid-vector", [1.0f, 0.0f, 0.0f]),
+                CreateRecord("invalid-vector", []),
+            ],
+        });
+        var query = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [1.0f, 0.0f, 0.0f],
+            TopK = 10,
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(VectorStoreUpsertErrorCode.ValidationFailed, result.ErrorCode);
+        Assert.Equal(0, result.ProcessedCount);
+        Assert.Equal(2, result.AttemptedCount);
+        Assert.Equal(2, result.FailedCount);
+        Assert.False(result.SupportsPartialSuccess);
+        Assert.Empty(result.VectorIds);
+        Assert.Empty(query.Records);
+    }
+
+    // Verifies that stored metadata is a defensive copy: mutating the source metadata after the upsert does not
+    // change the metadata already stored for the record.
+    [Fact]
+    public async Task UpsertAsync_ShouldDefensivelyCopyMetadata()
+    {
+        var vectorStore = await CreateVectorStoreAsync();
+        var metadata = CreateMetadata(("tenant", "runiq"));
+        await UpsertRecordsAsync(vectorStore, CreateRecord("vector-1", [1.0f, 0.0f, 0.0f], metadata: metadata));
+
+        metadata.Values["tenant"] = "mutated";
+        var record = await QuerySingleAsync(vectorStore);
+
+        Assert.Equal("runiq", record.Metadata.Values["tenant"]);
+    }
+
+    // Verifies that stored vector values are a defensive copy: mutating the source values array after the upsert
+    // does not change the values already stored for the record.
+    [Fact]
+    public async Task UpsertAsync_ShouldDefensivelyCopyVectorValues()
+    {
+        var vectorStore = await CreateVectorStoreAsync();
+        var values = new float[] { 1.0f, 0.0f, 0.0f };
+        await UpsertRecordsAsync(vectorStore, CreateRecord("vector-1", values));
+
+        values[0] = -1.0f;
+        var result = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [1.0f, 0.0f, 0.0f],
+            TopK = 1,
+            IncludeVectors = true,
+        });
+
+        var record = Assert.Single(result.Records);
+        Assert.Equal([1.0f, 0.0f, 0.0f], record.Values);
+    }
+
+    // Verifies that records written to different indexes are isolated: upsert, query, and delete operations
+    // only ever observe records that belong to the requested index name.
     [Fact]
     public async Task Operations_ShouldIsolateRecordsByIndexName()
     {
@@ -172,6 +357,8 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Equal("archive record", Assert.Single(archiveAfterDelete.Records).Content);
     }
 
+    // Verifies that the same record id can be stored independently in different indexes without one index's
+    // record overwriting or conflicting with the other's.
     [Fact]
     public async Task UpsertAsync_ShouldAllowSameVectorIdInDifferentIndexes()
     {
@@ -216,6 +403,7 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Equal("document chunk", record.Content);
     }
 
+    // Verifies that chunk-based upserts targeting different indexes keep their records isolated per index.
     [Fact]
     public async Task ChunkUpsertAsync_ShouldIsolateRequestedIndexes()
     {
@@ -247,6 +435,8 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Equal("archive-chunk", Assert.Single(archiveQuery.Records).Id);
     }
 
+    // Verifies that the same chunk id can be upserted into different indexes independently via the chunk-based
+    // overload.
     [Fact]
     public async Task ChunkUpsertAsync_ShouldAllowSameVectorIdInDifferentIndexes()
     {
@@ -267,6 +457,8 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Equal("shared-chunk", Assert.Single(archiveResult.VectorIds));
     }
 
+    // Verifies that a chunk-based upsert with an invalid index name fails deterministically with the standard
+    // validation failure contract and does not write anything.
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -282,6 +474,12 @@ public sealed class InMemoryRagVectorStoreTests
 
         Assert.False(result.Succeeded);
         Assert.Equal("Vector index name is required.", result.Reason);
+        Assert.Equal(VectorStoreUpsertErrorCode.ValidationFailed, result.ErrorCode);
+        Assert.Equal(0, result.ProcessedCount);
+        Assert.Equal(1, result.AttemptedCount);
+        Assert.Equal(1, result.FailedCount);
+        Assert.False(result.SupportsPartialSuccess);
+        Assert.Empty(result.VectorIds);
     }
 
     [Fact]
@@ -567,6 +765,7 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Equal(1.0d, result.Score, precision: 6);
     }
 
+    // Verifies that vector values are preserved with the stored record and can be read back when requested.
     [Fact]
     public async Task QueryAsync_ShouldIncludeVectorValues_WhenRequested()
     {
@@ -584,6 +783,8 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Equal([1.0f, 0.0f, 0.0f], Assert.Single(result.Records).Values);
     }
 
+    // Verifies that metadata is preserved with the stored record and returned unchanged when the record is read
+    // back.
     [Fact]
     public async Task QueryAsync_ShouldReturnStoredMetadata()
     {
@@ -700,6 +901,12 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Equal("Vector index has not been created.", upsertResult.Reason);
         Assert.Equal(upsertResult.Reason, queryResult.Reason);
         Assert.Equal(upsertResult.Reason, deleteResult.Reason);
+        Assert.Equal(VectorStoreUpsertErrorCode.StoreFailed, upsertResult.ErrorCode);
+        Assert.Equal(0, upsertResult.ProcessedCount);
+        Assert.Equal(1, upsertResult.AttemptedCount);
+        Assert.Equal(1, upsertResult.FailedCount);
+        Assert.False(upsertResult.SupportsPartialSuccess);
+        Assert.Empty(upsertResult.VectorIds);
     }
 
     [Fact]
@@ -863,17 +1070,21 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Equal("Vector dimensions must be greater than zero.", result.Reason);
     }
 
+    // Verifies that a null upsert request is treated as a programming error and fails fast with an exception
+    // instead of producing a failure result.
     [Fact]
-    public async Task UpsertAsync_ShouldFailDeterministically_WhenRequestIsNull()
+    public async Task UpsertAsync_ShouldThrow_WhenRequestIsNull()
     {
         var vectorStore = await CreateVectorStoreAsync();
 
-        var result = await vectorStore.UpsertAsync(null!);
+        var exception = await Assert.ThrowsAsync<ArgumentNullException>(() =>
+            vectorStore.UpsertAsync(null!));
 
-        Assert.False(result.Succeeded);
-        Assert.Equal("Request is required.", result.Reason);
+        Assert.Equal("request", exception.ParamName);
     }
 
+    // Verifies that a request whose records are null-normalized or empty fails deterministically with a
+    // validation error code and zero attempted/failed counts.
     [Fact]
     public async Task UpsertAsync_ShouldFailDeterministically_WhenRecordsAreNullOrEmpty()
     {
@@ -894,8 +1105,16 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.False(emptyRecordsResult.Succeeded);
         Assert.Equal("At least one vector record is required.", nullRecordsResult.Reason);
         Assert.Equal(nullRecordsResult.Reason, emptyRecordsResult.Reason);
+        Assert.Equal(VectorStoreUpsertErrorCode.ValidationFailed, emptyRecordsResult.ErrorCode);
+        Assert.Equal(0, emptyRecordsResult.ProcessedCount);
+        Assert.Equal(0, emptyRecordsResult.AttemptedCount);
+        Assert.Equal(0, emptyRecordsResult.FailedCount);
+        Assert.False(emptyRecordsResult.SupportsPartialSuccess);
+        Assert.Empty(emptyRecordsResult.VectorIds);
     }
 
+    // Verifies that a record with an invalid identifier is rejected with the standard validation failure
+    // contract and that the whole batch is reported as failed.
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -912,8 +1131,16 @@ public sealed class InMemoryRagVectorStoreTests
 
         Assert.False(result.Succeeded);
         Assert.Equal("Vector identifier is required.", result.Reason);
+        Assert.Equal(VectorStoreUpsertErrorCode.ValidationFailed, result.ErrorCode);
+        Assert.Equal(0, result.ProcessedCount);
+        Assert.Equal(1, result.AttemptedCount);
+        Assert.Equal(1, result.FailedCount);
+        Assert.False(result.SupportsPartialSuccess);
+        Assert.Empty(result.VectorIds);
     }
 
+    // Verifies that records with null or empty vector values are rejected with the standard validation failure
+    // contract before anything is written.
     [Fact]
     public async Task UpsertAsync_ShouldFailDeterministically_WhenVectorValuesAreNullOrEmpty()
     {
@@ -934,6 +1161,12 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.False(emptyValuesResult.Succeeded);
         Assert.Equal("Vector values are required.", nullValuesResult.Reason);
         Assert.Equal(nullValuesResult.Reason, emptyValuesResult.Reason);
+        Assert.Equal(VectorStoreUpsertErrorCode.ValidationFailed, emptyValuesResult.ErrorCode);
+        Assert.Equal(0, emptyValuesResult.ProcessedCount);
+        Assert.Equal(1, emptyValuesResult.AttemptedCount);
+        Assert.Equal(1, emptyValuesResult.FailedCount);
+        Assert.False(emptyValuesResult.SupportsPartialSuccess);
+        Assert.Empty(emptyValuesResult.VectorIds);
     }
 
     [Fact]
