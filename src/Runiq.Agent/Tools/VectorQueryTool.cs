@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Runiq.Rag.Abstractions.Tools;
 using Runiq.Rag.Models.Metadata;
 using Runiq.Rag.Models.Retrieval;
@@ -61,6 +62,19 @@ public sealed class VectorQueryTool : IRuniqTool<VectorQueryToolInput, VectorQue
             return VectorQueryToolOutput.Failure(RetrievalErrorCode.InvalidRequest, NullInputReason);
         }
 
+        RetrievalMetadataFilter metadataFilter;
+        try
+        {
+            // Map the JSON-deserializable filter DTO onto the RAG filter contract. A malformed criterion
+            // (blank key or null entry) is an adapter-boundary condition the delegated tool never sees, so it
+            // is surfaced as a deterministic failed output rather than thrown.
+            metadataFilter = input.MetadataFilter?.ToRetrievalMetadataFilter() ?? RetrievalMetadataFilter.Empty;
+        }
+        catch (ArgumentException exception)
+        {
+            return VectorQueryToolOutput.Failure(RetrievalErrorCode.InvalidRequest, DescribeArgumentFailure(exception));
+        }
+
         var request = new VectorQueryToolRequest
         {
             VectorStoreName = input.VectorStoreName,
@@ -68,7 +82,7 @@ public sealed class VectorQueryTool : IRuniqTool<VectorQueryToolInput, VectorQue
             QueryText = input.QueryText,
             EmbeddingModel = input.EmbeddingModel,
             TopK = input.TopK,
-            MetadataFilter = input.MetadataFilter ?? RetrievalMetadataFilter.Empty,
+            MetadataFilter = metadataFilter,
         };
 
         var result = await vectorQueryTool
@@ -76,6 +90,29 @@ public sealed class VectorQueryTool : IRuniqTool<VectorQueryToolInput, VectorQue
             .ConfigureAwait(false);
 
         return VectorQueryToolOutput.FromResult(result);
+    }
+
+    /// <summary>
+    /// Produces an agent-facing failure reason from an <see cref="ArgumentException"/> raised while mapping the
+    /// filter, dropping the trailing "(Parameter '...')" fragment that <see cref="ArgumentException.Message"/>
+    /// appends so an internal parameter name is not leaked into agent-visible text.
+    /// </summary>
+    /// <param name="exception">The mapping failure to describe.</param>
+    /// <returns>The failure message without the parameter-name suffix.</returns>
+    private static string DescribeArgumentFailure(ArgumentException exception)
+    {
+        var reason = exception.Message;
+
+        if (!string.IsNullOrEmpty(exception.ParamName))
+        {
+            var parameterSuffix = $" (Parameter '{exception.ParamName}')";
+            if (reason.EndsWith(parameterSuffix, StringComparison.Ordinal))
+            {
+                reason = reason[..^parameterSuffix.Length];
+            }
+        }
+
+        return reason;
     }
 }
 
@@ -121,10 +158,106 @@ public sealed record VectorQueryToolInput
 
     /// <summary>
     /// Gets the optional provider-independent metadata filter forwarded to the retrieval flow to narrow candidate
-    /// matches. A null value maps to <see cref="RetrievalMetadataFilter.Empty"/> ("no filtering") so both a
-    /// supplied filter and an absent filter map cleanly onto <see cref="VectorQueryToolRequest.MetadataFilter"/>.
+    /// matches. This is a thin agent-facing DTO — not the RAG <see cref="RetrievalMetadataFilter"/> directly —
+    /// because the RAG type's criteria are exposed through a read-only collection that System.Text.Json cannot
+    /// populate; deserializing straight into it would silently drop the model-supplied criteria. The DTO is
+    /// mapped to <see cref="RetrievalMetadataFilter"/> at execution time. A null value maps to
+    /// <see cref="RetrievalMetadataFilter.Empty"/> ("no filtering") so both a supplied filter and an absent
+    /// filter map cleanly onto <see cref="VectorQueryToolRequest.MetadataFilter"/>.
     /// </summary>
-    public RetrievalMetadataFilter? MetadataFilter { get; init; }
+    public VectorQueryToolMetadataFilterInput? MetadataFilter { get; init; }
+}
+
+/// <summary>
+/// Agent-facing, JSON-deserializable projection of a <see cref="RetrievalMetadataFilter"/> the model supplies to
+/// narrow retrieval candidates. It exists because <see cref="RetrievalMetadataFilter.Criteria"/> is a read-only
+/// collection that System.Text.Json (Web defaults) cannot populate during deserialization, so the model's
+/// criteria would be silently dropped if the RAG type were used as the tool input directly. Its
+/// <see cref="Criteria"/> member is init-only, letting the runtime deserializer assign the whole list, and it is
+/// mapped back to the RAG contract via <see cref="ToRetrievalMetadataFilter"/>. It introduces no new filtering
+/// concept; the mapping reuses <see cref="RetrievalMetadataFilterCriterion"/> and its validation.
+/// </summary>
+public sealed record VectorQueryToolMetadataFilterInput
+{
+    /// <summary>
+    /// Gets the metadata criteria a candidate must all satisfy (logical AND). An empty or absent list applies no
+    /// constraints and maps to <see cref="RetrievalMetadataFilter.Empty"/>.
+    /// </summary>
+    public IReadOnlyList<VectorQueryToolMetadataCriterionInput> Criteria { get; init; } =
+        Array.Empty<VectorQueryToolMetadataCriterionInput>();
+
+    /// <summary>
+    /// Maps this DTO to the RAG <see cref="RetrievalMetadataFilter"/> contract, delegating per-criterion
+    /// validation (non-blank key, non-null value) to <see cref="RetrievalMetadataFilterCriterion"/>. An absent,
+    /// null, or empty criteria list all map to <see cref="RetrievalMetadataFilter.Empty"/> ("no filtering"); a
+    /// null collection can occur when the model emits <c>"criteria": null</c>, which System.Text.Json binds as
+    /// null over the default.
+    /// </summary>
+    /// <returns>The equivalent provider-independent <see cref="RetrievalMetadataFilter"/>.</returns>
+    /// <exception cref="ArgumentException">
+    /// Thrown when a supplied criterion is null or carries a blank key, so the adapter can surface it as a
+    /// deterministic failed output rather than an unhandled exception.
+    /// </exception>
+    public RetrievalMetadataFilter ToRetrievalMetadataFilter()
+    {
+        if (Criteria is null || Criteria.Count == 0)
+        {
+            return RetrievalMetadataFilter.Empty;
+        }
+
+        var mappedCriteria = new List<RetrievalMetadataFilterCriterion>(Criteria.Count);
+        foreach (var criterion in Criteria)
+        {
+            if (criterion is null)
+            {
+                throw new ArgumentException("Metadata filter criteria cannot contain null entries.", nameof(Criteria));
+            }
+
+            mappedCriteria.Add(criterion.ToRetrievalMetadataFilterCriterion());
+        }
+
+        return new RetrievalMetadataFilter(mappedCriteria);
+    }
+}
+
+/// <summary>
+/// Agent-facing, JSON-deserializable projection of a single <see cref="RetrievalMetadataFilterCriterion"/>. Its
+/// members are init-only so the agent tool runtime's System.Text.Json (Web defaults) deserialization can populate
+/// them; construction-time validation is deferred to <see cref="ToRetrievalMetadataFilterCriterion"/> so the
+/// deserializer never throws while binding the input.
+/// </summary>
+public sealed record VectorQueryToolMetadataCriterionInput
+{
+    /// <summary>
+    /// Gets the metadata field name the criterion constrains.
+    /// </summary>
+    public string Key { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets the expected metadata value the record must carry for the key.
+    /// </summary>
+    public string Value { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets the comparison operator applied between the record's metadata value and <see cref="Value"/>. Reuses
+    /// the RAG <see cref="RetrievalMetadataFilterOperator"/>; defaults to exact-match equality. The per-property
+    /// string-enum converter lets the model supply the operator either by name (<c>"Equal"</c>) or numerically
+    /// (<c>0</c>), so a name-based value is not rejected by the runtime's numeric-only Web defaults.
+    /// </summary>
+    [JsonConverter(typeof(JsonStringEnumConverter<RetrievalMetadataFilterOperator>))]
+    public RetrievalMetadataFilterOperator Operator { get; init; } = RetrievalMetadataFilterOperator.Equal;
+
+    /// <summary>
+    /// Maps this DTO to the RAG <see cref="RetrievalMetadataFilterCriterion"/>, applying that type's validation
+    /// (non-blank <see cref="Key"/>, non-null <see cref="Value"/>).
+    /// </summary>
+    /// <returns>The equivalent <see cref="RetrievalMetadataFilterCriterion"/>.</returns>
+    /// <exception cref="ArgumentException">Thrown when <see cref="Key"/> is blank.</exception>
+    /// <exception cref="ArgumentNullException">Thrown when <see cref="Value"/> is null.</exception>
+    public RetrievalMetadataFilterCriterion ToRetrievalMetadataFilterCriterion()
+    {
+        return new RetrievalMetadataFilterCriterion(Key, Value, Operator);
+    }
 }
 
 /// <summary>

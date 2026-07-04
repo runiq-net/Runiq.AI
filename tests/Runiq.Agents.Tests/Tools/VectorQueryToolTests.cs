@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Runiq.Agents.Tools;
 using Runiq.Rag.Abstractions.Tools;
 using Runiq.Rag.Models.Metadata;
@@ -20,8 +21,10 @@ public sealed class VectorQueryToolTests
     {
         var fake = new FakeVectorQueryTool();
         var adapter = new VectorQueryTool(fake);
-        var filter = new RetrievalMetadataFilter(
-            [new RetrievalMetadataFilterCriterion("documentId", "doc-1")]);
+        var filter = new VectorQueryToolMetadataFilterInput
+        {
+            Criteria = [new VectorQueryToolMetadataCriterionInput { Key = "documentId", Value = "doc-1" }],
+        };
 
         await adapter.ExecuteAsync(new VectorQueryToolInput
         {
@@ -40,7 +43,177 @@ public sealed class VectorQueryToolTests
         Assert.Equal("Bursa food stops", request.QueryText);
         Assert.Equal("text-embedding-3-small", request.EmbeddingModel);
         Assert.Equal(7, request.TopK);
-        Assert.Same(filter, request.MetadataFilter);
+        var criterion = Assert.Single(request.MetadataFilter.Criteria);
+        Assert.Equal("documentId", criterion.Key);
+        Assert.Equal("doc-1", criterion.Value);
+        Assert.Equal(RetrievalMetadataFilterOperator.Equal, criterion.Operator);
+    }
+
+    // Regression guard for review finding P2-1: exercises the real System.Text.Json (Web defaults) path that
+    // AgentToolInvoker uses to bind tool input JSON, proving a model-supplied metadata filter survives
+    // deserialization and reaches the delegated request with its criteria intact (the old design reusing
+    // RetrievalMetadataTypes directly silently dropped these criteria).
+    [Fact]
+    public async Task ExecuteAsync_ShouldForwardDeserializedMetadataFilter_WhenSuppliedAsJson()
+    {
+        const string argumentsJson = """
+        {
+          "vectorStoreName": "store",
+          "indexName": "documents",
+          "queryText": "Bursa food stops",
+          "topK": 3,
+          "metadataFilter": {
+            "criteria": [
+              { "key": "documentId", "value": "doc-1" },
+              { "key": "language", "value": "tr", "operator": 0 }
+            ]
+          }
+        }
+        """;
+        var input = DeserializeInput(argumentsJson);
+        var fake = new FakeVectorQueryTool();
+        var adapter = new VectorQueryTool(fake);
+
+        await adapter.ExecuteAsync(input);
+
+        Assert.NotNull(fake.CapturedRequest);
+        Assert.Equal(2, fake.CapturedRequest.MetadataFilter.Criteria.Count);
+        Assert.Collection(
+            fake.CapturedRequest.MetadataFilter.Criteria,
+            first =>
+            {
+                Assert.Equal("documentId", first.Key);
+                Assert.Equal("doc-1", first.Value);
+                Assert.Equal(RetrievalMetadataFilterOperator.Equal, first.Operator);
+            },
+            second =>
+            {
+                Assert.Equal("language", second.Key);
+                Assert.Equal("tr", second.Value);
+                Assert.Equal(RetrievalMetadataFilterOperator.Equal, second.Operator);
+            });
+    }
+
+    // Verifies that when the deserialized input carries no metadata filter (the JSON omits the field), the adapter
+    // still maps to RetrievalMetadataFilter.Empty through the same runtime deserialization path.
+    [Fact]
+    public async Task ExecuteAsync_ShouldMapToEmptyFilter_WhenJsonOmitsMetadataFilter()
+    {
+        const string argumentsJson = """
+        {
+          "vectorStoreName": "store",
+          "indexName": "documents",
+          "queryText": "query"
+        }
+        """;
+        var input = DeserializeInput(argumentsJson);
+        var fake = new FakeVectorQueryTool();
+        var adapter = new VectorQueryTool(fake);
+
+        await adapter.ExecuteAsync(input);
+
+        Assert.NotNull(fake.CapturedRequest);
+        Assert.Same(RetrievalMetadataFilter.Empty, fake.CapturedRequest.MetadataFilter);
+    }
+
+    // Verifies that a malformed criterion supplied via JSON (a blank key that the RAG criterion contract rejects)
+    // is surfaced as a deterministic InvalidRequest failed output at the adapter boundary, not thrown, and the
+    // delegated tool is never invoked.
+    [Fact]
+    public async Task ExecuteAsync_ShouldReturnInvalidRequest_WhenJsonFilterCriterionIsMalformed()
+    {
+        const string argumentsJson = """
+        {
+          "vectorStoreName": "store",
+          "indexName": "documents",
+          "queryText": "query",
+          "metadataFilter": { "criteria": [ { "key": " ", "value": "x" } ] }
+        }
+        """;
+        var input = DeserializeInput(argumentsJson);
+        var fake = new FakeVectorQueryTool();
+        var adapter = new VectorQueryTool(fake);
+
+        var output = await adapter.ExecuteAsync(input);
+
+        Assert.False(output.Succeeded);
+        Assert.Equal(RetrievalErrorCode.InvalidRequest, output.ErrorCode);
+        Assert.Null(fake.CapturedRequest);
+    }
+
+    // Regression guard for review finding P2-1: an explicit "criteria": null (which System.Text.Json binds as
+    // null over the default) must map deterministically to RetrievalMetadataFilter.Empty, not throw a
+    // NullReferenceException out of the adapter.
+    [Fact]
+    public async Task ExecuteAsync_ShouldMapToEmptyFilter_WhenJsonCriteriaIsExplicitlyNull()
+    {
+        const string argumentsJson = """
+        {
+          "vectorStoreName": "store",
+          "indexName": "documents",
+          "queryText": "query",
+          "metadataFilter": { "criteria": null }
+        }
+        """;
+        var input = DeserializeInput(argumentsJson);
+        var fake = new FakeVectorQueryTool();
+        var adapter = new VectorQueryTool(fake);
+
+        var output = await adapter.ExecuteAsync(input);
+
+        Assert.True(output.Succeeded);
+        Assert.NotNull(fake.CapturedRequest);
+        Assert.Same(RetrievalMetadataFilter.Empty, fake.CapturedRequest.MetadataFilter);
+    }
+
+    // Regression guard for review finding P3-1: the operator must deserialize from its string name ("Equal"),
+    // not only numerically, so a name-based value is not rejected by the runtime's numeric-only Web defaults.
+    [Fact]
+    public async Task ExecuteAsync_ShouldForwardOperator_WhenSuppliedAsStringName()
+    {
+        const string argumentsJson = """
+        {
+          "vectorStoreName": "store",
+          "indexName": "documents",
+          "queryText": "query",
+          "metadataFilter": { "criteria": [ { "key": "language", "value": "tr", "operator": "Equal" } ] }
+        }
+        """;
+        var input = DeserializeInput(argumentsJson);
+        var fake = new FakeVectorQueryTool();
+        var adapter = new VectorQueryTool(fake);
+
+        await adapter.ExecuteAsync(input);
+
+        Assert.NotNull(fake.CapturedRequest);
+        var criterion = Assert.Single(fake.CapturedRequest.MetadataFilter.Criteria);
+        Assert.Equal("language", criterion.Key);
+        Assert.Equal(RetrievalMetadataFilterOperator.Equal, criterion.Operator);
+    }
+
+    // Regression guard for review finding P3-2: the agent-facing failure reason for a malformed criterion must
+    // not leak the internal "(Parameter '...')" suffix that ArgumentException.Message appends.
+    [Fact]
+    public async Task ExecuteAsync_ShouldNotLeakParameterName_WhenCriterionIsMalformed()
+    {
+        const string argumentsJson = """
+        {
+          "vectorStoreName": "store",
+          "indexName": "documents",
+          "queryText": "query",
+          "metadataFilter": { "criteria": [ { "key": " ", "value": "x" } ] }
+        }
+        """;
+        var input = DeserializeInput(argumentsJson);
+        var fake = new FakeVectorQueryTool();
+        var adapter = new VectorQueryTool(fake);
+
+        var output = await adapter.ExecuteAsync(input);
+
+        Assert.False(output.Succeeded);
+        Assert.Equal(RetrievalErrorCode.InvalidRequest, output.ErrorCode);
+        Assert.DoesNotContain("Parameter", output.Reason, StringComparison.Ordinal);
+        Assert.NotEmpty(output.Reason);
     }
 
     // Verifies that an absent metadata filter maps to RetrievalMetadataFilter.Empty so retrieval always receives
@@ -201,6 +374,17 @@ public sealed class VectorQueryToolTests
             IndexName = "documents",
             QueryText = "query",
         };
+    }
+
+    // Deserializes tool input using the same System.Text.Json Web-default options AgentToolInvoker binds tool
+    // arguments with, so these tests exercise the real runtime deserialization path rather than in-process
+    // C# object construction.
+    private static VectorQueryToolInput DeserializeInput(string argumentsJson)
+    {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var input = JsonSerializer.Deserialize<VectorQueryToolInput>(argumentsJson, options);
+        Assert.NotNull(input);
+        return input;
     }
 
     /// <summary>
