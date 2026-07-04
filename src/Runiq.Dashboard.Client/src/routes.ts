@@ -4,8 +4,15 @@ import { ToolsPage } from './pages/ToolsPage';
 import { ContextSpacesPage } from './pages/ContextSpacesPage';
 import { WorkflowsPage } from './pages/WorkflowsPage';
 import { McpPage } from './pages/McpPage';
+import { RagPage } from './pages/RagPage';
 
-export type DashboardPage = 'agents' | 'tools' | 'workflows' | 'context-spaces' | 'mcp';
+export type DashboardPage =
+  | 'agents'
+  | 'tools'
+  | 'workflows'
+  | 'context-spaces'
+  | 'mcp'
+  | 'rag';
 
 export type DashboardRoute =
   | { page: 'agents' }
@@ -17,7 +24,8 @@ export type DashboardRoute =
   | { page: 'context-spaces' }
   | { page: 'context-space-detail'; contextSpaceId: string }
   | { page: 'mcp' }
-  | { page: 'mcp-tool-detail'; toolName: string };
+  | { page: 'mcp-tool-detail'; toolName: string }
+  | { page: 'rag' };
 
 export type DashboardRouteDefinition = {
   page: DashboardPage;
@@ -52,6 +60,14 @@ export const dashboardRoutes: DashboardRouteDefinition[] = [
     navLabel: 'MCP Server',
     showInNavigation: true,
     component: McpPage,
+  },
+  {
+    page: 'rag',
+    path: 'rag',
+    title: 'RAG',
+    navLabel: 'RAG',
+    showInNavigation: true,
+    component: RagPage,
   },
   {
     page: 'workflows',
@@ -158,6 +174,10 @@ export function resolveDashboardRouteFromUrl(
 
   if (firstSegment === 'mcp') {
     return { page: 'mcp' };
+  }
+
+  if (firstSegment === 'rag') {
+    return { page: 'rag' };
   }
 
   if (firstSegment === 'workflows') {

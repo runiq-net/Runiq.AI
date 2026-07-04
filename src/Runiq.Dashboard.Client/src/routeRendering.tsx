@@ -5,6 +5,7 @@ import { ToolDetailPage } from './pages/ToolDetailPage';
 import { WorkflowDetailPage } from './pages/WorkflowDetailPage';
 import { McpPage } from './pages/McpPage';
 import { McpToolDetailPage } from './pages/McpToolDetailPage';
+import { RagPage } from './pages/RagPage';
 
 import {
   getDashboardRouteByPage,
@@ -27,6 +28,10 @@ export function renderDashboardRoute(route: DashboardRoute) {
 
   if (route.page === 'mcp-tool-detail') {
     return <McpToolDetailPage toolName={route.toolName} />;
+  }
+
+  if (route.page === 'rag') {
+    return <RagPage />;
   }
 
   if (route.page === 'context-space-detail') {
@@ -53,6 +58,10 @@ export function getActivePage(route: DashboardRoute): DashboardPage {
 
   if (route.page === 'mcp' || route.page === 'mcp-tool-detail') {
     return 'mcp';
+  }
+
+  if (route.page === 'rag') {
+    return 'rag';
   }
 
   if (route.page === 'context-space-detail') {
@@ -83,6 +92,10 @@ export function getRouteTitle(route: DashboardRoute): string {
     return 'MCP Tool';
   }
 
+  if (route.page === 'rag') {
+    return 'RAG';
+  }
+
   if (route.page === 'context-space-detail') {
     return 'Context Space';
   }
@@ -97,6 +110,10 @@ export function getRouteTitle(route: DashboardRoute): string {
 export function getRouteSubtitle(route: DashboardRoute): string | undefined {
   if (route.page === 'mcp') {
     return 'Expose selected ASP.NET Core services as MCP tools.';
+  }
+
+  if (route.page === 'rag') {
+    return 'Inspect read-only retrieval configuration and last-operation telemetry.';
   }
 
   return undefined;

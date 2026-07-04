@@ -7,6 +7,7 @@ using Runiq.Core.ContextSpaces;
 using Runiq.Core.Dashboard;
 using Runiq.Core.Mcp;
 using Runiq.Core.Metadata;
+using Runiq.Core.Rag;
 using Runiq.Core.Studio;
 using Runiq.Core.Tools;
 using Runiq.Core.Workflows;
@@ -73,6 +74,7 @@ public static class RuniqDashboardApplicationBuilderExtensions
             endpoints.MapRuniqToolApi($"{basePath}/api");
             endpoints.MapRuniqWorkflowApi($"{basePath}/api");
             endpoints.MapRuniqMcpApi($"{basePath}/api");
+            endpoints.MapRuniqRagApi($"{basePath}/api");
         });
 
         app.Use(async (context, next) =>
