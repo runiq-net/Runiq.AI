@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Runiq.Rag.Abstractions.Chunking;
 using Runiq.Rag.Abstractions.Embeddings;
 using Runiq.Rag.Abstractions.Retrieval;
+using Runiq.Rag.Abstractions.Tools;
 using Runiq.Rag.Abstractions.VectorStores;
 using Runiq.Rag.Configuration;
 using Runiq.Rag.DependencyInjection;
@@ -9,6 +10,7 @@ using Runiq.Rag.Models.Documents;
 using Runiq.Rag.Models.Embeddings;
 using Runiq.Rag.Models.Queries;
 using Runiq.Rag.Models.Search;
+using Runiq.Rag.Models.Tools;
 using Runiq.Rag.Models.VectorStores;
 using Runiq.Rag.VectorStores.InMemory;
 
@@ -120,6 +122,21 @@ public sealed class RagBuilderTests
     }
 
     [Fact]
+    public void UseVectorQueryTool_ShouldReplaceDefaultVectorQueryToolRegistration()
+    {
+        // Verifies that the builder replaces the default Vector Query Tool with a single scoped registration, matching the retrieval pipeline lifetime it delegates to.
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+        var builder = new RagBuilder(services);
+
+        builder.UseVectorQueryTool<TestVectorQueryTool>();
+
+        var descriptor = Assert.Single(services, service => service.ServiceType == typeof(IVectorQueryTool));
+        Assert.Equal(typeof(TestVectorQueryTool), descriptor.ImplementationType);
+        Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
+    }
+
+    [Fact]
     public void UseEmbedding_ShouldReturnSameBuilderInstance()
     {
         var builder = new RagBuilder(new ServiceCollection());
@@ -175,6 +192,17 @@ public sealed class RagBuilderTests
         var builder = new RagBuilder(new ServiceCollection());
 
         var returnedBuilder = builder.UseChunker<TestChunker>();
+
+        Assert.Same(builder, returnedBuilder);
+    }
+
+    [Fact]
+    public void UseVectorQueryTool_ShouldReturnSameBuilderInstance()
+    {
+        // Verifies that the Vector Query Tool override returns the same builder so calls can be chained.
+        var builder = new RagBuilder(new ServiceCollection());
+
+        var returnedBuilder = builder.UseVectorQueryTool<TestVectorQueryTool>();
 
         Assert.Same(builder, returnedBuilder);
     }
@@ -239,6 +267,16 @@ public sealed class RagBuilderTests
             CancellationToken cancellationToken = default)
         {
             return Task.FromResult<IReadOnlyList<RagChunk>>(Array.Empty<RagChunk>());
+        }
+    }
+
+    private sealed class TestVectorQueryTool : IVectorQueryTool
+    {
+        public Task<VectorQueryToolResult> ExecuteAsync(
+            VectorQueryToolRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(VectorQueryToolResult.Success());
         }
     }
 }

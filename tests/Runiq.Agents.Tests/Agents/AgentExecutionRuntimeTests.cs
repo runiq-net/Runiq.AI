@@ -8,11 +8,15 @@ using Runiq.ContextSpaces.Models.Sources;
 using Runiq.ContextSpaces.Services;
 using Runiq.Rag.Abstractions.Embeddings;
 using Runiq.Rag.Abstractions.Retrieval;
+using Runiq.Rag.Abstractions.Tools;
 using Runiq.Rag.Abstractions.VectorStores;
 using Runiq.Rag.Configuration;
 using Runiq.Rag.Models.Embeddings;
+using Runiq.Rag.Models.Metadata;
 using Runiq.Rag.Models.Queries;
+using Runiq.Rag.Models.Retrieval;
 using Runiq.Rag.Models.Search;
+using Runiq.Rag.Models.Tools;
 using Runiq.Rag.Models.VectorStores;
 using Runiq.Rag.Retrieval;
 
@@ -188,6 +192,157 @@ public sealed class AgentExecutionRuntimeTests
 
         await DrainAsync(runtime.ExecuteStreamAsync(archiveAgent.Id, "Find archive."));
         Assert.Equal("archive", retriever.Query!.IndexName);
+    }
+
+    // Verifies the runtime exposes a public constructor overload that accepts the Vector Query Tool.
+    [Fact]
+    public void Constructor_ShouldExposeVectorQueryToolOverload()
+    {
+        var constructor = typeof(AgentExecutionRuntime).GetConstructor([
+            typeof(IEnumerable<Agent>),
+            typeof(OpenAIResponsesClient),
+            typeof(OpenAICompatibleClient),
+            typeof(AgentToolInvoker),
+            typeof(IRagRetriever),
+            typeof(IVectorQueryTool),
+            typeof(IReadOnlyList<ContextSpace>),
+            typeof(IContextSpaceSkillDiscoveryService),
+            typeof(IContextSpaceSourceSearchService)
+        ]);
+
+        Assert.NotNull(constructor);
+
+        var runtime = new AgentExecutionRuntime(
+            agents: [],
+            openAIResponsesClient: new OpenAIResponsesClient(new HttpClient()),
+            openAICompatibleClient: new OpenAICompatibleClient(new HttpClient()),
+            toolInvoker: new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()),
+            ragRetriever: null,
+            vectorQueryTool: new CapturingVectorQueryTool(VectorQueryToolResult.Success()));
+
+        Assert.NotNull(runtime);
+    }
+
+    // Verifies the Vector Query Tool is invoked with the agent's associated store, index, embedding model, the
+    // default top-k, and a non-null metadata filter when the agent configures a vector store name.
+    [Fact]
+    public async Task ExecuteStreamAsync_ShouldInvokeVectorQueryTool_WhenAgentConfiguresVectorStore()
+    {
+        var agent = CreateRagAgent().UseVectorQueryTool("primary-store", "documents", "text-embed");
+        var tool = new CapturingVectorQueryTool(VectorQueryToolResult.Success());
+        var runtime = CreateRuntimeWithVectorQueryTool(agent, tool);
+
+        await DrainAsync(runtime.ExecuteStreamAsync(agent.Id, "Find travel notes."));
+
+        Assert.Equal(1, tool.InvocationCount);
+        Assert.NotNull(tool.Request);
+        Assert.Equal("primary-store", tool.Request!.VectorStoreName);
+        Assert.Equal("documents", tool.Request.IndexName);
+        Assert.Equal("Find travel notes.", tool.Request.QueryText);
+        Assert.Equal("text-embed", tool.Request.EmbeddingModel);
+        Assert.Equal(5, tool.Request.TopK);
+        Assert.Same(RetrievalMetadataFilter.Empty, tool.Request.MetadataFilter);
+    }
+
+    // Verifies that a runtime per-query index name overrides the agent's configured index when the tool runs.
+    [Fact]
+    public async Task ExecuteStreamAsync_ShouldForwardRuntimeIndexNameToVectorQueryTool_WhenOverridden()
+    {
+        var agent = CreateRagAgent().UseVectorQueryTool("primary-store", "documents");
+        var tool = new CapturingVectorQueryTool(VectorQueryToolResult.Success());
+        var runtime = CreateRuntimeWithVectorQueryTool(agent, tool);
+
+        await DrainAsync(runtime.ExecuteStreamAsync(
+            agent.Id,
+            new AgentQuery("Find travel notes.") { IndexName = "archive" }));
+
+        Assert.Equal("archive", tool.Request!.IndexName);
+    }
+
+    // Verifies the existing retriever path is used and the Vector Query Tool is not invoked when the agent uses
+    // UseRagIndex, even if a Vector Query Tool is also available to the runtime.
+    [Fact]
+    public async Task ExecuteStreamAsync_ShouldUseRetrieverAndNotInvokeTool_WhenAgentUsesRagIndexPath()
+    {
+        var agent = CreateRagAgent().UseRagIndex("documents");
+        var retriever = new TrackingRagRetriever([]);
+        var tool = new CapturingVectorQueryTool(VectorQueryToolResult.Success());
+        var runtime = new AgentExecutionRuntime(
+            agents: [agent],
+            openAIResponsesClient: new OpenAIResponsesClient(new HttpClient()),
+            openAICompatibleClient: new OpenAICompatibleClient(new HttpClient()),
+            toolInvoker: new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()),
+            ragRetriever: retriever,
+            vectorQueryTool: tool);
+
+        await DrainAsync(runtime.ExecuteStreamAsync(agent.Id, "Find travel notes."));
+
+        Assert.Equal("documents", retriever.Query!.IndexName);
+        Assert.Equal(0, tool.InvocationCount);
+    }
+
+    // Verifies a failed Vector Query Tool result surfaces deterministically as a RagRetrievalFailed event, the
+    // same failure contract used by the retriever path.
+    [Fact]
+    public async Task ExecuteStreamAsync_ShouldEmitFailure_WhenVectorQueryToolFails()
+    {
+        var agent = CreateRagAgent().UseVectorQueryTool("primary-store", "documents");
+        var tool = new CapturingVectorQueryTool(
+            VectorQueryToolResult.Failure(RetrievalErrorCode.InvalidRequest, "Vector index has not been created."));
+        var runtime = CreateRuntimeWithVectorQueryTool(agent, tool);
+
+        var events = await DrainAsync(runtime.ExecuteStreamAsync(agent.Id, "Find travel notes."));
+
+        var failedEvent = Assert.Single(events, item => item.Kind == AgentExecutionEventKind.Failed);
+        Assert.Equal("RagRetrievalFailed", failedEvent.ErrorCode);
+        Assert.Equal("Vector index has not been created.", failedEvent.ErrorMessage);
+    }
+
+    // Verifies successful tool matches (including a match with an empty record id) map into the runtime RAG
+    // context and are consumed by context assembly without error, letting execution complete.
+    [Fact]
+    public async Task ExecuteStreamAsync_ShouldCompleteWithMappedMatches_WhenVectorQueryToolReturnsResults()
+    {
+        var agent = CreateRagAgent().UseVectorQueryTool("primary-store", "documents");
+        var tool = new CapturingVectorQueryTool(VectorQueryToolResult.Success(
+        [
+            new RetrievalResultItem
+            {
+                RecordId = "chunk-1",
+                Content = "Bursa has notable regional food stops.",
+                Score = 0.91,
+                Metadata = new RagMetadata(new Dictionary<string, string> { ["documentId"] = "doc-1" }),
+            },
+            new RetrievalResultItem
+            {
+                RecordId = string.Empty,
+                Content = "Fallback content without a record id.",
+                Score = 0.42,
+            },
+        ]));
+        var runtime = CreateRuntimeWithVectorQueryTool(agent, tool);
+
+        var events = await DrainAsync(runtime.ExecuteStreamAsync(agent.Id, "Find travel notes."));
+
+        Assert.DoesNotContain(events, item => item.Kind == AgentExecutionEventKind.Failed);
+        Assert.Contains(events, item => item.Kind == AgentExecutionEventKind.Completed);
+    }
+
+    // Verifies the runtime forwards the caller's cancellation token through the Vector Query Tool call chain.
+    [Fact]
+    public async Task ExecuteStreamAsync_ShouldForwardCancellationTokenToVectorQueryTool()
+    {
+        var agent = CreateRagAgent().UseVectorQueryTool("primary-store", "documents");
+        var tool = new CapturingVectorQueryTool(VectorQueryToolResult.Success());
+        var runtime = CreateRuntimeWithVectorQueryTool(agent, tool);
+        using var cancellationSource = new CancellationTokenSource();
+
+        await DrainAsync(runtime.ExecuteStreamAsync(
+            agent.Id,
+            "Find travel notes.",
+            cancellationToken: cancellationSource.Token));
+
+        Assert.Equal(cancellationSource.Token, tool.CancellationToken);
     }
 
     // Verifies that discovered skills are emitted before context search events during streaming execution.
@@ -502,6 +657,33 @@ public sealed class AgentExecutionRuntimeTests
         }
     }
 
+    private sealed class CapturingVectorQueryTool : IVectorQueryTool
+    {
+        private readonly VectorQueryToolResult result;
+
+        public CapturingVectorQueryTool(VectorQueryToolResult result)
+        {
+            this.result = result;
+        }
+
+        public VectorQueryToolRequest? Request { get; private set; }
+
+        public CancellationToken CancellationToken { get; private set; }
+
+        public int InvocationCount { get; private set; }
+
+        public Task<VectorQueryToolResult> ExecuteAsync(
+            VectorQueryToolRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            Request = request;
+            CancellationToken = cancellationToken;
+            InvocationCount++;
+
+            return Task.FromResult(result);
+        }
+    }
+
     private sealed class SearchOnlyRagVectorStore : IRagVectorStore
     {
         private readonly IReadOnlyList<RagSearchResult> results;
@@ -599,6 +781,19 @@ public sealed class AgentExecutionRuntimeTests
             openAICompatibleClient: new OpenAICompatibleClient(new HttpClient()),
             toolInvoker: new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()),
             ragRetriever: retriever);
+    }
+
+    private static AgentExecutionRuntime CreateRuntimeWithVectorQueryTool(
+        Agent agent,
+        IVectorQueryTool tool)
+    {
+        return new AgentExecutionRuntime(
+            agents: [agent],
+            openAIResponsesClient: new OpenAIResponsesClient(new HttpClient()),
+            openAICompatibleClient: new OpenAICompatibleClient(new HttpClient()),
+            toolInvoker: new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()),
+            ragRetriever: null,
+            vectorQueryTool: tool);
     }
 
     private static async Task<List<AgentExecutionEvent>> DrainAsync(

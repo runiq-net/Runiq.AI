@@ -5,7 +5,13 @@ using Runiq.Agents.Tools;
 using Runiq.ContextSpaces.Models.Sources;
 using Runiq.ContextSpaces.Services;
 using Runiq.Rag.Abstractions.Retrieval;
+using Runiq.Rag.Abstractions.Tools;
+using Runiq.Rag.Models.Documents;
+using Runiq.Rag.Models.Metadata;
 using Runiq.Rag.Models.Queries;
+using Runiq.Rag.Models.Retrieval;
+using Runiq.Rag.Models.Search;
+using Runiq.Rag.Models.Tools;
 
 namespace Runiq.Agents.Runtime;
 
@@ -26,6 +32,7 @@ public sealed class AgentExecutionRuntime
     private readonly IContextSpaceSkillDiscoveryService skillDiscoveryService;
     private readonly IContextSpaceSourceSearchService sourceSearchService;
     private readonly IRagRetriever? ragRetriever;
+    private readonly IVectorQueryTool? vectorQueryTool;
 
 
     /// <summary>
@@ -110,6 +117,76 @@ public sealed class AgentExecutionRuntime
         IContextSpaceSkillDiscoveryService? skillDiscoveryService,
         IContextSpaceSourceSearchService? sourceSearchService,
         IRagRetriever? ragRetriever)
+        : this(
+            agents,
+            openAIResponsesClient,
+            openAICompatibleClient,
+            toolInvoker,
+            contextSpaces,
+            skillDiscoveryService,
+            sourceSearchService,
+            ragRetriever,
+            vectorQueryTool: null)
+    {
+    }
+
+    /// <summary>
+    /// Yeni bir agent execution runtime örneği ile RAG retriever ve Vector Query Tool entegrasyonu oluşturur.
+    /// </summary>
+    /// <param name="agents">Runtime tarafından çalıştırılabilecek kayıtlı agent koleksiyonudur.</param>
+    /// <param name="openAIResponsesClient">OpenAI Responses API provider çağrılarını yürüten client örneğidir.</param>
+    /// <param name="openAICompatibleClient">OpenAI-compatible provider çağrılarını yürüten client örneğidir.</param>
+    /// <param name="toolInvoker">Agent tool çağrılarını çalıştıran invoker örneğidir.</param>
+    /// <param name="ragRetriever">Agent RAG sorgularını çalıştıracak opsiyonel retriever servisidir.</param>
+    /// <param name="vectorQueryTool">Agent'a bağlı Vector Query Tool sorgularını çalıştıracak opsiyonel tool örneğidir.</param>
+    /// <param name="contextSpaces">Agent çalışmasında kullanılabilecek context space tanımlarıdır.</param>
+    /// <param name="skillDiscoveryService">Context space skill keşif servisidir.</param>
+    /// <param name="sourceSearchService">Context source arama servisidir.</param>
+    public AgentExecutionRuntime(
+        IEnumerable<Agent> agents,
+        OpenAIResponsesClient openAIResponsesClient,
+        OpenAICompatibleClient openAICompatibleClient,
+        AgentToolInvoker toolInvoker,
+        IRagRetriever? ragRetriever,
+        IVectorQueryTool? vectorQueryTool,
+        IReadOnlyList<ContextSpace>? contextSpaces = null,
+        IContextSpaceSkillDiscoveryService? skillDiscoveryService = null,
+        IContextSpaceSourceSearchService? sourceSearchService = null)
+        : this(
+            agents,
+            openAIResponsesClient,
+            openAICompatibleClient,
+            toolInvoker,
+            contextSpaces,
+            skillDiscoveryService,
+            sourceSearchService,
+            ragRetriever,
+            vectorQueryTool)
+    {
+    }
+
+    /// <summary>
+    /// Tüm bağımlılıkları atayan çekirdek runtime kurucu metodudur.
+    /// </summary>
+    /// <param name="agents">Runtime tarafından çalıştırılabilecek kayıtlı agent koleksiyonudur.</param>
+    /// <param name="openAIResponsesClient">OpenAI Responses API provider çağrılarını yürüten client örneğidir.</param>
+    /// <param name="openAICompatibleClient">OpenAI-compatible provider çağrılarını yürüten client örneğidir.</param>
+    /// <param name="toolInvoker">Agent tool çağrılarını çalıştıran invoker örneğidir.</param>
+    /// <param name="contextSpaces">Agent çalışmasında kullanılabilecek context space tanımlarıdır.</param>
+    /// <param name="skillDiscoveryService">Context space skill keşif servisidir.</param>
+    /// <param name="sourceSearchService">Context source arama servisidir.</param>
+    /// <param name="ragRetriever">Agent RAG sorgularını çalıştıracak opsiyonel retriever servisidir.</param>
+    /// <param name="vectorQueryTool">Agent'a bağlı Vector Query Tool sorgularını çalıştıracak opsiyonel tool örneğidir.</param>
+    private AgentExecutionRuntime(
+        IEnumerable<Agent> agents,
+        OpenAIResponsesClient openAIResponsesClient,
+        OpenAICompatibleClient openAICompatibleClient,
+        AgentToolInvoker toolInvoker,
+        IReadOnlyList<ContextSpace>? contextSpaces,
+        IContextSpaceSkillDiscoveryService? skillDiscoveryService,
+        IContextSpaceSourceSearchService? sourceSearchService,
+        IRagRetriever? ragRetriever,
+        IVectorQueryTool? vectorQueryTool)
     {
         this.agents = agents;
         this.openAIResponsesClient = openAIResponsesClient;
@@ -120,6 +197,7 @@ public sealed class AgentExecutionRuntime
         this.sourceSearchService = sourceSearchService
                 ?? new ContextSpaceSourceSearchService(new ContextSpaceFileSystemSourceReader());
         this.ragRetriever = ragRetriever;
+        this.vectorQueryTool = vectorQueryTool;
     }
 
     /// <summary>
@@ -657,7 +735,24 @@ public sealed class AgentExecutionRuntime
         AgentQuery query,
         CancellationToken cancellationToken)
     {
-        if (ragRetriever is null || agent.Rag is null || !agent.Rag.Enabled)
+        if (agent.Rag is null || !agent.Rag.Enabled)
+        {
+            return runtimeContext;
+        }
+
+        // Vector Query Tool bridge: when the agent is associated with a Vector Query Tool (its RAG options carry
+        // a vector store name) and a tool is available, invoke the tool instead of the direct retriever path.
+        // Agents without a vector store name keep the existing retriever behavior unchanged.
+        if (vectorQueryTool is not null && !string.IsNullOrWhiteSpace(agent.Rag.VectorStoreName))
+        {
+            return await SearchRagContextWithVectorQueryToolAsync(
+                agent,
+                runtimeContext,
+                query,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        if (ragRetriever is null)
         {
             return runtimeContext;
         }
@@ -679,6 +774,96 @@ public sealed class AgentExecutionRuntime
             CandidateCount: runtimeContext.CandidateCount,
             SourceSearchResults: runtimeContext.RetrievedSourceContext,
             RagSearchResults: results);
+    }
+
+    /// <summary>
+    /// Agent'a bağlı Vector Query Tool yapılandırmasından bir tool isteği oluşturur, tool'u çalıştırır ve mevcut
+    /// RAG context formatına eşlenmiş sonuçları runtime context'e yerleştirir. Başarısız bir tool sonucu, mevcut
+    /// RAG retriever hatasıyla aynı deterministik akışa uyacak biçimde <see cref="InvalidOperationException"/>
+    /// olarak yükseltilir.
+    /// </summary>
+    private async Task<AgentRuntimeContext> SearchRagContextWithVectorQueryToolAsync(
+        Agent agent,
+        AgentRuntimeContext runtimeContext,
+        AgentQuery query,
+        CancellationToken cancellationToken)
+    {
+        var ragOptions = agent.Rag!;
+        var indexName = query.IndexName ?? ragOptions.IndexName;
+
+        var request = new VectorQueryToolRequest
+        {
+            VectorStoreName = ragOptions.VectorStoreName!,
+            IndexName = indexName ?? string.Empty,
+            QueryText = query.Message,
+            EmbeddingModel = ragOptions.EmbeddingModel,
+        };
+
+        var result = await vectorQueryTool!.ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
+
+        if (!result.Succeeded)
+        {
+            throw new InvalidOperationException(
+                string.IsNullOrWhiteSpace(result.Reason)
+                    ? "The Vector Query Tool retrieval failed."
+                    : result.Reason);
+        }
+
+        return new AgentRuntimeContext(
+            ContextSpaces: runtimeContext.ContextSpaces,
+            Skills: runtimeContext.Skills,
+            AttachedSourceCount: runtimeContext.AttachedSourceCount,
+            SearchedDocumentCount: runtimeContext.SearchedDocumentCount,
+            CandidateCount: runtimeContext.CandidateCount,
+            SourceSearchResults: runtimeContext.RetrievedSourceContext,
+            RagSearchResults: MapVectorQueryMatches(result.Matches));
+    }
+
+    /// <summary>
+    /// Vector Query Tool sonucundaki eşleşmeleri, mevcut RAG context assembly'sinin tükettiği
+    /// <see cref="RagSearchResult"/> formatına dönüştürür. İçerik, skor ve metadata korunur; boş kayıt kimlikleri
+    /// ve eksik document kimlikleri, required chunk alanlarının ihlal edilmemesi için güvenli değerlere düşer.
+    /// </summary>
+    private static IReadOnlyList<RagSearchResult> MapVectorQueryMatches(
+        IReadOnlyList<RetrievalResultItem> matches)
+    {
+        if (matches.Count == 0)
+        {
+            return [];
+        }
+
+        var results = new List<RagSearchResult>(matches.Count);
+
+        foreach (var match in matches)
+        {
+            var chunkId = string.IsNullOrWhiteSpace(match.RecordId)
+                ? "vector-query-match"
+                : match.RecordId;
+
+            var documentId =
+                match.Metadata.Values.TryGetValue("documentId", out var value) &&
+                !string.IsNullOrWhiteSpace(value)
+                    ? value
+                    : chunkId;
+
+            results.Add(new RagSearchResult
+            {
+                Chunk = new RagChunk
+                {
+                    Id = chunkId,
+                    DocumentId = documentId,
+                    Content = match.Content,
+                    Metadata = new RagChunkMetadata
+                    {
+                        AdditionalMetadata = new RagMetadata(match.Metadata.Values),
+                    },
+                },
+                Score = match.Score,
+                Metadata = new RagMetadata(match.Metadata.Values),
+            });
+        }
+
+        return results;
     }
 
     /// <summary>

@@ -254,6 +254,40 @@ public class Agent
     }
 
     /// <summary>
+    /// Associates the agent with a Vector Query Tool definition by configuring the vector store name, index
+    /// name, and optional embedding model identifier used by agent RAG queries. The values are carried as
+    /// configuration only: this method does not resolve a provider, select a vector store, or invoke the tool.
+    /// It reuses the existing <see cref="AgentRagOptions"/> surface and, like <see cref="UseRagIndex"/>,
+    /// replaces any previously configured RAG options.
+    /// </summary>
+    /// <param name="vectorStoreName">The vector store name to associate with the agent.</param>
+    /// <param name="indexName">The vector index name used by agent RAG queries.</param>
+    /// <param name="embeddingModel">
+    /// The optional embedding model identifier. A null or whitespace value associates no embedding model.
+    /// </param>
+    /// <returns>The same agent instance so calls can be chained.</returns>
+    public Agent UseVectorQueryTool(
+        string vectorStoreName,
+        string indexName,
+        string? embeddingModel = null)
+    {
+        var normalizedVectorStoreName = ValidateRequired(vectorStoreName, nameof(vectorStoreName));
+        var normalizedIndexName = ValidateRequired(indexName, nameof(indexName));
+        var normalizedEmbeddingModel = string.IsNullOrWhiteSpace(embeddingModel)
+            ? null
+            : embeddingModel.Trim();
+
+        Rag = new AgentRagOptions
+        {
+            VectorStoreName = normalizedVectorStoreName,
+            IndexName = normalizedIndexName,
+            EmbeddingModel = normalizedEmbeddingModel,
+        };
+
+        return this;
+    }
+
+    /// <summary>
     /// Agent'a yeni bir tool kaydı ekler.
     /// </summary>
     /// <param name="tool">Eklenecek tool kaydıdır.</param>

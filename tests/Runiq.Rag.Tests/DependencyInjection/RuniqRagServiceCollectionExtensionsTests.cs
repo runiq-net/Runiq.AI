@@ -5,6 +5,7 @@ using Runiq.Rag.Abstractions.Chunking;
 using Runiq.Rag.Abstractions.Embeddings;
 using Runiq.Rag.Abstractions.Retrieval;
 using Runiq.Rag.Abstractions.Services;
+using Runiq.Rag.Abstractions.Tools;
 using Runiq.Rag.Abstractions.VectorStores;
 using Runiq.Rag.Chunking;
 using Runiq.Rag.Configuration;
@@ -16,9 +17,11 @@ using Runiq.Rag.Models.Ingestion;
 using Runiq.Rag.Models.Queries;
 using Runiq.Rag.Models.Retrieval;
 using Runiq.Rag.Models.Search;
+using Runiq.Rag.Models.Tools;
 using Runiq.Rag.Models.VectorStores;
 using Runiq.Rag.Retrieval;
 using Runiq.Rag.Services;
+using Runiq.Rag.Tools;
 using Runiq.Rag.VectorStores;
 using Runiq.Rag.VectorStores.InMemory;
 
@@ -208,6 +211,73 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         using var serviceProvider = services.BuildServiceProvider();
 
         Assert.IsType<TestRetrievalPipeline>(serviceProvider.GetRequiredService<IRagRetrievalPipeline>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterVectorQueryTool()
+    {
+        // Verifies that the default RAG registration exposes the Vector Query Tool contract.
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IVectorQueryTool));
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveDefaultVectorQueryTool()
+    {
+        // Verifies that the default RAG registration resolves the Vector Query Tool without manual wiring, reusing the retrieval pipeline it depends on.
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+        using var scope = serviceProvider.CreateScope();
+
+        Assert.IsType<DefaultVectorQueryTool>(
+            scope.ServiceProvider.GetRequiredService<IVectorQueryTool>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterVectorQueryToolWithScopedLifetime()
+    {
+        // Verifies that the Vector Query Tool registration follows the scoped lifetime of the retrieval pipeline it delegates to.
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Equal(
+            ServiceLifetime.Scoped,
+            services.Single(descriptor => descriptor.ServiceType == typeof(IVectorQueryTool)).Lifetime);
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldNotOverwriteUserRegisteredVectorQueryTool()
+    {
+        // Verifies that a Vector Query Tool registered before AddRuniqRag is preserved as a custom override.
+        var services = new ServiceCollection();
+        services.AddScoped<IVectorQueryTool, TestVectorQueryTool>();
+
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+        using var scope = serviceProvider.CreateScope();
+
+        Assert.IsType<TestVectorQueryTool>(scope.ServiceProvider.GetRequiredService<IVectorQueryTool>());
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigure_ShouldAllowCustomVectorQueryTool()
+    {
+        // Verifies that the fluent builder can replace the default Vector Query Tool implementation.
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(rag => rag.UseVectorQueryTool<TestVectorQueryTool>());
+
+        using var serviceProvider = services.BuildServiceProvider();
+        using var scope = serviceProvider.CreateScope();
+
+        Assert.IsType<TestVectorQueryTool>(scope.ServiceProvider.GetRequiredService<IVectorQueryTool>());
     }
 
     [Fact]
@@ -1347,6 +1417,16 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
             CancellationToken cancellationToken = default)
         {
             return Task.FromResult(RetrievalResult.Success());
+        }
+    }
+
+    private sealed class TestVectorQueryTool : IVectorQueryTool
+    {
+        public Task<VectorQueryToolResult> ExecuteAsync(
+            VectorQueryToolRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(VectorQueryToolResult.Success());
         }
     }
 

@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Runiq.Rag.Abstractions.Chunking;
 using Runiq.Rag.Abstractions.Embeddings;
 using Runiq.Rag.Abstractions.Retrieval;
+using Runiq.Rag.Abstractions.Tools;
 using Runiq.Rag.Abstractions.VectorStores;
 using Runiq.Rag.DependencyInjection;
 
@@ -97,6 +98,19 @@ public sealed class RagBuilder
         where TPipeline : class, IRagRetrievalPipeline
     {
         services.Replace(ServiceDescriptor.Scoped<IRagRetrievalPipeline, TPipeline>());
+
+        return this;
+    }
+
+    /// <summary>
+    /// Replaces the configured Vector Query Tool with the specified tool type.
+    /// </summary>
+    /// <typeparam name="TTool">The Vector Query Tool implementation type.</typeparam>
+    /// <returns>The same builder instance so calls can be chained.</returns>
+    public RagBuilder UseVectorQueryTool<TTool>()
+        where TTool : class, IVectorQueryTool
+    {
+        services.Replace(ServiceDescriptor.Scoped<IVectorQueryTool, TTool>());
 
         return this;
     }
