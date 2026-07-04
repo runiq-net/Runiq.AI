@@ -1,10 +1,12 @@
 using Microsoft.Extensions.DependencyInjection;
 using Runiq.Rag.Abstractions.Embeddings;
 using Runiq.Rag.Abstractions.Retrieval;
+using Runiq.Rag.Abstractions.Tools;
 using Runiq.Rag.Abstractions.VectorStores;
 using Runiq.Rag.DependencyInjection;
 using Runiq.Rag.Models.Metadata;
 using Runiq.Rag.Models.Retrieval;
+using Runiq.Rag.Models.Tools;
 using Runiq.Rag.Models.VectorStores;
 
 namespace Runiq.Rag.Tests.Retrieval.Integration.Support;
@@ -22,6 +24,7 @@ public sealed class RetrievalIntegrationContext : IDisposable
     private readonly DeterministicKeywordEmbeddingProvider embeddingProvider;
     private readonly IRagVectorStore vectorStore;
     private readonly IRagRetrievalPipeline retrievalPipeline;
+    private readonly IVectorQueryTool vectorQueryTool;
     private readonly HashSet<string> createdIndexes = new(StringComparer.Ordinal);
 
     private RetrievalIntegrationContext(
@@ -32,6 +35,7 @@ public sealed class RetrievalIntegrationContext : IDisposable
         this.embeddingProvider = embeddingProvider;
         vectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
         retrievalPipeline = serviceProvider.GetRequiredService<IRagRetrievalPipeline>();
+        vectorQueryTool = serviceProvider.GetRequiredService<IVectorQueryTool>();
     }
 
     /// <summary>
@@ -108,6 +112,35 @@ public sealed class RetrievalIntegrationContext : IDisposable
     {
         return retrievalPipeline.RetrieveAsync(new RetrievalRequest
         {
+            IndexName = indexName,
+            QueryText = queryText,
+            TopK = topK,
+            MetadataFilter = metadataFilter ?? RetrievalMetadataFilter.Empty,
+        });
+    }
+
+    /// <summary>
+    /// Runs the resolved <see cref="IVectorQueryTool"/> end to end against the seeded in-memory store, exercising
+    /// the same production wiring the pipeline uses (query text → embedding → vector search → filtered TopK)
+    /// through the agent-facing tool contract. The <paramref name="vectorStoreName"/> is an association value the
+    /// tool carries but does not route on; any non-empty value drives the configured in-memory store.
+    /// </summary>
+    /// <param name="indexName">The index the tool query targets.</param>
+    /// <param name="queryText">The natural-language query text to embed and search with.</param>
+    /// <param name="vectorStoreName">The associated vector store name carried on the tool request.</param>
+    /// <param name="topK">The maximum number of matches to return.</param>
+    /// <param name="metadataFilter">The metadata filter to apply; defaults to no filtering.</param>
+    /// <returns>The tool result produced by the resolved Vector Query Tool.</returns>
+    public Task<VectorQueryToolResult> ExecuteVectorQueryToolAsync(
+        string indexName,
+        string queryText,
+        string vectorStoreName = "in-memory-store",
+        int topK = 5,
+        RetrievalMetadataFilter? metadataFilter = null)
+    {
+        return vectorQueryTool.ExecuteAsync(new VectorQueryToolRequest
+        {
+            VectorStoreName = vectorStoreName,
             IndexName = indexName,
             QueryText = queryText,
             TopK = topK,

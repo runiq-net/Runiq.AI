@@ -5,12 +5,14 @@ using Runiq.Rag.Abstractions.Chunking;
 using Runiq.Rag.Abstractions.Embeddings;
 using Runiq.Rag.Abstractions.Retrieval;
 using Runiq.Rag.Abstractions.Services;
+using Runiq.Rag.Abstractions.Tools;
 using Runiq.Rag.Abstractions.VectorStores;
 using Runiq.Rag.Chunking;
 using Runiq.Rag.Configuration;
 using Runiq.Rag.Embeddings;
 using Runiq.Rag.Retrieval;
 using Runiq.Rag.Services;
+using Runiq.Rag.Tools;
 using Runiq.Rag.VectorStores;
 using Runiq.Rag.VectorStores.InMemory;
 
@@ -41,6 +43,7 @@ public static class RuniqRagServiceCollectionExtensions
         services.TryAddSingleton<IRagChunker, DefaultRagChunker>();
         services.TryAddScoped<IRagRetriever, DefaultRetriever>();
         services.TryAddScoped<IRagRetrievalPipeline, DefaultRagRetrievalPipeline>();
+        services.TryAddScoped<IVectorQueryTool, DefaultVectorQueryTool>();
         services.TryAddScoped<IRagService, RagService>();
         services.TryAddScoped<IRagDocumentIngestionService, DefaultRagDocumentIngestionService>();
         services.Configure<RagOptions>(_ => { });

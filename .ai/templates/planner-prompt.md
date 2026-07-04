@@ -7,16 +7,26 @@ Given a feature description, create an execution plan only. Do not change applic
 Requirements:
 
 - Read `.ai/standards/development.md` and `.ai/standards/review.md`.
+- Read `.ai/context/repository-map.md`.
+- Read `.ai/context/studio.md` when planning dashboard, Studio, embedded dashboard, UI, route, or navigation work.
+- Read `.ai/context/testing.md` when planning test work.
+- Use the actual repository structure.
+- Do not invent project ownership.
+- Mark uncertain ownership explicitly as an inferred assumption.
 - Convert the feature into small, independent execution units.
 - Only the first execution unit may have `Status: Ready`.
 - All later units must have `Status: Blocked` until their dependencies are completed.
 - For every execution unit, write:
-  - Goal
+  - Area
+  - Owned Projects
   - Depends On
-  - Expected Output
+  - Goal
+  - Scope
+  - Out of Scope
+  - Implementation Notes
+  - Acceptance Criteria
   - Validation
-  - Estimated Files
-  - Risk
+  - Change Log
 - Keep units scoped so a developer agent can complete one unit without continuing into blocked work.
 - Do not create GitHub issues unless the user explicitly requests it.
 
