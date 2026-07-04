@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Runiq.Agents.Providers.OpenAI;
 using Runiq.Agents.Runtime;
 using Runiq.Agents.Tools;
@@ -10,6 +11,7 @@ using Runiq.Core.Configuration;
 using Runiq.Core.ContextSpaces;
 using Runiq.Core.Metadata;
 using Runiq.Core.Mcp;
+using Runiq.Core.Rag;
 using Runiq.Core.Tools;
 using Runiq.Core.Validation;
 
@@ -45,6 +47,9 @@ public static class RuniqServerServiceCollectionExtensions
         // Source context
         services.AddScoped<ContextSpaceSourceDocumentApiHandler>();
         services.AddScoped<ContextSpaceSkillDocumentApiHandler>();
+
+        // RAG visibility (read-only; replaceable by host registrations)
+        services.TryAddScoped<IRuniqRagInfoProvider, RuniqRagInfoReader>();
 
         return services;
     }

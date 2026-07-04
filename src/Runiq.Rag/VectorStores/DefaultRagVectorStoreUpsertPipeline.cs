@@ -1,3 +1,4 @@
+using Runiq.Rag.Abstractions.Telemetry;
 using Runiq.Rag.Abstractions.VectorStores;
 using Runiq.Rag.Models.Ingestion;
 using Runiq.Rag.Models.Metadata;
@@ -32,6 +33,7 @@ public sealed class DefaultRagVectorStoreUpsertPipeline : IRagVectorStoreUpsertP
     private readonly IRagUpsertVectorRequestMapper upsertVectorRequestMapper;
     private readonly IRagVectorRecordDimensionValidator dimensionValidator;
     private readonly IRagVectorStore vectorStore;
+    private readonly IRagOperationTelemetryRecorder? telemetryRecorder;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DefaultRagVectorStoreUpsertPipeline"/> class.
@@ -39,14 +41,20 @@ public sealed class DefaultRagVectorStoreUpsertPipeline : IRagVectorStoreUpsertP
     /// <param name="upsertVectorRequestMapper">The mapper used to convert ingestion output into an upsert request.</param>
     /// <param name="dimensionValidator">The provider-independent vector record dimension validator.</param>
     /// <param name="vectorStore">The provider-independent vector store contract used to write the upsert request.</param>
+    /// <param name="telemetryRecorder">
+    /// The optional, strictly observational telemetry recorder that receives each upsert result. Null disables
+    /// recording without changing upsert behavior.
+    /// </param>
     public DefaultRagVectorStoreUpsertPipeline(
         IRagUpsertVectorRequestMapper upsertVectorRequestMapper,
         IRagVectorRecordDimensionValidator dimensionValidator,
-        IRagVectorStore vectorStore)
+        IRagVectorStore vectorStore,
+        IRagOperationTelemetryRecorder? telemetryRecorder = null)
     {
         this.upsertVectorRequestMapper = upsertVectorRequestMapper ?? throw new ArgumentNullException(nameof(upsertVectorRequestMapper));
         this.dimensionValidator = dimensionValidator ?? throw new ArgumentNullException(nameof(dimensionValidator));
         this.vectorStore = vectorStore ?? throw new ArgumentNullException(nameof(vectorStore));
+        this.telemetryRecorder = telemetryRecorder;
     }
 
     /// <inheritdoc />
@@ -68,7 +76,11 @@ public sealed class DefaultRagVectorStoreUpsertPipeline : IRagVectorStoreUpsertP
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            return Task.FromResult(CreateMappingFailureResult(indexName, ingestionResult.Items.Count));
+            var mappingFailure = CreateMappingFailureResult(indexName, ingestionResult.Items.Count);
+
+            RecordUpsert(mappingFailure);
+
+            return Task.FromResult(mappingFailure);
         }
 
         var request = expectedDimensions.HasValue
@@ -92,6 +104,23 @@ public sealed class DefaultRagVectorStoreUpsertPipeline : IRagVectorStoreUpsertP
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
+        var result = await UpsertCoreAsync(request, cancellationToken).ConfigureAwait(false);
+
+        RecordUpsert(result);
+
+        return result;
+    }
+
+    /// <summary>
+    /// Runs the upsert pipeline exactly as documented on the class contract. Kept separate from the public
+    /// request overload so every result boundary flows through a single telemetry recording point without
+    /// changing any result or error handling behavior. Cancellation surfaced as an exception bypasses
+    /// recording because no result was produced.
+    /// </summary>
+    private async Task<UpsertVectorResult> UpsertCoreAsync(
+        UpsertVectorRequest request,
+        CancellationToken cancellationToken)
+    {
         if (request.ExpectedDimensions.HasValue)
         {
             var validationResult = await dimensionValidator.ValidateAsync(
@@ -116,6 +145,28 @@ public sealed class DefaultRagVectorStoreUpsertPipeline : IRagVectorStoreUpsertP
         }
 
         return NormalizeStoreResult(storeResult, request);
+    }
+
+    /// <summary>
+    /// Forwards the upsert result to the optional telemetry recorder. Recording is strictly observational:
+    /// when no recorder is configured nothing happens, and a recorder that throws is ignored so that
+    /// telemetry can never alter the upsert result or error handling contract.
+    /// </summary>
+    private void RecordUpsert(UpsertVectorResult result)
+    {
+        if (telemetryRecorder is null)
+        {
+            return;
+        }
+
+        try
+        {
+            telemetryRecorder.RecordUpsert(result);
+        }
+        catch
+        {
+            // Telemetry must never change upsert behavior; recorder failures are intentionally ignored.
+        }
     }
 
     /// <summary>

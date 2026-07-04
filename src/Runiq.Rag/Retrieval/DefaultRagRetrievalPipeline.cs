@@ -1,5 +1,6 @@
 using Runiq.Rag.Abstractions.Embeddings;
 using Runiq.Rag.Abstractions.Retrieval;
+using Runiq.Rag.Abstractions.Telemetry;
 using Runiq.Rag.Abstractions.VectorStores;
 using Runiq.Rag.Models.Retrieval;
 using Runiq.Rag.Models.VectorStores;
@@ -36,18 +37,32 @@ public sealed class DefaultRagRetrievalPipeline : IRagRetrievalPipeline
 
     private readonly IRagEmbeddingProvider embeddingProvider;
     private readonly IRagVectorStore vectorStore;
+    private readonly IRagOperationTelemetryRecorder? telemetryRecorder;
+    private readonly TimeProvider timeProvider;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DefaultRagRetrievalPipeline"/> class.
     /// </summary>
     /// <param name="embeddingProvider">The provider-independent embedding abstraction used to embed query text.</param>
     /// <param name="vectorStore">The provider-independent vector store contract used to run the similarity query.</param>
+    /// <param name="telemetryRecorder">
+    /// The optional, strictly observational telemetry recorder that receives each retrieval result and its
+    /// measured duration. Null disables recording without changing retrieval behavior.
+    /// </param>
+    /// <param name="timeProvider">
+    /// The time source used only to measure retrieval duration for telemetry. Null falls back to
+    /// <see cref="TimeProvider.System"/>.
+    /// </param>
     public DefaultRagRetrievalPipeline(
         IRagEmbeddingProvider embeddingProvider,
-        IRagVectorStore vectorStore)
+        IRagVectorStore vectorStore,
+        IRagOperationTelemetryRecorder? telemetryRecorder = null,
+        TimeProvider? timeProvider = null)
     {
         this.embeddingProvider = embeddingProvider ?? throw new ArgumentNullException(nameof(embeddingProvider));
         this.vectorStore = vectorStore ?? throw new ArgumentNullException(nameof(vectorStore));
+        this.telemetryRecorder = telemetryRecorder;
+        this.timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     /// <inheritdoc />
@@ -57,6 +72,24 @@ public sealed class DefaultRagRetrievalPipeline : IRagRetrievalPipeline
     {
         cancellationToken.ThrowIfCancellationRequested();
 
+        var startTimestamp = timeProvider.GetTimestamp();
+        var result = await RetrieveCoreAsync(request, cancellationToken).ConfigureAwait(false);
+
+        RecordRetrieval(result, timeProvider.GetElapsedTime(startTimestamp));
+
+        return result;
+    }
+
+    /// <summary>
+    /// Runs the retrieval pipeline exactly as documented on the class contract. Kept separate from
+    /// <see cref="RetrieveAsync"/> so every result boundary flows through a single telemetry recording
+    /// point without changing any result or error handling behavior. Cancellation surfaced as an
+    /// exception bypasses recording because no result was produced.
+    /// </summary>
+    private async Task<RetrievalResult> RetrieveCoreAsync(
+        RetrievalRequest request,
+        CancellationToken cancellationToken)
+    {
         var validationFailure = ValidateRequest(request);
         if (validationFailure is not null)
         {
@@ -96,6 +129,28 @@ public sealed class DefaultRagRetrievalPipeline : IRagRetrievalPipeline
         }
 
         return RetrievalResult.Success(MapItems(queryResult), queryResult.Metadata);
+    }
+
+    /// <summary>
+    /// Forwards the retrieval result and measured duration to the optional telemetry recorder. Recording is
+    /// strictly observational: when no recorder is configured nothing happens, and a recorder that throws is
+    /// ignored so that telemetry can never alter the retrieval result or error handling contract.
+    /// </summary>
+    private void RecordRetrieval(RetrievalResult result, TimeSpan duration)
+    {
+        if (telemetryRecorder is null)
+        {
+            return;
+        }
+
+        try
+        {
+            telemetryRecorder.RecordRetrieval(result, duration);
+        }
+        catch
+        {
+            // Telemetry must never change retrieval behavior; recorder failures are intentionally ignored.
+        }
     }
 
     /// <summary>

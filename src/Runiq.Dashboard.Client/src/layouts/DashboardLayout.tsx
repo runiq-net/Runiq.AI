@@ -2,6 +2,7 @@ import {
   Bot,
   Cable,
   Database,
+  Search,
   GitBranch,
   LogOut,
   PanelLeftOpen,
@@ -22,6 +23,7 @@ const navigationIcons: Record<DashboardPage, LucideIcon> = {
   agents: Bot,
   tools: Wrench,
   mcp: Cable,
+  rag: Search,
   workflows: GitBranch,
   'context-spaces': Database,
 };
