@@ -116,7 +116,7 @@ Runiq AI is modular. `Runiq.AI.Agents` can be used together with other Runiq pac
 | Package | Purpose |
 |---|---|
 | `Runiq.AI.Core` | Hosts agents and the embedded dashboard in ASP.NET Core |
-| `Runiq.AI.ContextSpaces` | Adds context and source-reading primitives |
+| `Runiq.AI.Rag` | Owns document-based retrieval, vector indexes, and RAG query primitives |
 | `Runiq.AI.Workflows` | Orchestrates agents in code-first workflows |
 | `Runiq.AI.Mcp` | Exposes ASP.NET Core applications through MCP-compatible tools |
 

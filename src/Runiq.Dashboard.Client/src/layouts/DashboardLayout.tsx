@@ -1,7 +1,6 @@
 import {
   Bot,
   Cable,
-  Database,
   Search,
   GitBranch,
   LogOut,
@@ -25,7 +24,6 @@ const navigationIcons: Record<DashboardPage, LucideIcon> = {
   mcp: Cable,
   rag: Search,
   workflows: GitBranch,
-  'context-spaces': Database,
 };
 
 const publicAsset = (fileName: string) =>

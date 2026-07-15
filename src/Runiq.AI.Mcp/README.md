@@ -221,7 +221,6 @@ Runiq AI is modular. `Runiq.AI.Mcp` can be used together with other Runiq packag
 |---|---|
 | `Runiq.AI.Core` | Hosts agents and the embedded dashboard in ASP.NET Core |
 | `Runiq.AI.Agents` | Defines agents, tools, provider integration, and streaming execution primitives |
-| `Runiq.AI.ContextSpaces` | Provides context spaces and source-reading primitives |
 | `Runiq.AI.Workflows` | Provides code-first workflow orchestration primitives |
 
 ## Documentation

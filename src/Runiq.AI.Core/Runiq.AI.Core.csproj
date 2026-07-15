@@ -27,7 +27,4 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\Runiq.AI.ContextSpaces\Runiq.AI.ContextSpaces.csproj" />
-  </ItemGroup>
 </Project>

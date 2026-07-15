@@ -8,13 +8,11 @@ using Runiq.AI.Agents.Tools;
 using Runiq.AI.Agents.Validation;
 using Runiq.AI.Core.AI.Chat;
 using Runiq.AI.Core.AI.Capabilities;
-using Runiq.AI.ContextSpaces.Models.Sources;
 using Runiq.AI.Core.Agents;
 using Runiq.AI.Core.Configuration;
 using Runiq.AI.Core.Metadata;
 using Runiq.AI.Core.Studio;
 using Runiq.AI.Core.Tools;
-using Runiq.AI.Core.Validation;
 
 namespace Runiq.AI.Core;
 
@@ -41,10 +39,7 @@ public static class RuniqAgentServerServiceCollectionExtensions
         configure(options);
 
         AgentValidator.ValidateRegisteredAgents(options.Agents);
-        RuniqServerRegistrationValidator.Validate(options);
 
-        services.AddSingleton<IReadOnlyList<ContextSpace>>(
-            options.ContextSpaces.ToArray());
 
         services.AddSingleton<IReadOnlyList<AgentToolRegistration>>(
             BuildRegisteredToolRegistry(options));

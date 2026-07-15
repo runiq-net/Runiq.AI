@@ -31,12 +31,6 @@ samples/
       ExpenseDeskDatabase.cs
       ExpenseDeskSeedData.cs
 
-    Context/
-      expense-policy.md
-
-    Skills/
-      expense-analysis.md
-
     Tools/
       ExpenseSearchTool.cs
 
@@ -46,8 +40,6 @@ samples/
 ```
 
 `Program.cs` wires the sample app, Runiq server, services, agent, and dashboard. The agent definition lives under `Agents`, the tool implementation lives under `Tools`, and the schema plus deterministic seed data live under `Data`.
-
-`Context/expense-policy.md` and `Skills/expense-analysis.md` are sample assets. They are kept for future policy-aware examples, but the current Expense Data Analyst is a data-only agent.
 
 ## Agent: Expense Data Analyst
 
@@ -201,7 +193,6 @@ Possible extensions:
 - Expense Summary tool for deterministic SQL aggregations
 - Expense Policy Advisor agent
 - Expense Policy Check tool
-- Policy-aware analysis using `Context/expense-policy.md`
 - Budget comparison examples
 
 ## Disclaimer

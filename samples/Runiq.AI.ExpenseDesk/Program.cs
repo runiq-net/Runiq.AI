@@ -1,6 +1,5 @@
 using Runiq.AI.Core;
 using Runiq.AI.ExpenseDesk.Agents;
-using Runiq.AI.ExpenseDesk.Context;
 using Runiq.AI.ExpenseDesk.Data;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -11,7 +10,6 @@ builder.Services.AddSingleton<ExpenseDeskDatabase>();
 
 builder.Services.AddRuniqServer(options =>
 {
-    options.AddContextSpace(ExpenseDeskContext.Create());
     options.AddAgent(ExpenseDataAnalyst.Create(openAiApiKey));
 });
 

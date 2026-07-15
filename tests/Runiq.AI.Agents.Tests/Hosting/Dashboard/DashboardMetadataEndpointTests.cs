@@ -5,7 +5,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Runiq.AI.Agents;
 using Runiq.AI.Agents.Tools;
-using Runiq.AI.ContextSpaces.Models.Sources;
 using Runiq.AI.Core;
 using Runiq.AI.Core.Configuration;
 using System.Net;
@@ -48,19 +47,6 @@ public sealed class DashboardMetadataEndpointTests
         Assert.Equal("minimal", agent.GetProperty("reasoningEffort").GetString());
         Assert.Equal("low", agent.GetProperty("verbosity").GetString());
 
-        var contextSpaces = agent.GetProperty("contextSpaces");
-
-        Assert.Equal(JsonValueKind.Array, contextSpaces.ValueKind);
-        Assert.Single(contextSpaces.EnumerateArray());
-
-        var contextSpace = contextSpaces[0];
-
-        Assert.Equal("test-context", contextSpace.GetProperty("id").GetString());
-        Assert.Equal("Test Context", contextSpace.GetProperty("name").GetString());
-        Assert.Equal("Test context description.", contextSpace.GetProperty("description").GetString());
-        Assert.Equal(1, contextSpace.GetProperty("sourceCount").GetInt32());
-        Assert.Equal(0, contextSpace.GetProperty("documentCount").GetInt32());
-        Assert.Equal(0, contextSpace.GetProperty("skillCount").GetInt32());
 
         var tools = agent.GetProperty("tools");
 
@@ -71,53 +57,6 @@ public sealed class DashboardMetadataEndpointTests
 
         Assert.Equal("test_tool", tool.GetProperty("name").GetString());
         Assert.Equal("Test Tool", tool.GetProperty("displayName").GetString());
-    }
-
-    [Fact]
-    public async Task MetadataContextSpacesEndpoint_ShouldReturnRegisteredContextSpaces()
-    {
-        // Dashboard metadata endpoint'inin kayitli context space bilgisini JSON olarak döndürdügünü dogrular.
-        using var server = CreateServer();
-
-        var response = await server.GetTestClient().GetAsync("/dashboard/metadata/context-spaces");
-
-        response.EnsureSuccessStatusCode();
-
-        var json = await response.Content.ReadAsStringAsync();
-        using var document = JsonDocument.Parse(json);
-
-        var contextSpaces = document.RootElement;
-
-        Assert.Equal(JsonValueKind.Array, contextSpaces.ValueKind);
-        Assert.Single(contextSpaces.EnumerateArray());
-
-        var contextSpace = contextSpaces[0];
-
-        Assert.Equal("test-context", contextSpace.GetProperty("id").GetString());
-        Assert.Equal("Test Context", contextSpace.GetProperty("name").GetString());
-        Assert.Equal("Test context description.", contextSpace.GetProperty("description").GetString());
-
-        var sources = contextSpace.GetProperty("sources");
-
-        Assert.Equal(JsonValueKind.Array, sources.ValueKind);
-        Assert.Single(sources.EnumerateArray());
-
-        var source = sources[0];
-
-        Assert.Equal("test-source", source.GetProperty("id").GetString());
-        Assert.Equal("Test Source", source.GetProperty("name").GetString());
-        Assert.Equal("UploadedDocuments", source.GetProperty("kind").GetString());
-        Assert.Equal("Test source description.", source.GetProperty("description").GetString());
-
-        var attachedAgents = contextSpace.GetProperty("attachedAgents");
-
-        Assert.Equal(JsonValueKind.Array, attachedAgents.ValueKind);
-        Assert.Single(attachedAgents.EnumerateArray());
-
-        var attachedAgent = attachedAgents[0];
-
-        Assert.Equal("test-agent", attachedAgent.GetProperty("id").GetString());
-        Assert.Equal("Test Agent", attachedAgent.GetProperty("name").GetString());
     }
 
     [Fact]
@@ -194,24 +133,13 @@ public sealed class DashboardMetadataEndpointTests
 
                         services.AddRuniqServer(options =>
                         {
-                            options.AddContextSpace(new ContextSpace(
-                                    id: "test-context",
-                                    name: "Test Context",
-                                    description: "Test context description.")
-                                .AddSource(new ContextSpaceSource(
-                                    id: "test-source",
-                                    name: "Test Source",
-                                    kind: ContextSpaceSourceKind.UploadedDocuments,
-                                    description: "Test source description.")));
-
                             options.AddAgent(new Agent(
                                     id: "test-agent",
                                     name: "Test Agent",
                                     instructions: "Test instructions.",
                                     model: "openai/gpt-5",
                                     apiKey: "test-key")
-                                .AddTool<TestTool>()
-                                .UseContextSpace("test-context"));
+                                .AddTool<TestTool>());
 
                             options.AddAgent(new Agent(
                                 id: "planner-agent",

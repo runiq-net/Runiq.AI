@@ -1,7 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Runiq.AI.ContextSpaces.Services;
-using Runiq.AI.Core.ContextSpaces;
 using Runiq.AI.Core.Mcp;
 using Runiq.AI.Core.Rag;
 
@@ -21,13 +19,9 @@ public static class RuniqServerServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.AddSingleton<IContextSpaceSkillDiscoveryService, ContextSpaceSkillDiscoveryService>();
-        services.AddSingleton<IContextSpaceSourceReader, ContextSpaceFileSystemSourceReader>();
 
         services.AddScoped<RuniqMcpToolRunApiHandler>();
 
-        services.AddScoped<ContextSpaceSourceDocumentApiHandler>();
-        services.AddScoped<ContextSpaceSkillDocumentApiHandler>();
 
         services.TryAddScoped<IRuniqRagInfoProvider, RuniqRagInfoReader>();
 

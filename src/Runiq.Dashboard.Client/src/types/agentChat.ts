@@ -14,75 +14,16 @@ export type AgentToolCall = {
   errorMessage?: string;
 };
 
-export type AgentProvidedContextSpace = {
-  id: string;
-  name: string;
-  description?: string | null;
-};
-
-export type AgentProvidedSkill = {
-  id: string;
-  name: string;
-  description?: string | null;
-  version?: string | null;
-  tags?: string[] | null;
-  sourceId?: string | null;
-  relativePath?: string | null;
-};
-
-export type AgentProvidedSource = {
-  id: string;
-  name: string;
-  kind?: string | null;
-  description?: string | null;
-};
-
-export type AgentProvidedContext = {
-  contextSpaces: AgentProvidedContextSpace[];
-  skills: AgentProvidedSkill[];
-  sources: AgentProvidedSource[];
-};
-
-export type AgentLoadedSkill = {
-  skillId: string;
-  skillName: string;
-  version?: string | null;
-  description?: string | null;
-};
-
-export type AgentContextSearchSummary = {
-  attachedSourceCount: number;
-  searchedDocumentCount: number;
-  candidateCount: number;
-  selectedCount: number;
-};
-
-export type AgentSourceSearchResult = {
-  sourceId: string;
-  sourceName: string;
-  relativePath: string;
-  fileName: string;
-  snippet: string;
-  score: number;
-};
-
 export type AgentChatMessage = {
   id: string;
   role: AgentChatMessageRole;
   content: string;
-  context?: AgentProvidedContext;
-  loadedSkills?: AgentLoadedSkill[];
-  contextSearchSummary?: AgentContextSearchSummary;
-  sourceSearchResults?: AgentSourceSearchResult[];
   toolCalls?: AgentToolCall[];
   isStreaming?: boolean;
 };
 
 export type AgentChatStreamEventType =
-  | 'context_provided'
-  | 'skill_loaded'
   | 'assistant_delta'
-  | 'context_searched'
   | 'tool_call_started'
   | 'tool_call_completed'
   | 'tool_call_failed'
@@ -92,12 +33,6 @@ export type AgentChatStreamEventType =
 export type AgentChatStreamEvent = {
   type: AgentChatStreamEventType;
   content?: string | null;
-  contextSpaces?: AgentProvidedContextSpace[] | null;
-  skills?: AgentProvidedSkill[] | null;
-  sources?: AgentProvidedSource[] | null;
-  loadedSkills?: AgentLoadedSkill[] | null;
-  contextSearchSummary?: AgentContextSearchSummary | null;
-  sourceSearchResults?: AgentSourceSearchResult[] | null;
   toolCallId?: string | null;
   toolName?: string | null;
   argumentsJson?: string | null;

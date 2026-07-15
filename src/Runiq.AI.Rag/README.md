@@ -15,6 +15,5 @@ dotnet add package Runiq.AI.Rag --prerelease
 | Package | Purpose |
 | --- | --- |
 | `Runiq.AI.Agents` | Agent definitions, tool execution, provider integration, streaming events, and execution results. |
-| `Runiq.AI.ContextSpaces` | Context spaces, source readers, skill discovery, and document preview primitives. |
 | `Runiq.AI.Core` | ASP.NET Core hosting extensions, runtime endpoints, and the embedded dashboard. |
 | `Runiq.AI.Workflows` | Code-first workflow orchestration primitives for agent runtime and dashboard scenarios. |

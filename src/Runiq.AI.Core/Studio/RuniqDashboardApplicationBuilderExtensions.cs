@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
-using Runiq.AI.Core.ContextSpaces;
 using Runiq.AI.Core.Dashboard;
 using Runiq.AI.Core.Mcp;
 using Runiq.AI.Core.Rag;
@@ -64,7 +63,6 @@ public static class RuniqDashboardApplicationBuilderExtensions
 
         app.UseEndpoints(endpoints =>
         {
-            endpoints.MapRuniqContextSpaceApi($"{basePath}/api");
             endpoints.MapRuniqMcpApi($"{basePath}/api");
             endpoints.MapRuniqRagApi($"{basePath}/api");
 

@@ -41,68 +41,6 @@ function applyStreamEvent(
     };
   }
 
-  if (event.type === 'context_provided') {
-    const contextSpaces = event.contextSpaces ?? [];
-    const skills = event.skills ?? [];
-    const sources = event.sources ?? [];
-
-    if (
-      contextSpaces.length === 0 &&
-      skills.length === 0 &&
-      sources.length === 0
-    ) {
-      return {
-        ...message,
-        isStreaming: true,
-      };
-    }
-
-    return {
-      ...message,
-      isStreaming: true,
-      context: {
-        contextSpaces,
-        skills,
-        sources,
-      },
-    };
-  }
-
-  if (event.type === 'skill_loaded') {
-    const loadedSkills = event.loadedSkills ?? [];
-
-    if (loadedSkills.length === 0) {
-      return {
-        ...message,
-        isStreaming: true,
-      };
-    }
-
-    return {
-      ...message,
-      isStreaming: true,
-      loadedSkills,
-    };
-  }
-
-  if (event.type === 'context_searched') {
-    const sourceSearchResults = event.sourceSearchResults ?? [];
-
-    if (!event.contextSearchSummary && sourceSearchResults.length === 0) {
-      return {
-        ...message,
-        isStreaming: true,
-      };
-    }
-
-    return {
-      ...message,
-      isStreaming: true,
-      contextSearchSummary: event.contextSearchSummary ?? undefined,
-      sourceSearchResults,
-    };
-  }
-
   if (event.type === 'tool_call_started') {
     const toolCallId = event.toolCallId ?? createFallbackToolCallId();
     const toolName = event.toolName ?? event.content ?? 'tool';

@@ -11,13 +11,7 @@ public sealed record AgentExecutionEvent(
     string? ArgumentsJson = null,
     string? OutputJson = null,
     string? ErrorCode = null,
-    string? ErrorMessage = null,
-    IReadOnlyList<AgentExecutionContextSpaceInfo>? ContextSpaces = null,
-    IReadOnlyList<AgentExecutionSkillInfo>? Skills = null,
-    IReadOnlyList<AgentExecutionSourceInfo>? Sources = null,
-    IReadOnlyList<AgentExecutionLoadedSkillInfo>? LoadedSkills = null,
-    AgentExecutionContextSearchSummaryInfo? ContextSearchSummary = null,
-    IReadOnlyList<AgentExecutionSourceSearchResultInfo>? SourceSearchResults = null)
+    string? ErrorMessage = null)
 {
     /// <summary>
     /// Assistant yanitindan gelen parça metin olayini olusturur.
@@ -95,62 +89,6 @@ public sealed record AgentExecutionEvent(
     }
 
     /// <summary>
-    /// Agent çalismasina saglanan context space, skill ve source bilgilerini bildiren stream olayini olusturur.
-    /// </summary>
-    public static AgentExecutionEvent ContextProvided(
-        IReadOnlyList<AgentExecutionContextSpaceInfo> contextSpaces,
-        IReadOnlyList<AgentExecutionSkillInfo> skills,
-        IReadOnlyList<AgentExecutionSourceInfo> sources)
-    {
-        ArgumentNullException.ThrowIfNull(contextSpaces);
-        ArgumentNullException.ThrowIfNull(skills);
-        ArgumentNullException.ThrowIfNull(sources);
-
-        return new AgentExecutionEvent(
-            Kind: AgentExecutionEventKind.ContextProvided,
-            Content: null,
-            ContextSpaces: contextSpaces,
-            Skills: skills,
-            Sources: sources);
-    }
-
-    /// <summary>
-    /// Agent çalismasi için skill yönergelerinin model context'ine eklendigini bildiren stream olayini olusturur.
-    /// </summary>
-    /// <param name="loadedSkills">Model context'ine eklenen skill özet bilgileridir.</param>
-    /// <returns>Skill yükleme olayini temsil eden stream olayidir.</returns>
-    public static AgentExecutionEvent SkillLoaded(
-        IReadOnlyList<AgentExecutionLoadedSkillInfo> loadedSkills)
-    {
-        ArgumentNullException.ThrowIfNull(loadedSkills);
-
-        return new AgentExecutionEvent(
-            Kind: AgentExecutionEventKind.SkillLoaded,
-            Content: null,
-            LoadedSkills: loadedSkills);
-    }
-
-    /// <summary>
-    /// Agent çalismasi sirasinda context source'larda arama yapildigini bildiren stream olayini olusturur.
-    /// </summary>
-    /// <param name="summary">Context arama özet metrikleridir.</param>
-    /// <param name="sourceSearchResults">Kullanici girdisine göre bulunan source arama sonuçlaridir.</param>
-    /// <returns>Context arama olayini temsil eden stream olayidir.</returns>
-    public static AgentExecutionEvent ContextSearched(
-        AgentExecutionContextSearchSummaryInfo summary,
-        IReadOnlyList<AgentExecutionSourceSearchResultInfo> sourceSearchResults)
-    {
-        ArgumentNullException.ThrowIfNull(summary);
-        ArgumentNullException.ThrowIfNull(sourceSearchResults);
-
-        return new AgentExecutionEvent(
-            Kind: AgentExecutionEventKind.ContextSearched,
-            Content: null,
-            ContextSearchSummary: summary,
-            SourceSearchResults: sourceSearchResults);
-    }
-
-    /// <summary>
     /// Agent çalismasinin basariyla tamamlandigini bildiren stream olayini olusturur.
     /// </summary>
     /// <returns>Tamamlanma olayini temsil eden stream olayidir.</returns>
@@ -212,80 +150,5 @@ public enum AgentExecutionEventKind
     /// <summary>
     /// Agent çalismasinin hata ile sonlandigini belirtir.
     /// </summary>
-    Failed = 5,
-
-    /// <summary>
-    /// Agent çalismasina context space bilgilerinin saglandigini belirtir.
-    /// </summary>
-    ContextProvided = 6,
-
-    /// <summary>
-    /// Agent çalismasi sirasinda context source'larda arama yapildigini belirtir.
-    /// </summary>
-    ContextSearched = 7,
-
-    /// <summary>
-    /// Agent çalismasi için skill yönergelerinin yüklendigini belirtir.
-    /// </summary>
-    SkillLoaded = 8
-
+    Failed = 5
 }
-
-/// <summary>
-/// Agent çalismasina saglanan context space özet bilgisini temsil eder.
-/// </summary>
-public sealed record AgentExecutionContextSpaceInfo(
-    string Id,
-    string Name,
-    string? Description);
-
-/// <summary>
-/// Agent çalismasina saglanan skill özet bilgisini temsil eder.
-/// </summary>
-public sealed record AgentExecutionSkillInfo(
-    string Id,
-    string Name,
-    string? Description,
-    string? Version,
-    IReadOnlyList<string> Tags,
-    string SourceId,
-    string RelativePath);
-
-/// <summary>
-/// Agent çalismasi için model context'ine eklenen skill özet bilgisini temsil eder.
-/// </summary>
-public sealed record AgentExecutionLoadedSkillInfo(
-    string SkillId,
-    string SkillName,
-    string? Version,
-    string? Description);
-
-/// <summary>
-/// Agent çalismasina kullanilabilir olarak saglanan source özet bilgisini temsil eder.
-/// </summary>
-public sealed record AgentExecutionSourceInfo(
-    string Id,
-    string Name,
-    string Kind,
-    string? Description);
-
-/// <summary>
-/// Agent çalismasi sirasinda yapilan context source aramasinin özet metriklerini temsil eder.
-/// </summary>
-public sealed record AgentExecutionContextSearchSummaryInfo(
-    int AttachedSourceCount,
-    int SearchedDocumentCount,
-    int CandidateCount,
-    int SelectedCount);
-
-/// <summary>
-/// Agent çalismasi sirasinda bulunan source arama sonucunu temsil eder.
-/// </summary>
-public sealed record AgentExecutionSourceSearchResultInfo(
-    string SourceId,
-    string SourceName,
-    string RelativePath,
-    string FileName,
-    string Snippet,
-    double Score);
-
