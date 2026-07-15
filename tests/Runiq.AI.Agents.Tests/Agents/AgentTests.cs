@@ -1,188 +1,45 @@
-using Runiq.AI.Agents;
+using Runiq.AI.Agents.Configuration;
 
 namespace Runiq.AI.Agents.Tests.Agents;
 
 public sealed class AgentTests
 {
+    // Ensures the provider-neutral public constructor remains available after RAG API consolidation.
     [Fact]
-    public void Constructor_ShouldExposeLegacyPublicOverload()
+    public void Constructor_ShouldExposeProviderNeutralOverload()
     {
         var constructor = typeof(Agent).GetConstructor([
-            typeof(string),
-            typeof(string),
-            typeof(string),
-            typeof(string),
-            typeof(string),
-            typeof(Runiq.AI.Core.Configuration.ProviderOptions),
-            typeof(string),
-            typeof(string)
+            typeof(string), typeof(string), typeof(string), typeof(string), typeof(string),
+            typeof(Runiq.AI.Core.Configuration.ProviderOptions), typeof(string), typeof(string),
         ]);
 
         Assert.NotNull(constructor);
     }
 
+    // Ensures the single public RAG entry point stores normalized configuration.
     [Fact]
-    public void Constructor_ShouldExposeRagOptionsOverload()
+    public void UseRag_ShouldConfigureAgent()
     {
-        var constructor = typeof(Agent).GetConstructor([
-            typeof(string),
-            typeof(string),
-            typeof(string),
-            typeof(string),
-            typeof(string),
-            typeof(Runiq.AI.Core.Configuration.ProviderOptions),
-            typeof(string),
-            typeof(string),
-            typeof(Runiq.AI.Agents.Configuration.AgentRagOptions)
-        ]);
+        var agent = CreateAgent().UseRag(options =>
+        {
+            options.IndexName = " documents ";
+            options.Mode = RagExecutionMode.Optional;
+        });
 
-        Assert.NotNull(constructor);
-
-        var agent = new Agent(
-            id: "travel-agent",
-            name: "Travel Agent",
-            instructions: "Plan short travel routes.",
-            model: "ollama/llama3",
-            rag: new Runiq.AI.Agents.Configuration.AgentRagOptions { IndexName = "documents" });
-
-        Assert.NotNull(agent.Rag);
+        Assert.True(agent.Rag!.Enabled);
         Assert.Equal("documents", agent.Rag.IndexName);
+        Assert.Equal(RagExecutionMode.Optional, agent.Rag.Mode);
     }
 
-    [Fact]
-    public void UseRagIndex_ShouldConfigureAgentRagIndexName()
-    {
-        var agent = CreateAgent();
-
-        var result = agent.UseRagIndex(" documents ");
-
-        Assert.Same(agent, result);
-        Assert.NotNull(agent.Rag);
-        Assert.Equal("documents", agent.Rag.IndexName);
-    }
-
+    // Ensures invalid static index configuration fails immediately.
     [Theory]
     [InlineData("")]
-    [InlineData(" ")]
-    public void UseRagIndex_ShouldThrow_WhenIndexNameIsEmpty(string indexName)
+    [InlineData("   ")]
+    public void UseRag_ShouldRejectMissingIndex(string indexName)
     {
-        var agent = CreateAgent();
-
-        var exception = Assert.Throws<ArgumentException>(() =>
-            agent.UseRagIndex(indexName));
-
-        Assert.Equal("indexName", exception.ParamName);
+        Assert.Throws<ArgumentException>(() =>
+            CreateAgent().UseRag(options => options.IndexName = indexName));
     }
 
-    // Verifies that associating a Vector Query Tool configures the vector store name, index name, and embedding model and returns the agent for chaining.
-    [Fact]
-    public void UseVectorQueryTool_ShouldConfigureAgentRagAssociation()
-    {
-        var agent = CreateAgent();
-
-        var result = agent.UseVectorQueryTool("documents-store", "documents", "text-embedding-3-small");
-
-        Assert.Same(agent, result);
-        Assert.NotNull(agent.Rag);
-        Assert.True(agent.Rag.Enabled);
-        Assert.Equal("documents-store", agent.Rag.VectorStoreName);
-        Assert.Equal("documents", agent.Rag.IndexName);
-        Assert.Equal("text-embedding-3-small", agent.Rag.EmbeddingModel);
-    }
-
-    // Verifies that the Vector Query Tool association trims the vector store name, index name, and embedding model.
-    [Fact]
-    public void UseVectorQueryTool_ShouldTrimValues()
-    {
-        var agent = CreateAgent();
-
-        agent.UseVectorQueryTool(" documents-store ", " documents ", " text-embedding-3-small ");
-
-        Assert.NotNull(agent.Rag);
-        Assert.Equal("documents-store", agent.Rag.VectorStoreName);
-        Assert.Equal("documents", agent.Rag.IndexName);
-        Assert.Equal("text-embedding-3-small", agent.Rag.EmbeddingModel);
-    }
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData(" ")]
-    public void UseVectorQueryTool_ShouldAssociateNoEmbeddingModel_WhenEmbeddingModelIsNullOrWhitespace(
-        string? embeddingModel)
-    {
-        // Verifies that the optional embedding model is treated as unset when null or whitespace, since it is boundary-optional configuration.
-        var agent = CreateAgent();
-
-        agent.UseVectorQueryTool("documents-store", "documents", embeddingModel);
-
-        Assert.NotNull(agent.Rag);
-        Assert.Null(agent.Rag.EmbeddingModel);
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData(" ")]
-    public void UseVectorQueryTool_ShouldThrow_WhenVectorStoreNameIsEmpty(string vectorStoreName)
-    {
-        // Verifies that the required vector store name boundary condition is validated by the association.
-        var agent = CreateAgent();
-
-        var exception = Assert.Throws<ArgumentException>(() =>
-            agent.UseVectorQueryTool(vectorStoreName, "documents"));
-
-        Assert.Equal("vectorStoreName", exception.ParamName);
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData(" ")]
-    public void UseVectorQueryTool_ShouldThrow_WhenIndexNameIsEmpty(string indexName)
-    {
-        // Verifies that the required index name boundary condition is validated by the association.
-        var agent = CreateAgent();
-
-        var exception = Assert.Throws<ArgumentException>(() =>
-            agent.UseVectorQueryTool("documents-store", indexName));
-
-        Assert.Equal("indexName", exception.ParamName);
-    }
-
-    // Verifies that the Vector Query Tool association replaces previously configured RAG options, staying compatible with UseRagIndex.
-    [Fact]
-    public void UseVectorQueryTool_ShouldReplacePreviousRagOptions()
-    {
-        var agent = CreateAgent();
-        agent.UseRagIndex("legacy-index");
-
-        agent.UseVectorQueryTool("documents-store", "documents");
-
-        Assert.NotNull(agent.Rag);
-        Assert.Equal("documents-store", agent.Rag.VectorStoreName);
-        Assert.Equal("documents", agent.Rag.IndexName);
-        Assert.Null(agent.Rag.EmbeddingModel);
-    }
-
-    // Verifies that UseRagIndex remains compatible and leaves the Vector Query Tool association fields unset.
-    [Fact]
-    public void UseRagIndex_ShouldLeaveVectorQueryToolAssociationUnset()
-    {
-        var agent = CreateAgent();
-
-        agent.UseRagIndex("documents");
-
-        Assert.NotNull(agent.Rag);
-        Assert.Null(agent.Rag.VectorStoreName);
-        Assert.Null(agent.Rag.EmbeddingModel);
-    }
-
-    private static Agent CreateAgent()
-    {
-        return new Agent(
-            id: "travel-agent",
-            name: "Travel Agent",
-            instructions: "Plan short travel routes.",
-            model: "openai/gpt-5");
-    }
+    private static Agent CreateAgent() => new("agent", "Agent", "instructions", "openai/model", "key");
 }
-

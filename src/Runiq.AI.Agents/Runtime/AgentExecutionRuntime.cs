@@ -1,4 +1,4 @@
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Runiq.AI.Core.AI.Chat;
 using Runiq.AI.Core.Configuration;
@@ -6,7 +6,6 @@ using Runiq.AI.Core.Metadata;
 using Runiq.AI.Core.Providers;
 using Runiq.AI.Agents.Tools;
 using Runiq.AI.Rag.Abstractions.Retrieval;
-using Runiq.AI.Rag.Abstractions.Tools;
 using Runiq.AI.Rag.Models.Documents;
 using Runiq.AI.Rag.Models.Metadata;
 using Runiq.AI.Rag.Models.Queries;
@@ -17,7 +16,7 @@ using Runiq.AI.Rag.Models.Tools;
 namespace Runiq.AI.Agents.Runtime;
 
 /// <summary>
-/// Kayitli agent tanimlarini provider pipeline'i üzerinden çalistiran runtime servisidir.
+/// Kayitli agent tanimlarini provider pipeline'i Ã¼zerinden Ã§alistiran runtime servisidir.
 /// </summary>
 public sealed class AgentExecutionRuntime
 {
@@ -25,7 +24,6 @@ public sealed class AgentExecutionRuntime
     private readonly IChatClientResolver chatClientResolver;
     private readonly AgentToolInvoker toolInvoker;
     private readonly IRagRetriever? ragRetriever;
-    private readonly IVectorQueryTool? vectorQueryTool;
 
     /// <summary>
     /// Initializes the runtime with two provider-neutral clients for compatibility with existing manual construction.
@@ -35,20 +33,17 @@ public sealed class AgentExecutionRuntime
     /// <param name="openAICompatibleClient">The client used for OpenAI-compatible and Ollama requests.</param>
     /// <param name="toolInvoker">The agent-owned tool invoker.</param>
     /// <param name="ragRetriever">Optional RAG retriever.</param>
-    /// <param name="vectorQueryTool">Optional vector query tool.</param>
     public AgentExecutionRuntime(
         IEnumerable<Agent> agents,
         IChatClient openAIResponsesClient,
         IChatClient openAICompatibleClient,
         AgentToolInvoker toolInvoker,
-        IRagRetriever? ragRetriever = null,
-        IVectorQueryTool? vectorQueryTool = null)
+        IRagRetriever? ragRetriever = null)
         : this(
             agents,
             new FixedChatClientResolver(openAIResponsesClient, openAICompatibleClient),
             toolInvoker,
-            ragRetriever,
-            vectorQueryTool)
+            ragRetriever)
     {
     }
 
@@ -56,32 +51,29 @@ public sealed class AgentExecutionRuntime
     /// <summary>
     /// Initializes the agent runtime with provider-neutral model resolution and agent-owned orchestration services.
     /// </summary>
-    /// <param name="agents">Runtime tarafindan çalistirilabilecek kayitli agent koleksiyonudur.</param>
+    /// <param name="agents">Runtime tarafindan Ã§alistirilabilecek kayitli agent koleksiyonudur.</param>
     /// <param name="chatClientResolver">Resolves the shared chat client for each agent model.</param>
-    /// <param name="toolInvoker">Agent tool çagrilarini çalistiran invoker örnegidir.</param>
-    /// <param name="ragRetriever">Agent RAG sorgularini çalistiracak opsiyonel retriever servisidir.</param>
-    /// <param name="vectorQueryTool">Agent'a bagli Vector Query Tool sorgularini çalistiracak opsiyonel tool örnegidir.</param>
+    /// <param name="toolInvoker">Agent tool Ã§agrilarini Ã§alistiran invoker Ã¶rnegidir.</param>
+    /// <param name="ragRetriever">Agent RAG sorgularini Ã§alistiracak opsiyonel retriever servisidir.</param>
     public AgentExecutionRuntime(
         IEnumerable<Agent> agents,
         IChatClientResolver chatClientResolver,
         AgentToolInvoker toolInvoker,
-        IRagRetriever? ragRetriever = null,
-        IVectorQueryTool? vectorQueryTool = null)
+        IRagRetriever? ragRetriever = null)
     {
         this.agents = agents ?? throw new ArgumentNullException(nameof(agents));
         this.chatClientResolver = chatClientResolver ?? throw new ArgumentNullException(nameof(chatClientResolver));
         this.toolInvoker = toolInvoker ?? throw new ArgumentNullException(nameof(toolInvoker));
         this.ragRetriever = ragRetriever;
-        this.vectorQueryTool = vectorQueryTool;
     }
 
     /// <summary>
-    /// Agent cevabini agent kimligine göre tek seferlik sonuç olarak üretir.
+    /// Agent cevabini agent kimligine gÃ¶re tek seferlik sonuÃ§ olarak Ã¼retir.
     /// </summary>
-    /// <param name="agentId">Çalistirilacak agent kimligidir.</param>
-    /// <param name="input">Agent'a gönderilecek kullanici girdisidir.</param>
+    /// <param name="agentId">Ã‡alistirilacak agent kimligidir.</param>
+    /// <param name="input">Agent'a gÃ¶nderilecek kullanici girdisidir.</param>
     /// <param name="cancellationToken">Iptal bildirimidir.</param>
-    /// <returns>Agent çalistirma sonucudur.</returns>
+    /// <returns>Agent Ã§alistirma sonucudur.</returns>
     public async Task<AgentExecutionResult> ExecuteAsync(
         string agentId,
         string input,
@@ -103,12 +95,12 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Agent cevabini agent kimligine göre runtime query bilgisiyle tek seferlik sonuç olarak üretir.
+    /// Agent cevabini agent kimligine gÃ¶re runtime query bilgisiyle tek seferlik sonuÃ§ olarak Ã¼retir.
     /// </summary>
-    /// <param name="agentId">Çalistirilacak agent kimligidir.</param>
-    /// <param name="query">Agent'a gönderilecek runtime query bilgisidir.</param>
+    /// <param name="agentId">Ã‡alistirilacak agent kimligidir.</param>
+    /// <param name="query">Agent'a gÃ¶nderilecek runtime query bilgisidir.</param>
     /// <param name="cancellationToken">Iptal bildirimidir.</param>
-    /// <returns>Agent çalistirma sonucudur.</returns>
+    /// <returns>Agent Ã§alistirma sonucudur.</returns>
     public async Task<AgentExecutionResult> ExecuteAsync(
         string agentId,
         AgentQuery query,
@@ -130,12 +122,12 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Kayit listesine bagli olmayan geçici bir agent tanimiyla tek seferlik sonuç üretir.
+    /// Kayit listesine bagli olmayan geÃ§ici bir agent tanimiyla tek seferlik sonuÃ§ Ã¼retir.
     /// </summary>
-    /// <param name="agent">Çalistirilacak agent tanimidir.</param>
-    /// <param name="input">Agent'a gönderilecek kullanici girdisidir.</param>
+    /// <param name="agent">Ã‡alistirilacak agent tanimidir.</param>
+    /// <param name="input">Agent'a gÃ¶nderilecek kullanici girdisidir.</param>
     /// <param name="cancellationToken">Iptal bildirimidir.</param>
-    /// <returns>Agent çalistirma sonucudur.</returns>
+    /// <returns>Agent Ã§alistirma sonucudur.</returns>
     public Task<AgentExecutionResult> ExecuteAsync(
         Agent agent,
         string input,
@@ -148,12 +140,12 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Kayit listesine bagli olmayan geçici bir agent tanimiyla runtime query bilgisiyle tek seferlik sonuç üretir.
+    /// Kayit listesine bagli olmayan geÃ§ici bir agent tanimiyla runtime query bilgisiyle tek seferlik sonuÃ§ Ã¼retir.
     /// </summary>
-    /// <param name="agent">Çalistirilacak agent tanimidir.</param>
-    /// <param name="query">Agent'a gönderilecek runtime query bilgisidir.</param>
+    /// <param name="agent">Ã‡alistirilacak agent tanimidir.</param>
+    /// <param name="query">Agent'a gÃ¶nderilecek runtime query bilgisidir.</param>
     /// <param name="cancellationToken">Iptal bildirimidir.</param>
-    /// <returns>Agent çalistirma sonucudur.</returns>
+    /// <returns>Agent Ã§alistirma sonucudur.</returns>
     public Task<AgentExecutionResult> ExecuteAsync(
         Agent agent,
         AgentQuery query,
@@ -166,13 +158,13 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Agent cevabini agent kimligine göre event stream olarak üretir.
+    /// Agent cevabini agent kimligine gÃ¶re event stream olarak Ã¼retir.
     /// </summary>
-    /// <param name="agentId">Çalistirilacak agent kimligidir.</param>
-    /// <param name="input">Agent'a gönderilecek kullanici girdisidir.</param>
-    /// <param name="toolInvoker">Varsa bu çagri için kullanilacak tool invoker örnegidir.</param>
+    /// <param name="agentId">Ã‡alistirilacak agent kimligidir.</param>
+    /// <param name="input">Agent'a gÃ¶nderilecek kullanici girdisidir.</param>
+    /// <param name="toolInvoker">Varsa bu Ã§agri iÃ§in kullanilacak tool invoker Ã¶rnegidir.</param>
     /// <param name="cancellationToken">Iptal bildirimidir.</param>
-    /// <returns>Agent çalismasi sirasinda üretilen olay stream'idir.</returns>
+    /// <returns>Agent Ã§alismasi sirasinda Ã¼retilen olay stream'idir.</returns>
     public async IAsyncEnumerable<AgentExecutionEvent> ExecuteStreamAsync(
         string agentId,
         string input,
@@ -201,13 +193,13 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Agent cevabini agent kimligine göre runtime query bilgisiyle event stream olarak üretir.
+    /// Agent cevabini agent kimligine gÃ¶re runtime query bilgisiyle event stream olarak Ã¼retir.
     /// </summary>
-    /// <param name="agentId">Çalistirilacak agent kimligidir.</param>
-    /// <param name="query">Agent'a gönderilecek runtime query bilgisidir.</param>
-    /// <param name="toolInvoker">Varsa bu çagri için kullanilacak tool invoker örnegidir.</param>
+    /// <param name="agentId">Ã‡alistirilacak agent kimligidir.</param>
+    /// <param name="query">Agent'a gÃ¶nderilecek runtime query bilgisidir.</param>
+    /// <param name="toolInvoker">Varsa bu Ã§agri iÃ§in kullanilacak tool invoker Ã¶rnegidir.</param>
     /// <param name="cancellationToken">Iptal bildirimidir.</param>
-    /// <returns>Agent çalismasi sirasinda üretilen olay stream'idir.</returns>
+    /// <returns>Agent Ã§alismasi sirasinda Ã¼retilen olay stream'idir.</returns>
     public async IAsyncEnumerable<AgentExecutionEvent> ExecuteStreamAsync(
         string agentId,
         AgentQuery query,
@@ -236,12 +228,12 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Agent cevabini tek seferlik sonuç olarak üretir.
+    /// Agent cevabini tek seferlik sonuÃ§ olarak Ã¼retir.
     /// </summary>
-    /// <param name="agent">Çalistirilacak agent tanimidir.</param>
-    /// <param name="query">Agent'a gönderilecek runtime query bilgisidir.</param>
+    /// <param name="agent">Ã‡alistirilacak agent tanimidir.</param>
+    /// <param name="query">Agent'a gÃ¶nderilecek runtime query bilgisidir.</param>
     /// <param name="cancellationToken">Iptal bildirimidir.</param>
-    /// <returns>Agent çalistirma sonucudur.</returns>
+    /// <returns>Agent Ã§alistirma sonucudur.</returns>
     private async Task<AgentExecutionResult> ExecuteAgentAsync(
         Agent agent,
         AgentQuery query,
@@ -279,13 +271,13 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Agent cevabini event stream olarak üretir.
+    /// Agent cevabini event stream olarak Ã¼retir.
     /// </summary>
-    /// <param name="agent">Çalistirilacak agent tanimidir.</param>
-    /// <param name="query">Agent'a gönderilecek runtime query bilgisidir.</param>
-    /// <param name="toolInvoker">Tool çagrilarini çalistiracak invoker örnegidir.</param>
+    /// <param name="agent">Ã‡alistirilacak agent tanimidir.</param>
+    /// <param name="query">Agent'a gÃ¶nderilecek runtime query bilgisidir.</param>
+    /// <param name="toolInvoker">Tool Ã§agrilarini Ã§alistiracak invoker Ã¶rnegidir.</param>
     /// <param name="cancellationToken">Iptal bildirimidir.</param>
-    /// <returns>Agent çalismasi sirasinda üretilen olay stream'idir.</returns>
+    /// <returns>Agent Ã§alismasi sirasinda Ã¼retilen olay stream'idir.</returns>
     private async IAsyncEnumerable<AgentExecutionEvent> ExecuteAgentStreamAsync(
         Agent agent,
         AgentQuery query,
@@ -316,11 +308,23 @@ public sealed class AgentExecutionRuntime
                 query,
                 cancellationToken);
         }
-        catch (InvalidOperationException exception)
+        catch (AgentRagConfigurationException exception)
         {
             ragFailureEvent = AgentExecutionEvent.Failed(
                 exception.Message,
-                "RagRetrievalFailed");
+                "RagConfigurationInvalid");
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            var mayContinueWithoutGrounding =
+                agent.Rag?.Mode == Configuration.RagExecutionMode.Optional &&
+                exception is RagRetrievalExecutionException;
+            if (!mayContinueWithoutGrounding)
+            {
+                ragFailureEvent = AgentExecutionEvent.Failed(
+                    $"RAG retrieval failed for agent '{agent.Id}'; the model was not invoked. {exception.Message}",
+                    "RagRetrievalFailed");
+            }
         }
 
         if (ragFailureEvent is not null)
@@ -328,9 +332,6 @@ public sealed class AgentExecutionRuntime
             yield return ragFailureEvent;
             yield break;
         }
-
-        var instructions = AgentInstructionsBuilder.Build(agent, runtimeContext);
-
 
         var validationFailure = ValidateProviderRuntime(agent);
 
@@ -353,9 +354,15 @@ public sealed class AgentExecutionRuntime
             agent.Provider?.Url);
         var messages = new List<ChatMessage>
         {
-            new(ChatRole.System, instructions),
-            new(ChatRole.User, query.Message)
+            new(ChatRole.System, agent.Instructions),
         };
+        var grounding = AgentInstructionsBuilder.BuildGrounding(runtimeContext);
+        if (grounding is not null)
+        {
+            messages.Add(new ChatMessage(ChatRole.User, grounding));
+        }
+
+        messages.Add(new ChatMessage(ChatRole.User, query.Message));
         string? previousResponseId = null;
 
         while (true)
@@ -435,10 +442,10 @@ public sealed class AgentExecutionRuntime
         JsonSerializer.Serialize(ToolJsonSchemaGenerator.CreateSchema(tool.InputType)));
 
     /// <summary>
-    /// Provider runtime ayarlarinin çalistirma öncesi geçerli olup olmadigini dogrular.
+    /// Provider runtime ayarlarinin Ã§alistirma Ã¶ncesi geÃ§erli olup olmadigini dogrular.
     /// </summary>
     /// <param name="agent">Dogrulanacak agent tanimidir.</param>
-    /// <returns>Geçersiz ayar varsa hata sonucudur; aksi halde null döner.</returns>
+    /// <returns>GeÃ§ersiz ayar varsa hata sonucudur; aksi halde null dÃ¶ner.</returns>
     private static AgentExecutionResult? ValidateProviderRuntime(Agent agent)
     {
         var providerDefault = ProviderDefaults.Get(agent.ProviderName);
@@ -457,10 +464,10 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Kayitli agent koleksiyonu içinde agent kimligine göre arama yapar.
+    /// Kayitli agent koleksiyonu iÃ§inde agent kimligine gÃ¶re arama yapar.
     /// </summary>
     /// <param name="agentId">Aranacak agent kimligidir.</param>
-    /// <returns>Bulunan agent tanimidir; bulunamazsa null döner.</returns>
+    /// <returns>Bulunan agent tanimidir; bulunamazsa null dÃ¶ner.</returns>
     private Agent? FindAgent(string agentId)
     {
         return agents.FirstOrDefault(agent =>
@@ -492,7 +499,7 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Agent RAG yapilandirmasi varsa RAG retrieval çalistirir ve sonuçlari runtime context'e ekler.
+    /// Agent RAG yapilandirmasi varsa RAG retrieval Ã§alistirir ve sonuÃ§lari runtime context'e ekler.
     /// </summary>
     private async Task<AgentRuntimeContext> SearchRagContextAsync(
         Agent agent,
@@ -505,24 +512,21 @@ public sealed class AgentExecutionRuntime
             return runtimeContext;
         }
 
-        // Vector Query Tool bridge: when the agent is associated with a Vector Query Tool (its RAG options carry
-        // a vector store name) and a tool is available, invoke the tool instead of the direct retriever path.
-        // Agents without a vector store name keep the existing retriever behavior unchanged.
-        if (vectorQueryTool is not null && !string.IsNullOrWhiteSpace(agent.Rag.VectorStoreName))
-        {
-            return await SearchRagContextWithVectorQueryToolAsync(
-                agent,
-                runtimeContext,
-                query,
-                cancellationToken).ConfigureAwait(false);
-        }
-
         if (ragRetriever is null)
         {
-            return runtimeContext;
+            throw new AgentRagConfigurationException(
+                $"RAG is enabled for agent '{agent.Id}', but IRagRetriever is not registered; the model was not invoked.");
         }
 
-        var indexName = query.IndexName ?? agent.Rag.IndexName;
+        var indexName = !string.IsNullOrWhiteSpace(query.IndexName)
+            ? query.IndexName.Trim()
+            : agent.Rag.IndexName?.Trim();
+        if (string.IsNullOrWhiteSpace(indexName))
+        {
+            throw new AgentRagConfigurationException(
+                $"RAG is enabled for agent '{agent.Id}', but no index was configured; the model was not invoked.");
+        }
+
         var results = await ragRetriever.RetrieveAsync(
             new RagQuery
             {
@@ -531,92 +535,20 @@ public sealed class AgentExecutionRuntime
             },
             cancellationToken).ConfigureAwait(false);
 
-        return new AgentRuntimeContext(
-            RagSearchResults: results);
+        return new AgentRuntimeContext(results);
     }
 
     /// <summary>
-    /// Agent'a bagli Vector Query Tool yapilandirmasindan bir tool istegi olusturur, tool'u çalistirir ve mevcut
-    /// RAG context formatina eslenmis sonuçlari runtime context'e yerlestirir. Basarisiz bir tool sonucu, mevcut
-    /// RAG retriever hatasiyla ayni deterministik akisa uyacak biçimde <see cref="InvalidOperationException"/>
-    /// olarak yükseltilir.
+    /// Agent'a bagli Vector Query Tool yapilandirmasindan bir tool istegi olusturur, tool'u Ã§alistirir ve mevcut
+    /// RAG context formatina eslenmis sonuÃ§lari runtime context'e yerlestirir. Basarisiz bir tool sonucu, mevcut
+    /// RAG retriever hatasiyla ayni deterministik akisa uyacak biÃ§imde <see cref="InvalidOperationException"/>
+    /// olarak yÃ¼kseltilir.
     /// </summary>
-    private async Task<AgentRuntimeContext> SearchRagContextWithVectorQueryToolAsync(
-        Agent agent,
-        AgentRuntimeContext runtimeContext,
-        AgentQuery query,
-        CancellationToken cancellationToken)
-    {
-        var ragOptions = agent.Rag!;
-        var indexName = query.IndexName ?? ragOptions.IndexName;
-
-        var request = new VectorQueryToolRequest
-        {
-            VectorStoreName = ragOptions.VectorStoreName!,
-            IndexName = indexName ?? string.Empty,
-            QueryText = query.Message,
-            EmbeddingModel = ragOptions.EmbeddingModel,
-        };
-
-        var result = await vectorQueryTool!.ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
-
-        if (!result.Succeeded)
-        {
-            throw new InvalidOperationException(
-                string.IsNullOrWhiteSpace(result.Reason)
-                    ? "The Vector Query Tool retrieval failed."
-                    : result.Reason);
-        }
-
-        return new AgentRuntimeContext(
-            RagSearchResults: MapVectorQueryMatches(result.Matches));
-    }
-
     /// <summary>
-    /// Vector Query Tool sonucundaki eslesmeleri, mevcut RAG context assembly'sinin tükettigi
-    /// <see cref="RagSearchResult"/> formatina dönüstürür. Içerik, skor ve metadata korunur; bos kayit kimlikleri
-    /// ve eksik document kimlikleri, required chunk alanlarinin ihlal edilmemesi için güvenli degerlere düser.
+    /// Vector Query Tool sonucundaki eslesmeleri, mevcut RAG context assembly'sinin tÃ¼kettigi
+    /// <see cref="RagSearchResult"/> formatina dÃ¶nÃ¼stÃ¼rÃ¼r. IÃ§erik, skor ve metadata korunur; bos kayit kimlikleri
+    /// ve eksik document kimlikleri, required chunk alanlarinin ihlal edilmemesi iÃ§in gÃ¼venli degerlere dÃ¼ser.
     /// </summary>
-    private static IReadOnlyList<RagSearchResult> MapVectorQueryMatches(
-        IReadOnlyList<RetrievalResultItem> matches)
-    {
-        if (matches.Count == 0)
-        {
-            return [];
-        }
-
-        var results = new List<RagSearchResult>(matches.Count);
-
-        foreach (var match in matches)
-        {
-            var chunkId = string.IsNullOrWhiteSpace(match.RecordId)
-                ? "vector-query-match"
-                : match.RecordId;
-
-            var documentId =
-                match.Metadata.Values.TryGetValue("documentId", out var value) &&
-                !string.IsNullOrWhiteSpace(value)
-                    ? value
-                    : chunkId;
-
-            results.Add(new RagSearchResult
-            {
-                Chunk = new RagChunk
-                {
-                    Id = chunkId,
-                    DocumentId = documentId,
-                    Content = match.Content,
-                    Metadata = new RagChunkMetadata
-                    {
-                        AdditionalMetadata = new RagMetadata(match.Metadata.Values),
-                    },
-                },
-                Score = match.Score,
-                Metadata = new RagMetadata(match.Metadata.Values),
-            });
-        }
-
-        return results;
-    }
+    private sealed class AgentRagConfigurationException(string message) : InvalidOperationException(message);
 
 }

@@ -19,7 +19,7 @@ public sealed class AgentChatApiHandlerTests
     [Fact]
     public async Task ChatAsync_ShouldForwardRequestIndexNameToAgentQuery()
     {
-        var agent = CreateRagAgent().UseRagIndex("documents");
+        var agent = CreateRagAgent().UseRag(options => options.IndexName = "documents");
         var retriever = new TrackingRagRetriever();
         var handler = CreateHandler(agent, retriever);
         var request = new AgentChatRequest(
@@ -34,9 +34,9 @@ public sealed class AgentChatApiHandlerTests
     }
 
     [Fact]
-    public async Task ChatAsync_ShouldLeaveAgentQueryIndexNameNull_WhenRequestIndexNameIsMissing()
+    public async Task ChatAsync_ShouldUseAgentIndex_WhenRequestIndexNameIsMissing()
     {
-        var agent = CreateRagAgent();
+        var agent = CreateRagAgent().UseRag(options => options.IndexName = "documents");
         var retriever = new TrackingRagRetriever();
         var handler = CreateHandler(agent, retriever);
         var request = new AgentChatRequest(
@@ -46,13 +46,13 @@ public sealed class AgentChatApiHandlerTests
         await handler.ChatAsync(agent.Id, request, CreateHttpContext(), CancellationToken.None);
 
         Assert.NotNull(retriever.Query);
-        Assert.Null(retriever.Query.IndexName);
+        Assert.Equal("documents", retriever.Query.IndexName);
     }
 
     [Fact]
     public async Task ChatAsync_ShouldPreserveRuntimeIndexNameOverrideOverAgentRagIndex()
     {
-        var agent = CreateRagAgent().UseRagIndex("documents");
+        var agent = CreateRagAgent().UseRag(options => options.IndexName = "documents");
         var retriever = new TrackingRagRetriever();
         var handler = CreateHandler(agent, retriever);
         var request = new AgentChatRequest(
@@ -84,8 +84,7 @@ public sealed class AgentChatApiHandlerTests
             id: "travel-agent",
             name: "Travel Agent",
             instructions: "Plan short travel routes.",
-            model: "ollama/llama3",
-            rag: new AgentRagOptions());
+            model: "ollama/llama3");
     }
 
     private static HttpContext CreateHttpContext()

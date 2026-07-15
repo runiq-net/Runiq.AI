@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Runiq.AI.Agents;
+using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Agents.Tools;
 using Runiq.AI.Core;
 using Runiq.AI.Core.Configuration;
@@ -13,7 +14,7 @@ using System.Text.Json;
 namespace Runiq.AI.Core.Tests.Dashboard;
 
 /// <summary>
-/// Dashboard metadata endpoint davranislarini dogrulayan testleri içerir.
+/// Dashboard metadata endpoint davranislarini dogrulayan testleri iÃ§erir.
 /// </summary>
 [Collection("Dashboard assets")]
 public sealed class DashboardMetadataEndpointTests
@@ -21,7 +22,7 @@ public sealed class DashboardMetadataEndpointTests
     [Fact]
     public async Task MetadataAgentsEndpoint_ShouldReturnRegisteredAgents()
     {
-        // Dashboard metadata endpoint'inin kayitli agent bilgisini JSON olarak döndürdügünü dogrular.
+        // Dashboard metadata endpoint'inin kayitli agent bilgisini JSON olarak dÃ¶ndÃ¼rdÃ¼gÃ¼nÃ¼ dogrular.
         using var server = CreateServer();
 
         var response = await server.GetTestClient().GetAsync("/dashboard/metadata/agents");
@@ -46,6 +47,10 @@ public sealed class DashboardMetadataEndpointTests
         Assert.Equal("openai/gpt-5", agent.GetProperty("model").GetString());
         Assert.Equal("minimal", agent.GetProperty("reasoningEffort").GetString());
         Assert.Equal("low", agent.GetProperty("verbosity").GetString());
+        var rag = agent.GetProperty("rag");
+        Assert.True(rag.GetProperty("enabled").GetBoolean());
+        Assert.Equal("documents", rag.GetProperty("indexName").GetString());
+        Assert.Equal("Required", rag.GetProperty("executionMode").GetString());
 
 
         var tools = agent.GetProperty("tools");
@@ -62,7 +67,7 @@ public sealed class DashboardMetadataEndpointTests
     [Fact]
     public async Task MetadataAgentsEndpoint_ShouldBeCaseInsensitive()
     {
-        // Metadata endpoint path karsilastirmasinin case-insensitive çalistigini dogrular.
+        // Metadata endpoint path karsilastirmasinin case-insensitive Ã§alistigini dogrular.
         using var server = CreateServer();
 
         var response = await server.GetTestClient().GetAsync("/dashboard/METADATA/AGENTS");
@@ -79,7 +84,7 @@ public sealed class DashboardMetadataEndpointTests
     [Fact]
     public async Task UnknownDashboardApiEndpoint_ShouldReturnNotFound()
     {
-        // Dashboard API altinda tanimli olmayan endpoint'lerin SPA fallback'e düsmeden 404 döndügünü dogrular.
+        // Dashboard API altinda tanimli olmayan endpoint'lerin SPA fallback'e dÃ¼smeden 404 dÃ¶ndÃ¼gÃ¼nÃ¼ dogrular.
         using var server = CreateServer();
 
         var response = await server.GetTestClient().GetAsync("/dashboard/api/unknown");
@@ -94,7 +99,7 @@ public sealed class DashboardMetadataEndpointTests
     [Fact]
     public async Task UnknownDashboardMetadataEndpoint_ShouldReturnNotFound()
     {
-        // Dashboard metadata altinda tanimli olmayan endpoint'lerin SPA fallback'e düsmeden 404 döndügünü dogrular.
+        // Dashboard metadata altinda tanimli olmayan endpoint'lerin SPA fallback'e dÃ¼smeden 404 dÃ¶ndÃ¼gÃ¼nÃ¼ dogrular.
         using var server = CreateServer();
 
         var response = await server.GetTestClient().GetAsync("/dashboard/metadata/unknown");
@@ -109,7 +114,7 @@ public sealed class DashboardMetadataEndpointTests
     [Fact]
     public async Task MetadataTeamsEndpoint_ShouldReturnNotFound()
     {
-        // Agent Team metadata endpoint'inin aktif dashboard metadata yüzeyinden kaldirildigini dogrular.
+        // Agent Team metadata endpoint'inin aktif dashboard metadata yÃ¼zeyinden kaldirildigini dogrular.
         using var server = CreateServer();
 
         var response = await server.GetTestClient().GetAsync("/dashboard/metadata/teams");
@@ -139,7 +144,12 @@ public sealed class DashboardMetadataEndpointTests
                                     instructions: "Test instructions.",
                                     model: "openai/gpt-5",
                                     apiKey: "test-key")
-                                .AddTool<TestTool>());
+                                .AddTool<TestTool>()
+                                .UseRag(rag =>
+                                {
+                                    rag.IndexName = "documents";
+                                    rag.Mode = RagExecutionMode.Required;
+                                }));
 
                             options.AddAgent(new Agent(
                                 id: "planner-agent",

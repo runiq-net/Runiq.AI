@@ -53,17 +53,34 @@ public sealed class DefaultRetriever : IRagRetriever
 
         var indexName = ResolveIndexName(query);
         var model = ResolveEmbeddingModel();
-        var response = await embeddingClient.EmbedAsync(new EmbeddingRequest(model, [query.Text], Dimensions: model.EmbeddingDimensions), cancellationToken).ConfigureAwait(false);
-        var embedding = new Models.Embeddings.RagEmbedding(response.Results.Single().Vector);
-        var resolvedQuery = new RagQuery
+        try
         {
-            Text = query.Text,
-            IndexName = indexName,
-            TopK = query.TopK,
-            Metadata = query.Metadata,
-        };
+            var response = await embeddingClient.EmbedAsync(new EmbeddingRequest(model, [query.Text], Dimensions: model.EmbeddingDimensions), cancellationToken).ConfigureAwait(false);
+            var embedding = new Models.Embeddings.RagEmbedding(response.Results.Single().Vector);
+            var resolvedQuery = new RagQuery
+            {
+                Text = query.Text,
+                IndexName = indexName,
+                TopK = query.TopK,
+                Metadata = query.Metadata,
+            };
 
-        return await vectorStore.SearchAsync(resolvedQuery, embedding, cancellationToken).ConfigureAwait(false);
+            return await vectorStore.SearchAsync(resolvedQuery, embedding, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (RagVectorStoreQueryException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            throw new RagRetrievalExecutionException(
+                $"RAG retrieval execution failed for index '{indexName}'.",
+                exception);
+        }
     }
 
     private string ResolveIndexName(RagQuery query)
