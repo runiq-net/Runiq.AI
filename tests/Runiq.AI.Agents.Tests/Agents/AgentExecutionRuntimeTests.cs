@@ -5,6 +5,8 @@ using Runiq.AI.Agents.Runtime;
 using Runiq.AI.Agents.Tools;
 using Runiq.AI.Agents.Tests.TestDoubles;
 using Runiq.AI.Core.AI.Chat;
+using Runiq.AI.Core.AI.Capabilities;
+using Runiq.AI.Core.Configuration;
 using Runiq.AI.ContextSpaces.Models.Skills;
 using Runiq.AI.ContextSpaces.Models.Sources;
 using Runiq.AI.ContextSpaces.Services;
@@ -26,6 +28,31 @@ namespace Runiq.AI.Agents.Tests.Agents;
 
 public sealed class AgentExecutionRuntimeTests
 {
+    // Verifies that named provider-model configuration is projected into the request before the chat client resolves it.
+    [Fact]
+    public async Task ExecuteStreamAsync_ShouldProjectNamedModelCapabilitiesBeforeClientResolution()
+    {
+        var provider = new ProviderOptions
+        {
+            Models = new Dictionary<string, ProviderModelOptions>
+            {
+                ["chat"] = new() { Model = "private-qwen", Capabilities = [ModelCapability.Chat, ModelCapability.Streaming] }
+            }
+        };
+        var agent = new Agent("configured-agent", "Configured", "Help.", "ollama/chat", provider: provider);
+        var resolver = new TestChatClientResolver();
+        var runtime = new AgentExecutionRuntime(
+            [agent],
+            resolver,
+            new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()));
+
+        await DrainAsync(runtime.ExecuteStreamAsync(agent.Id, "hello"));
+
+        Assert.Single(resolver.Requests);
+        Assert.Equal(ModelCapability.Chat | ModelCapability.Streaming, resolver.Requests[0].Model.Capabilities);
+        Assert.Equal("private-qwen", resolver.Requests[0].Model.ModelName);
+    }
+
     // The runtime constructor must depend on the shared Core resolver instead of concrete provider clients.
     [Fact]
     public void Constructor_ShouldExposeProviderNeutralResolverOverload()

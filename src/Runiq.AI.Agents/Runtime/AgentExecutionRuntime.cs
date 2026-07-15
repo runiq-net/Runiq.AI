@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Runiq.AI.Core.AI.Chat;
+using Runiq.AI.Core.Configuration;
 using Runiq.AI.Core.Metadata;
 using Runiq.AI.Core.Providers;
 using Runiq.AI.Agents.Tools;
@@ -390,6 +391,10 @@ public sealed class AgentExecutionRuntime
             yield break;
         }
 
+        // Resolve the configured named-model override once so every request, including tool continuations,
+        // uses the same Core model identity before capability validation occurs in the chat client boundary.
+        var effectiveModel = ProviderModelReferenceResolver.Resolve(agent.ModelReference, agent.Provider);
+
         var endpoint = ProviderDefaults.ResolveUrl(
             agent.ProviderName,
             agent.Id,
@@ -414,7 +419,7 @@ public sealed class AgentExecutionRuntime
             }
 
             var chatRequest = new ChatRequest(
-                agent.ModelReference,
+                effectiveModel,
                 messages,
                 endpoint,
                 agent.ApiKey,
