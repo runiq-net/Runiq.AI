@@ -1,1114 +1,393 @@
-using Runiq.AI.Agents.Tools;
-using System.Diagnostics;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Runiq.AI.Core.AI.Chat;
+using Runiq.AI.Core.Providers;
 
 namespace Runiq.AI.Agents.Providers.OpenAI;
 
 /// <summary>
-/// OpenAI Responses API üzerinden agent cevabi üreten native OpenAI istemcisidir.
+/// Implements provider-neutral chat operations using the native OpenAI Responses protocol.
 /// </summary>
-public sealed class OpenAIResponsesClient
+public sealed class OpenAIResponsesClient : IChatClient
 {
-
-    private readonly HttpClient httpClient;
-
-    private static readonly NullabilityInfoContext NullabilityContext = new();
-
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
+    private readonly HttpClient httpClient;
+
     /// <summary>
-    /// Yeni bir OpenAI Responses API client örnegi olusturur.
+    /// Initializes a native OpenAI Responses protocol client.
     /// </summary>
-    /// <param name="httpClient">OpenAI Responses API çagrilarinda kullanilacak HTTP client örnegidir.</param>
+    /// <param name="httpClient">The HTTP client used for provider requests.</param>
     public OpenAIResponsesClient(HttpClient httpClient)
     {
-        this.httpClient = httpClient;
+        this.httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
     }
 
-    /// <summary>
-    /// Agent girdisini OpenAI Responses API üzerinden tek seferlik sonuç olarak üretir.
-    /// </summary>
-    /// <param name="agent">Çalistirilacak agent tanimidir.</param>
-    /// <param name="endpoint">Provider için kullanilacak base endpoint adresidir.</param>
-    /// <param name="input">Modele gönderilecek kullanici girdisidir.</param>
-    /// <param name="cancellationToken">Islemi iptal etmek için kullanilan cancellation token degeridir.</param>
-    /// <returns>Agent çalismasinin basari veya hata sonucunu döner.</returns>
-    public async Task<AgentExecutionResult> ExecuteAsync(
-        Agent agent,
-        Uri endpoint,
-        string input,
-        CancellationToken cancellationToken = default,
-        string? instructions = null)
+    /// <inheritdoc />
+    public async Task<ChatResponse> CompleteAsync(ChatRequest request, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(agent);
-        ArgumentNullException.ThrowIfNull(endpoint);
+        ArgumentNullException.ThrowIfNull(request);
+        request.Validate();
 
-        var effectiveInstructions = ResolveInstructions(agent, instructions);
-
-        var requestUrl = BuildResponsesUrl(endpoint);
-
-        using var request = CreateRequest(
-            agent,
-            requestUrl,
-            new OpenAIResponseRequest(
-                Model: agent.ModelName,
-                Instructions: effectiveInstructions,
-                Input: input,
-                Stream: false,
-                Reasoning: new OpenAIReasoningOptions(Effort: agent.ReasoningEffort),
-                Text: new OpenAITextOptions(Verbosity: agent.Verbosity)
-                ));
-
-        using var response = await httpClient.SendAsync(request, cancellationToken);
-
-        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        using var httpRequest = CreateRequest(request, stream: false);
+        using var response = await httpClient.SendAsync(httpRequest, cancellationToken).ConfigureAwait(false);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
         {
-            return AgentExecutionResult.Failure(
-                errorCode: "OpenAIResponsesRequestFailed",
-                errorMessage: $"Provider request failed with status code {(int)response.StatusCode}. {body}");
+            throw CreateProviderException(request, response.StatusCode, body);
         }
 
-        var message = TryReadOutputText(body);
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            var toolCalls = ReadToolCalls(root);
+            var content = ReadOutputText(root) ?? string.Empty;
 
-        return string.IsNullOrWhiteSpace(message)
-            ? AgentExecutionResult.Failure(
-                errorCode: "OpenAIResponsesEmptyMessage",
-                errorMessage: "Provider returned an empty response.")
-            : AgentExecutionResult.Success(message);
+            if (toolCalls.Count == 0 && string.IsNullOrWhiteSpace(content))
+            {
+                throw new ChatProviderException(
+                    ProviderErrorKind.MalformedProviderResponse,
+                    "Provider response did not contain assistant content or tool calls.",
+                    request.Model.ProviderName);
+            }
+
+            return new ChatResponse(
+                new ChatMessage(ChatRole.Assistant, content, ToolCalls: toolCalls.Count == 0 ? null : toolCalls),
+                toolCalls.Count == 0 ? ChatFinishReason.Stop : ChatFinishReason.ToolCalls,
+                ReadUsage(root),
+                ReadString(root, "id"));
+        }
+        catch (JsonException exception)
+        {
+            throw new ChatProviderException(
+                ProviderErrorKind.MalformedProviderResponse,
+                "Provider returned malformed JSON.",
+                request.Model.ProviderName,
+                innerException: exception);
+        }
     }
 
-    /// <summary>
-    /// OpenAI Responses API stream çiktisini parça parça üretir.
-    /// </summary>
-    public async IAsyncEnumerable<AgentExecutionEvent> StreamAsync(
-        Agent agent,
-        Uri endpoint,
-        string input,
-        AgentToolInvoker? toolInvoker = null,
-        string? instructions = null,
+    /// <inheritdoc />
+    public async IAsyncEnumerable<ChatStreamingUpdate> CompleteStreamingAsync(
+        ChatRequest request,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(agent);
-        ArgumentNullException.ThrowIfNull(endpoint);
+        ArgumentNullException.ThrowIfNull(request);
+        request.Validate();
 
-        var startedAt = Stopwatch.GetTimestamp();
-        var requestUrl = BuildResponsesUrl(endpoint);
-        var toolDefinitions = CreateToolDefinitions(agent);
-        var effectiveInstructions = ResolveInstructions(agent, instructions);
-
-        using var request = CreateRequest(
-            agent,
-            requestUrl,
-            new OpenAIResponseRequest(
-                Model: agent.ModelName,
-                Instructions: effectiveInstructions,
-                Input: input,
-                Stream: true,
-                Reasoning: new OpenAIReasoningOptions(Effort: agent.ReasoningEffort),
-                Text: new OpenAITextOptions(Verbosity: agent.Verbosity),
-                Tools: toolDefinitions));
-
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
-
+        using var httpRequest = CreateRequest(request, stream: true);
+        httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
         using var response = await httpClient.SendAsync(
-            request,
+            httpRequest,
             HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken);
-
+            cancellationToken).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
         {
-            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-
-            yield return AgentExecutionEvent.Failed(
-                $"Provider request failed with status code {(int)response.StatusCode}. {errorBody}");
-            yield break;
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            throw CreateProviderException(request, response.StatusCode, errorBody);
         }
 
-        await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        using var reader = new StreamReader(responseStream);
-
-        var firstContentLogged = false;
-        var hasAnyRuntimeEvent = false;
-        var hasStreamedTextDelta = false;
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var reader = new StreamReader(stream);
         string? responseId = null;
-        var pendingToolOutputs = new List<OpenAIToolOutputSubmission>();
+        ChatUsage? usage = null;
+        var finishReason = ChatFinishReason.Stop;
+        var pendingToolCalls = new Dictionary<string, PendingToolCall>(StringComparer.Ordinal);
 
-        while (!cancellationToken.IsCancellationRequested)
+        while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
         {
-            var line = await reader.ReadLineAsync(cancellationToken);
-
-            if (line is null)
-            {
-                break;
-            }
-
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                continue;
-            }
-
             if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
             var data = line["data:".Length..].Trim();
-
-            responseId ??= TryReadResponseId(data);
-
-            if (string.Equals(data, "[DONE]", StringComparison.OrdinalIgnoreCase))       
-                break;
-        
-
-
-            var functionCall = TryReadCompletedFunctionCall(data);
-
-            if (functionCall is not null)
-            {
-                hasAnyRuntimeEvent = true;
-
-                yield return AgentExecutionEvent.ToolCallStarted(
-                    functionCall.ToolCallId,
-                    functionCall.ToolName,
-                    functionCall.ArgumentsJson);
-
-                string outputJson;
-
-                if (toolInvoker is null)
-                {
-                    outputJson = CreateToolErrorOutputJson(
-                        "ToolInvokerUnavailable",
-                        "Tool invoker is not available.");
-
-                    yield return AgentExecutionEvent.ToolCallFailed(
-                        functionCall.ToolCallId,
-                        functionCall.ToolName,
-                        "Tool invoker is not available.");
-
-                    pendingToolOutputs.Add(new OpenAIToolOutputSubmission(
-                        functionCall.ToolCallId,
-                        functionCall.ToolName,
-                        outputJson));
-
-                    continue;
-                }
-
-                var toolResult = await toolInvoker.InvokeAsync(
-                    agent,
-                    functionCall.ToolName,
-                    functionCall.ArgumentsJson,
-                    cancellationToken);
-
-                if (!toolResult.IsSuccess)
-                {
-                    outputJson = CreateToolErrorOutputJson(
-                        toolResult.ErrorCode,
-                        toolResult.ErrorMessage ?? "Tool execution failed.");
-
-                    yield return AgentExecutionEvent.ToolCallFailed(
-                        functionCall.ToolCallId,
-                        functionCall.ToolName,
-                        toolResult.ErrorMessage ?? "Tool execution failed.",
-                        toolResult.ErrorCode);
-
-                    pendingToolOutputs.Add(new OpenAIToolOutputSubmission(
-                        functionCall.ToolCallId,
-                        functionCall.ToolName,
-                        outputJson));
-
-                    continue;
-                }
-
-                outputJson = NormalizeToolOutputJson(toolResult.OutputJson);
-
-                yield return AgentExecutionEvent.ToolCallCompleted(
-                    functionCall.ToolCallId,
-                    functionCall.ToolName,
-                    outputJson);
-
-                pendingToolOutputs.Add(new OpenAIToolOutputSubmission(
-                    functionCall.ToolCallId,
-                    functionCall.ToolName,
-                    outputJson));
-
-                continue;
-            }
-
-            var outputItemText = TryReadCompletedOutputItemText(data);
-
-            if (!string.IsNullOrEmpty(outputItemText))
-            {
-                if (!hasStreamedTextDelta)
-                {
-                    hasAnyRuntimeEvent = true;
-                    yield return AgentExecutionEvent.AssistantDelta(outputItemText);
-                }
-
-                continue;
-            }
-
-            var completedResponseText = TryReadCompletedResponseText(data);
-
-            if (!string.IsNullOrEmpty(completedResponseText))
-            {
-                if (!hasStreamedTextDelta)
-                {
-                    hasAnyRuntimeEvent = true;
-                    yield return AgentExecutionEvent.AssistantDelta(completedResponseText);
-                }
-
-                continue;
-            }
-
-            var completedText = TryReadCompletedText(data);
-
-            if (!string.IsNullOrEmpty(completedText))
-            {
-                if (!hasStreamedTextDelta)
-                {
-                    hasAnyRuntimeEvent = true;
-                    yield return AgentExecutionEvent.AssistantDelta(completedText);
-                }
-
-                continue;
-            }
-
-            var content = TryReadStreamTextDelta(data);
-
-            if (string.IsNullOrEmpty(content))            
-                continue;
-      
-
-            if (!firstContentLogged)   
-                firstContentLogged = true;
-
-            hasAnyRuntimeEvent = true;
-            hasStreamedTextDelta = true;
-            yield return AgentExecutionEvent.AssistantDelta(content);
-        }
-
-        if (pendingToolOutputs.Count > 0)
-        {
-            if (string.IsNullOrWhiteSpace(responseId))
-            {
-                yield return AgentExecutionEvent.Failed(
-                    "OpenAI response id could not be read before submitting tool output.",
-                    "OpenAIResponseIdMissing");
-
-                yield break;
-            }
-
-            await foreach (var followUpEvent in StreamToolOutputAsync(
-                               agent,
-                               requestUrl,
-                               previousResponseId: responseId,
-                               toolOutputs: pendingToolOutputs,
-                               toolInvoker: toolInvoker,
-                               instructions: effectiveInstructions,
-                               cancellationToken))
-            {
-                yield return followUpEvent;
-            }
-
-            yield break;
-        }
-
-        yield return hasAnyRuntimeEvent
-            ? AgentExecutionEvent.Completed()
-            : AgentExecutionEvent.Failed("OpenAI Responses stream completed without producing content.");
-    }
-
-    private static HttpRequestMessage CreateRequest(
-        Agent agent,
-        Uri requestUrl,
-        OpenAIResponseRequest payload)
-    {
-        var request = new HttpRequestMessage(HttpMethod.Post, requestUrl);
-
-        if (!string.IsNullOrWhiteSpace(agent.ApiKey))
-        {
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", agent.ApiKey);
-        }
-
-        request.Content = JsonContent.Create(payload, options: JsonOptions);
-
-        return request;
-    }
-
-    private static HttpRequestMessage CreateToolOutputRequest(
-        Agent agent,
-        Uri requestUrl,
-        string previousResponseId,
-        IReadOnlyList<OpenAIToolOutputSubmission> toolOutputs,
-        string instructions)
-    {
-        return CreateRequest(
-            agent,
-            requestUrl,
-            new OpenAIResponseRequest(
-                Model: agent.ModelName,
-                Instructions: instructions,
-                Input: toolOutputs
-                    .Select(toolOutput => new OpenAIFunctionCallOutputInput(
-                        Type: "function_call_output",
-                        CallId: toolOutput.ToolCallId,
-                        Output: NormalizeToolOutputJson(toolOutput.OutputJson)))
-                    .ToArray(),
-                Stream: true,
-                Reasoning: new OpenAIReasoningOptions(Effort: agent.ReasoningEffort),
-                Text: new OpenAITextOptions(Verbosity: agent.Verbosity),
-                Tools: CreateToolDefinitions(agent),         
-                PreviousResponseId: previousResponseId));
-    }
-
-    private async IAsyncEnumerable<AgentExecutionEvent> StreamToolOutputAsync(
-        Agent agent,
-        Uri requestUrl,
-        string previousResponseId,
-        IReadOnlyList<OpenAIToolOutputSubmission> toolOutputs,
-        AgentToolInvoker? toolInvoker,
-        string instructions,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        using var request = CreateToolOutputRequest(
-            agent,
-            requestUrl,
-            previousResponseId,
-            toolOutputs,
-            instructions);
-
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
-
-        using var response = await httpClient.SendAsync(
-            request,
-            HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-
-            yield return AgentExecutionEvent.Failed(
-                $"OpenAIToolOutputRequestFailed: Tool output request failed with status code " +
-                $"{(int)response.StatusCode}. {errorBody}");
-
-            yield break;
-        }
-
-        await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        using var reader = new StreamReader(responseStream);
-
-        var responseId = previousResponseId;
-        var hasAnyRuntimeEvent = false;
-        var hasStreamedTextDelta = false;
-        var pendingToolOutputs = new List<OpenAIToolOutputSubmission>();
-
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            var line = await reader.ReadLineAsync(cancellationToken);
-
-            if (line is null)
-            {
-                break;
-            }
-
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                continue;
-            }
-
-            if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            var data = line["data:".Length..].Trim();
-
             if (string.Equals(data, "[DONE]", StringComparison.OrdinalIgnoreCase))
             {
                 break;
             }
 
-            responseId = TryReadResponseId(data) ?? responseId;
-
-            var functionCall = TryReadCompletedFunctionCall(data);
-
-            if (functionCall is not null)
+            JsonDocument document;
+            try
             {
-                hasAnyRuntimeEvent = true;
+                document = JsonDocument.Parse(data);
+            }
+            catch (JsonException exception)
+            {
+                throw new ChatProviderException(
+                    ProviderErrorKind.MalformedProviderResponse,
+                    "Provider returned a malformed stream event.",
+                    request.Model.ProviderName,
+                    innerException: exception);
+            }
 
-                yield return AgentExecutionEvent.ToolCallStarted(
-                    functionCall.ToolCallId,
-                    functionCall.ToolName,
-                    functionCall.ArgumentsJson);
+            using (document)
+            {
+                var root = document.RootElement;
+                var type = ReadString(root, "type");
+                responseId ??= ReadResponseId(root);
 
-                string outputJson;
-
-                if (toolInvoker is null)
+                if (type == "response.output_text.delta" && ReadString(root, "delta") is { Length: > 0 } delta)
                 {
-                    outputJson = CreateToolErrorOutputJson(
-                        "ToolInvokerUnavailable",
-                        "Tool invoker is not available.");
-
-                    yield return AgentExecutionEvent.ToolCallFailed(
-                        functionCall.ToolCallId,
-                        functionCall.ToolName,
-                        "Tool invoker is not available.");
-
-                    pendingToolOutputs.Add(new OpenAIToolOutputSubmission(
-                        functionCall.ToolCallId,
-                        functionCall.ToolName,
-                        outputJson));
-
-                    continue;
+                    yield return new ChatStreamingUpdate(ChatStreamingUpdateKind.ContentDelta, ContentDelta: delta, ProviderResponseId: responseId);
                 }
-
-                var toolResult = await toolInvoker.InvokeAsync(
-                    agent,
-                    functionCall.ToolName,
-                    functionCall.ArgumentsJson,
-                    cancellationToken);
-
-                if (!toolResult.IsSuccess)
+                else if (type == "response.output_item.added" && root.TryGetProperty("item", out var addedItem) &&
+                         ReadString(addedItem, "type") == "function_call")
                 {
-                    outputJson = CreateToolErrorOutputJson(
-                        toolResult.ErrorCode,
-                        toolResult.ErrorMessage ?? "Tool execution failed.");
-
-                    yield return AgentExecutionEvent.ToolCallFailed(
-                        functionCall.ToolCallId,
-                        functionCall.ToolName,
-                        toolResult.ErrorMessage ?? "Tool execution failed.",
-                        toolResult.ErrorCode);
-
-                    pendingToolOutputs.Add(new OpenAIToolOutputSubmission(
-                        functionCall.ToolCallId,
-                        functionCall.ToolName,
-                        outputJson));
-
-                    continue;
+                    var key = ReadString(addedItem, "id") ?? ReadString(addedItem, "call_id") ?? string.Empty;
+                    pendingToolCalls[key] = new PendingToolCall(
+                        ReadString(addedItem, "call_id") ?? key,
+                        ReadString(addedItem, "name") ?? string.Empty);
                 }
-
-                outputJson = NormalizeToolOutputJson(toolResult.OutputJson);
-
-                yield return AgentExecutionEvent.ToolCallCompleted(
-                    functionCall.ToolCallId,
-                    functionCall.ToolName,
-                    outputJson);
-
-                pendingToolOutputs.Add(new OpenAIToolOutputSubmission(
-                    functionCall.ToolCallId,
-                    functionCall.ToolName,
-                    outputJson));
-
-                continue;
-            }
-
-            var outputItemText = TryReadCompletedOutputItemText(data);
-
-            if (!string.IsNullOrEmpty(outputItemText))
-            {
-                if (!hasStreamedTextDelta)
+                else if (type == "response.function_call_arguments.delta")
                 {
-                    hasAnyRuntimeEvent = true;
-                    yield return AgentExecutionEvent.AssistantDelta(outputItemText);
+                    var key = ReadString(root, "item_id") ?? ReadString(root, "call_id") ?? string.Empty;
+                    if (!pendingToolCalls.TryGetValue(key, out var pending))
+                        pendingToolCalls[key] = pending = new PendingToolCall(ReadString(root, "call_id") ?? key, ReadString(root, "name") ?? string.Empty);
+                    pending.Arguments += ReadString(root, "delta") ?? string.Empty;
                 }
-
-                continue;
-            }
-
-            var completedResponseText = TryReadCompletedResponseText(data);
-
-            if (!string.IsNullOrEmpty(completedResponseText))
-            {
-                if (!hasStreamedTextDelta)
+                else if (type == "response.output_item.done" && TryReadToolCall(root, out var toolCall))
                 {
-                    hasAnyRuntimeEvent = true;
-                    yield return AgentExecutionEvent.AssistantDelta(completedResponseText);
+                    var item = root.GetProperty("item");
+                    var key = ReadString(item, "id") ?? toolCall.Id;
+                    if (pendingToolCalls.TryGetValue(key, out var pending) && string.IsNullOrEmpty(ReadString(item, "arguments")))
+                        toolCall = toolCall with { ArgumentsJson = pending.Arguments };
+                    finishReason = ChatFinishReason.ToolCalls;
+                    yield return new ChatStreamingUpdate(ChatStreamingUpdateKind.ToolCallDelta, ToolCall: toolCall, ProviderResponseId: responseId);
                 }
-
-                continue;
-            }
-
-            var completedText = TryReadCompletedText(data);
-
-            if (!string.IsNullOrEmpty(completedText))
-            {
-                if (!hasStreamedTextDelta)
+                else if (type == "response.completed" && root.TryGetProperty("response", out var completed))
                 {
-                    hasAnyRuntimeEvent = true;
-                    yield return AgentExecutionEvent.AssistantDelta(completedText);
-                }
-
-                continue;
-            }
-
-            var content = TryReadStreamTextDelta(data);
-
-            if (string.IsNullOrEmpty(content))
-            {
-                continue;
-            }
-
-            hasAnyRuntimeEvent = true;
-            hasStreamedTextDelta = true;
-
-            yield return AgentExecutionEvent.AssistantDelta(content);
-        }
-
-        if (pendingToolOutputs.Count > 0)
-        {
-            if (string.IsNullOrWhiteSpace(responseId))
-            {
-                yield return AgentExecutionEvent.Failed(
-                    "OpenAI response id could not be read before submitting tool output.",
-                    "OpenAIResponseIdMissing");
-
-                yield break;
-            }
-
-            await foreach (var nextEvent in StreamToolOutputAsync(
-                               agent,
-                               requestUrl,
-                               previousResponseId: responseId,
-                               toolOutputs: pendingToolOutputs,
-                               toolInvoker: toolInvoker,
-                               instructions: instructions,
-                               cancellationToken))
-            {
-                yield return nextEvent;
-            }
-
-            yield break;
-        }
-
-        if (!hasAnyRuntimeEvent)
-        {
-            yield return AgentExecutionEvent.Failed(
-                "OpenAIToolOutputEmptyStream: OpenAI tool output stream completed without producing content or tool calls.");
-            yield break;
-        }
-
-        yield return AgentExecutionEvent.Completed();
-    }
-
-    private static Uri BuildResponsesUrl(Uri endpoint)
-    {
-        var endpointValue = endpoint.ToString().TrimEnd('/');
-
-        return new Uri($"{endpointValue}/responses");
-    }
-
-    private static string? TryReadStreamTextDelta(string json)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-
-            var root = document.RootElement;
-
-            if (!root.TryGetProperty("type", out var typeElement))
-            {
-                return null;
-            }
-
-            var eventType = typeElement.GetString();
-
-            if (!string.Equals(eventType, "response.output_text.delta", StringComparison.Ordinal))
-            {
-                return null;
-            }
-
-            if (!root.TryGetProperty("delta", out var deltaElement))
-            {
-                return null;
-            }
-
-            return deltaElement.GetString();
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
-
-
-    private static OpenAIFunctionCall? TryReadCompletedFunctionCall(string json)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            var root = document.RootElement;
-
-            if (!root.TryGetProperty("type", out var typeElement) ||
-                typeElement.GetString() != "response.output_item.done")
-            {
-                return null;
-            }
-
-            if (!root.TryGetProperty("item", out var itemElement))
-            {
-                return null;
-            }
-
-            if (!itemElement.TryGetProperty("type", out var itemTypeElement) ||
-                itemTypeElement.GetString() != "function_call")
-            {
-                return null;
-            }
-
-            if (!itemElement.TryGetProperty("status", out var statusElement) ||
-                statusElement.GetString() != "completed")
-            {
-                return null;
-            }
-
-            var toolCallId = itemElement.TryGetProperty("call_id", out var callIdElement)
-                ? callIdElement.GetString()
-                : null;
-
-            var toolName = itemElement.TryGetProperty("name", out var nameElement)
-                ? nameElement.GetString()
-                : null;
-
-            var argumentsJson = itemElement.TryGetProperty("arguments", out var argumentsElement)
-                ? argumentsElement.GetString()
-                : null;
-
-            if (string.IsNullOrWhiteSpace(toolCallId) ||
-                string.IsNullOrWhiteSpace(toolName))
-            {
-                return null;
-            }
-
-            return new OpenAIFunctionCall(
-                ToolCallId: toolCallId,
-                ToolName: toolName,
-                ArgumentsJson: string.IsNullOrWhiteSpace(argumentsJson) ? "{}" : argumentsJson);
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
-
-    private static string? TryReadCompletedOutputItemText(string json)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            var root = document.RootElement;
-
-            if (!root.TryGetProperty("type", out var typeElement) ||
-                typeElement.GetString() != "response.output_item.done")
-            {
-                return null;
-            }
-
-            if (!root.TryGetProperty("item", out var itemElement))
-            {
-                return null;
-            }
-
-            if (!itemElement.TryGetProperty("type", out var itemTypeElement) ||
-                itemTypeElement.GetString() != "message")
-            {
-                return null;
-            }
-
-            if (!itemElement.TryGetProperty("content", out var contentElement) ||
-                contentElement.ValueKind != JsonValueKind.Array)
-            {
-                return null;
-            }
-
-            var parts = new List<string>();
-
-            foreach (var contentItem in contentElement.EnumerateArray())
-            {
-                if (!contentItem.TryGetProperty("type", out var contentTypeElement) ||
-                    contentTypeElement.GetString() != "output_text")
-                {
-                    continue;
-                }
-
-                if (contentItem.TryGetProperty("text", out var textElement))
-                {
-                    parts.Add(textElement.GetString() ?? string.Empty);
-                }
-            }
-
-            return parts.Count == 0
-                ? null
-                : string.Concat(parts);
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
-
-    private static string? TryReadCompletedResponseText(string json)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            var root = document.RootElement;
-
-            if (!root.TryGetProperty("type", out var typeElement) ||
-                typeElement.GetString() != "response.completed")
-            {
-                return null;
-            }
-
-            if (!root.TryGetProperty("response", out var responseElement))
-            {
-                return null;
-            }
-
-            return TryReadOutputText(responseElement.GetRawText());
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
-
-    private static string? TryReadCompletedText(string json)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            var root = document.RootElement;
-
-            if (!root.TryGetProperty("type", out var typeElement))
-            {
-                return null;
-            }
-
-            var eventType = typeElement.GetString();
-
-            if (string.Equals(eventType, "response.output_text.done", StringComparison.Ordinal) &&
-                root.TryGetProperty("text", out var textElement))
-            {
-                return textElement.GetString();
-            }
-
-            if (string.Equals(eventType, "response.content_part.done", StringComparison.Ordinal) &&
-                root.TryGetProperty("part", out var partElement) &&
-                partElement.ValueKind == JsonValueKind.Object &&
-                partElement.TryGetProperty("type", out var partTypeElement) &&
-                partTypeElement.GetString() == "output_text" &&
-                partElement.TryGetProperty("text", out var partTextElement))
-            {
-                return partTextElement.GetString();
-            }
-
-            return null;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
-
-    private static string? TryReadOutputText(string json)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-
-            var root = document.RootElement;
-
-            if (root.TryGetProperty("output_text", out var outputTextElement))
-            {
-                return outputTextElement.GetString();
-            }
-
-            if (!root.TryGetProperty("output", out var outputElement) ||
-                outputElement.ValueKind != JsonValueKind.Array)
-            {
-                return null;
-            }
-
-            var parts = new List<string>();
-
-            foreach (var outputItem in outputElement.EnumerateArray())
-            {
-                if (!outputItem.TryGetProperty("content", out var contentElement) ||
-                    contentElement.ValueKind != JsonValueKind.Array)
-                {
-                    continue;
-                }
-
-                foreach (var contentItem in contentElement.EnumerateArray())
-                {
-                    if (!contentItem.TryGetProperty("type", out var typeElement))
+                    usage = ReadUsage(completed);
+                    if (usage is not null)
                     {
-                        continue;
-                    }
-
-                    var type = typeElement.GetString();
-
-                    if (!string.Equals(type, "output_text", StringComparison.Ordinal))
-                    {
-                        continue;
-                    }
-
-                    if (contentItem.TryGetProperty("text", out var textElement))
-                    {
-                        parts.Add(textElement.GetString() ?? string.Empty);
+                        yield return new ChatStreamingUpdate(ChatStreamingUpdateKind.Usage, Usage: usage, ProviderResponseId: responseId);
                     }
                 }
+                else if (type is "response.failed" or "error")
+                {
+                    throw new ChatProviderException(
+                        ProviderErrorKind.ProviderUnavailable,
+                        ReadProviderError(root),
+                        request.Model.ProviderName);
+                }
             }
-
-            return parts.Count == 0
-                ? null
-                : string.Concat(parts);
         }
-        catch (JsonException)
+
+        yield return new ChatStreamingUpdate(
+            ChatStreamingUpdateKind.Completed,
+            FinishReason: finishReason,
+            Usage: usage,
+            ProviderResponseId: responseId);
+    }
+
+    private static HttpRequestMessage CreateRequest(ChatRequest request, bool stream)
+    {
+        var endpoint = request.ProviderEndpoint
+            ?? ProviderDefaults.ResolveUrl(request.Model.ProviderName, request.Model.ModelName, configuredUrl: null);
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, new Uri($"{endpoint.ToString().TrimEnd('/')}/responses"));
+
+        if (!string.IsNullOrWhiteSpace(request.ApiKey))
+        {
+            httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", request.ApiKey);
+        }
+
+        var system = string.Join("\n\n", request.Messages.Where(message => message.Role == ChatRole.System).Select(message => message.Content));
+        var previousResponseId = request.Options?.Extensions.TryGetValue("previous_response_id", out var value) == true
+            ? value as string
+            : null;
+
+        httpRequest.Content = JsonContent.Create(
+            new ResponseRequest(
+                request.Model.ModelName,
+                system,
+                CreateInput(request.Messages),
+                stream,
+                string.IsNullOrWhiteSpace(request.Options?.ReasoningEffort) ? null : new ReasoningOptions(request.Options.ReasoningEffort),
+                CreateTextOptions(request),
+                request.Tools?.Select(MapTool).ToArray(),
+                previousResponseId),
+            options: JsonOptions);
+        return httpRequest;
+    }
+
+    private static object CreateInput(IReadOnlyList<ChatMessage> messages)
+    {
+        var nonSystemMessages = messages.Where(message => message.Role != ChatRole.System).ToArray();
+        if (nonSystemMessages.Length == 1 && nonSystemMessages[0].Role == ChatRole.User)
+        {
+            return nonSystemMessages[0].Content;
+        }
+
+        return nonSystemMessages.Select(message => message.Role == ChatRole.Tool
+            ? (object)new FunctionOutput("function_call_output", message.ToolCallId ?? string.Empty, message.Content)
+            : new InputMessage(MapRole(message.Role), message.Content)).ToArray();
+    }
+
+    private static TextOptions? CreateTextOptions(ChatRequest request)
+    {
+        ResponseFormat? format = request.ResponseFormat is null
+            ? null
+            : new ResponseFormat("json_schema", request.ResponseFormat.Name, ParseSchema(request.ResponseFormat.JsonSchema), true);
+        return format is null && string.IsNullOrWhiteSpace(request.Options?.Verbosity)
+            ? null
+            : new TextOptions(request.Options?.Verbosity, format);
+    }
+
+    private static JsonElement ParseSchema(string schema)
+    {
+        using var document = JsonDocument.Parse(schema);
+        return document.RootElement.Clone();
+    }
+
+    private static ToolDefinition MapTool(ChatToolDefinition tool) =>
+        new("function", tool.Name, tool.Description, ParseSchema(tool.ParametersJsonSchema));
+
+    private static string MapRole(ChatRole role) => role switch
+    {
+        ChatRole.Assistant => "assistant",
+        ChatRole.Tool => "tool",
+        _ => "user"
+    };
+
+    private static IReadOnlyList<ChatToolCall> ReadToolCalls(JsonElement root)
+    {
+        var calls = new List<ChatToolCall>();
+        if (!root.TryGetProperty("output", out var output) || output.ValueKind != JsonValueKind.Array)
+        {
+            return calls;
+        }
+
+        foreach (var item in output.EnumerateArray())
+        {
+            if (ReadString(item, "type") == "function_call" && TryReadToolCallItem(item, out var call))
+            {
+                calls.Add(call);
+            }
+        }
+        return calls;
+    }
+
+    private static bool TryReadToolCall(JsonElement root, out ChatToolCall call)
+    {
+        call = default!;
+        return root.TryGetProperty("item", out var item) && TryReadToolCallItem(item, out call);
+    }
+
+    private static bool TryReadToolCallItem(JsonElement item, out ChatToolCall call)
+    {
+        var id = ReadString(item, "call_id");
+        var name = ReadString(item, "name");
+        call = new ChatToolCall(id ?? string.Empty, name ?? string.Empty, ReadString(item, "arguments") ?? "{}");
+        return ReadString(item, "type") == "function_call" && !string.IsNullOrWhiteSpace(id) && !string.IsNullOrWhiteSpace(name);
+    }
+
+    private static string? ReadOutputText(JsonElement root)
+    {
+        if (ReadString(root, "output_text") is { } direct)
+        {
+            return direct;
+        }
+
+        if (!root.TryGetProperty("output", out var output) || output.ValueKind != JsonValueKind.Array)
         {
             return null;
         }
+
+        return string.Concat(output.EnumerateArray()
+            .Where(item => item.TryGetProperty("content", out _))
+            .SelectMany(item => item.GetProperty("content").EnumerateArray())
+            .Where(part => ReadString(part, "type") == "output_text")
+            .Select(part => ReadString(part, "text") ?? string.Empty));
     }
 
-    private static string? TryReadResponseId(string json)
+    private static ChatUsage? ReadUsage(JsonElement root)
+    {
+        if (!root.TryGetProperty("usage", out var usage) || usage.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+        var input = ReadInt(usage, "input_tokens");
+        var output = ReadInt(usage, "output_tokens");
+        var total = ReadInt(usage, "total_tokens") ?? (input.HasValue && output.HasValue ? input + output : null);
+        return new ChatUsage(input, output, total);
+    }
+
+    private static string? ReadResponseId(JsonElement root) =>
+        root.TryGetProperty("response", out var response) ? ReadString(response, "id") : ReadString(root, "id");
+
+    private static string? ReadString(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    private static int? ReadInt(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.TryGetInt32(out var number) ? number : null;
+
+    private static string ReadProviderError(JsonElement root)
+    {
+        if (root.TryGetProperty("error", out var error))
+        {
+            return ReadString(error, "message") ?? "The provider reported a stream error.";
+        }
+        return "The provider reported a stream error.";
+    }
+
+    private static ChatProviderException CreateProviderException(ChatRequest request, HttpStatusCode statusCode, string body)
+    {
+        var kind = statusCode switch
+        {
+            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => ProviderErrorKind.AuthenticationFailure,
+            HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity => ProviderErrorKind.InvalidRequest,
+            HttpStatusCode.NotFound => ProviderErrorKind.ModelNotFound,
+            HttpStatusCode.RequestTimeout or HttpStatusCode.GatewayTimeout => ProviderErrorKind.Timeout,
+            HttpStatusCode.TooManyRequests => ProviderErrorKind.RateLimited,
+            HttpStatusCode.NotImplemented => ProviderErrorKind.UnsupportedOperation,
+            HttpStatusCode.ServiceUnavailable or HttpStatusCode.BadGateway => ProviderErrorKind.ProviderUnavailable,
+            _ => ProviderErrorKind.Unknown
+        };
+        return new ChatProviderException(kind, ReadErrorMessage(body, statusCode), request.Model.ProviderName, (int)statusCode);
+    }
+
+    private static string ReadErrorMessage(string body, HttpStatusCode statusCode)
     {
         try
         {
-            using var document = JsonDocument.Parse(json);
-            var root = document.RootElement;
-
-            if (root.TryGetProperty("response", out var responseElement) &&
-                responseElement.ValueKind == JsonValueKind.Object &&
-                responseElement.TryGetProperty("id", out var responseIdElement))
-            {
-                return responseIdElement.GetString();
-            }
-
-            if (root.TryGetProperty("id", out var idElement))
-            {
-                var id = idElement.GetString();
-
-                return string.IsNullOrWhiteSpace(id) ||
-                       !id.StartsWith("resp_", StringComparison.Ordinal)
-                    ? null
-                    : id;
-            }
-
-            return null;
+            using var document = JsonDocument.Parse(body);
+            return ReadProviderError(document.RootElement);
         }
         catch (JsonException)
         {
-            return null;
+            return $"Provider request failed with status code {(int)statusCode}.";
         }
     }
 
-    private static IReadOnlyList<OpenAIToolDefinition>? CreateToolDefinitions(Agent agent)
-    {
-        if (agent.Tools.Count == 0)
-        {
-            return null;
-        }
-
-        return agent.Tools
-            .Select(CreateToolDefinition)
-            .ToList();
-    }
-
-    private static OpenAIToolDefinition CreateToolDefinition(AgentToolRegistration tool)
-    {
-        return new OpenAIToolDefinition(
-            Type: "function",
-            Name: tool.Name,
-            Description: CreateToolDescription(tool),
-            Parameters: CreateToolParameters(tool.InputType));
-    }
-
-    private static string CreateToolDescription(AgentToolRegistration tool)
-    {
-        return string.IsNullOrWhiteSpace(tool.Description)
-            ? $"Executes the {tool.Name} tool."
-            : tool.Description;
-    }
-
-    private static OpenAIToolParameters CreateToolParameters(Type inputType)
-    {
-        var properties = new Dictionary<string, OpenAIToolProperty>(StringComparer.Ordinal);
-        var required = new List<string>();
-
-        foreach (var property in GetSerializableProperties(inputType))
-        {
-            var propertyName = JsonNamingPolicy.CamelCase.ConvertName(property.Name);
-
-            properties[propertyName] = new OpenAIToolProperty(
-                Type: CreateJsonSchemaType(property.PropertyType));
-
-            if (IsRequiredProperty(property))
-            {
-                required.Add(propertyName);
-            }
-        }
-
-        return new OpenAIToolParameters(
-            Type: "object",
-            Properties: properties,
-            Required: required);
-    }
-
-    private static IEnumerable<PropertyInfo> GetSerializableProperties(Type type)
-    {
-        return type
-            .GetProperties(BindingFlags.Instance | BindingFlags.Public)
-            .Where(property =>
-                property.GetMethod is not null &&
-                property.GetMethod.IsPublic &&
-                property.GetCustomAttribute<JsonIgnoreAttribute>() is null);
-    }
-
-    private static bool IsRequiredProperty(PropertyInfo property)
-    {
-        if (property.GetCustomAttributes()
-            .Any(attribute => attribute.GetType().Name == "RequiredAttribute"))
-        {
-            return true;
-        }
-
-        var propertyType = property.PropertyType;
-
-        if (propertyType.IsValueType && Nullable.GetUnderlyingType(propertyType) is null)
-        {
-            return true;
-        }
-
-        var nullabilityInfo = NullabilityContext.Create(property);
-
-        return nullabilityInfo.ReadState == NullabilityState.NotNull;
-    }
-
-    private static string CreateJsonSchemaType(Type type)
-    {
-        var actualType = Nullable.GetUnderlyingType(type) ?? type;
-
-        if (actualType == typeof(string) ||
-            actualType == typeof(Guid) ||
-            actualType == typeof(DateTime) ||
-            actualType == typeof(DateTimeOffset))
-        {
-            return "string";
-        }
-
-        if (actualType == typeof(int) ||
-            actualType == typeof(long) ||
-            actualType == typeof(short) ||
-            actualType == typeof(byte))
-        {
-            return "integer";
-        }
-
-        if (actualType == typeof(decimal) ||
-            actualType == typeof(double) ||
-            actualType == typeof(float))
-        {
-            return "number";
-        }
-
-        if (actualType == typeof(bool))
-        {
-            return "boolean";
-        }
-
-        return "string";
-    }
-
-    private static string ResolveInstructions(
-    Agent agent,
-    string? instructions)
-    {
-        return string.IsNullOrWhiteSpace(instructions)
-            ? agent.Instructions
-            : instructions;
-    }
-
-    private static string NormalizeToolOutputJson(string? outputJson)
-    {
-        return string.IsNullOrWhiteSpace(outputJson)
-            ? "{}"
-            : outputJson;
-    }
-
-    private static string CreateToolErrorOutputJson(
-        string? errorCode,
-        string errorMessage)
-    {
-        return JsonSerializer.Serialize(
-            new
-            {
-                isSuccess = false,
-                errorCode = string.IsNullOrWhiteSpace(errorCode)
-                    ? "ToolExecutionFailed"
-                    : errorCode,
-                errorMessage
-            },
-            JsonOptions);
-    }
-
-    private sealed record OpenAIFunctionCall(
-        string ToolCallId,
-        string ToolName,
-        string ArgumentsJson);
-
-    private sealed record OpenAIToolOutputSubmission(
-        string ToolCallId,
-        string ToolName,
-        string OutputJson);
-
-    private sealed record OpenAIFunctionCallOutputInput(
-    string Type,
-    [property: JsonPropertyName("call_id")]
-    string CallId,
-    string Output);
-
-    private sealed record OpenAIResponseRequest(
+    private sealed record ResponseRequest(
         string Model,
         string Instructions,
         object Input,
         bool Stream,
-        OpenAIReasoningOptions? Reasoning,
-        OpenAITextOptions? Text,
-        IReadOnlyList<OpenAIToolDefinition>? Tools = null,
-        [property: JsonPropertyName("previous_response_id")]
-        string? PreviousResponseId = null);
-
-    private sealed record OpenAIReasoningOptions(
-        string Effort);
-
-    private sealed record OpenAITextOptions(
-        string Verbosity);
-
-    private sealed record OpenAIToolDefinition(
-        string Type,
-        string Name,
-        string Description,
-        OpenAIToolParameters Parameters);
-
-    private sealed record OpenAIToolParameters(
-        string Type,
-        IReadOnlyDictionary<string, OpenAIToolProperty> Properties,
-        IReadOnlyList<string> Required);
-
-    private sealed record OpenAIToolProperty(
-        string Type);
+        ReasoningOptions? Reasoning,
+        TextOptions? Text,
+        IReadOnlyList<ToolDefinition>? Tools,
+        [property: JsonPropertyName("previous_response_id")] string? PreviousResponseId);
+    private sealed record ReasoningOptions(string Effort);
+    private sealed record TextOptions(string? Verbosity, ResponseFormat? Format);
+    private sealed record ResponseFormat(string Type, string Name, JsonElement Schema, bool Strict);
+    private sealed record ToolDefinition(string Type, string Name, string Description, JsonElement Parameters);
+    private sealed record FunctionOutput(string Type, [property: JsonPropertyName("call_id")] string CallId, string Output);
+    private sealed class PendingToolCall(string id, string name)
+    {
+        public string Id { get; } = id;
+        public string Name { get; } = name;
+        public string Arguments { get; set; } = string.Empty;
+    }
+    private sealed record InputMessage(string Role, string Content);
 }
-

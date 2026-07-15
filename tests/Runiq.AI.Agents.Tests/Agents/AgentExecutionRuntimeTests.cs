@@ -3,6 +3,8 @@ using Microsoft.Extensions.Options;
 using Runiq.AI.Agents.Providers.OpenAI;
 using Runiq.AI.Agents.Runtime;
 using Runiq.AI.Agents.Tools;
+using Runiq.AI.Agents.Tests.TestDoubles;
+using Runiq.AI.Core.AI.Chat;
 using Runiq.AI.ContextSpaces.Models.Skills;
 using Runiq.AI.ContextSpaces.Models.Sources;
 using Runiq.AI.ContextSpaces.Services;
@@ -24,34 +26,37 @@ namespace Runiq.AI.Agents.Tests.Agents;
 
 public sealed class AgentExecutionRuntimeTests
 {
+    // The runtime constructor must depend on the shared Core resolver instead of concrete provider clients.
     [Fact]
-    public void Constructor_ShouldExposeLegacyPublicOverload()
+    public void Constructor_ShouldExposeProviderNeutralResolverOverload()
     {
         var constructor = typeof(AgentExecutionRuntime).GetConstructor([
             typeof(IEnumerable<Agent>),
-            typeof(OpenAIResponsesClient),
-            typeof(OpenAICompatibleClient),
+            typeof(IChatClientResolver),
             typeof(AgentToolInvoker),
             typeof(IReadOnlyList<ContextSpace>),
             typeof(IContextSpaceSkillDiscoveryService),
-            typeof(IContextSpaceSourceSearchService)
+            typeof(IContextSpaceSourceSearchService),
+            typeof(IRagRetriever),
+            typeof(IVectorQueryTool)
         ]);
 
         Assert.NotNull(constructor);
     }
 
+    // The provider-neutral constructor accepts an optional retriever without adding a provider-specific overload.
     [Fact]
     public void Constructor_ShouldExposeRagRetrieverOverload()
     {
         var constructor = typeof(AgentExecutionRuntime).GetConstructor([
             typeof(IEnumerable<Agent>),
-            typeof(OpenAIResponsesClient),
-            typeof(OpenAICompatibleClient),
+            typeof(IChatClientResolver),
             typeof(AgentToolInvoker),
             typeof(IReadOnlyList<ContextSpace>),
             typeof(IContextSpaceSkillDiscoveryService),
             typeof(IContextSpaceSourceSearchService),
-            typeof(IRagRetriever)
+            typeof(IRagRetriever),
+            typeof(IVectorQueryTool)
         ]);
 
         Assert.NotNull(constructor);
@@ -59,8 +64,7 @@ public sealed class AgentExecutionRuntimeTests
         var retriever = new TrackingRagRetriever([]);
         var runtime = new AgentExecutionRuntime(
             agents: [],
-            openAIResponsesClient: new OpenAIResponsesClient(new HttpClient()),
-            openAICompatibleClient: new OpenAICompatibleClient(new HttpClient()),
+            chatClientResolver: new TestChatClientResolver(),
             toolInvoker: new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()),
             ragRetriever: retriever);
 
@@ -182,8 +186,7 @@ public sealed class AgentExecutionRuntimeTests
         var retriever = new TrackingRagRetriever([]);
         var runtime = new AgentExecutionRuntime(
             agents: [documentsAgent, archiveAgent],
-            openAIResponsesClient: new OpenAIResponsesClient(new HttpClient()),
-            openAICompatibleClient: new OpenAICompatibleClient(new HttpClient()),
+            chatClientResolver: new TestChatClientResolver(),
             toolInvoker: new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()),
             ragRetriever: retriever);
 
@@ -195,27 +198,26 @@ public sealed class AgentExecutionRuntimeTests
     }
 
     // Verifies the runtime exposes a public constructor overload that accepts the Vector Query Tool.
+    // The provider-neutral constructor accepts an optional vector query tool while tool execution remains Agent-owned.
     [Fact]
-    public void Constructor_ShouldExposeVectorQueryToolOverload()
+    public void Constructor_ShouldAcceptVectorQueryTool()
     {
         var constructor = typeof(AgentExecutionRuntime).GetConstructor([
             typeof(IEnumerable<Agent>),
-            typeof(OpenAIResponsesClient),
-            typeof(OpenAICompatibleClient),
+            typeof(IChatClientResolver),
             typeof(AgentToolInvoker),
-            typeof(IRagRetriever),
-            typeof(IVectorQueryTool),
             typeof(IReadOnlyList<ContextSpace>),
             typeof(IContextSpaceSkillDiscoveryService),
-            typeof(IContextSpaceSourceSearchService)
+            typeof(IContextSpaceSourceSearchService),
+            typeof(IRagRetriever),
+            typeof(IVectorQueryTool)
         ]);
 
         Assert.NotNull(constructor);
 
         var runtime = new AgentExecutionRuntime(
             agents: [],
-            openAIResponsesClient: new OpenAIResponsesClient(new HttpClient()),
-            openAICompatibleClient: new OpenAICompatibleClient(new HttpClient()),
+            chatClientResolver: new TestChatClientResolver(),
             toolInvoker: new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()),
             ragRetriever: null,
             vectorQueryTool: new CapturingVectorQueryTool(VectorQueryToolResult.Success()));
@@ -269,8 +271,7 @@ public sealed class AgentExecutionRuntimeTests
         var tool = new CapturingVectorQueryTool(VectorQueryToolResult.Success());
         var runtime = new AgentExecutionRuntime(
             agents: [agent],
-            openAIResponsesClient: new OpenAIResponsesClient(new HttpClient()),
-            openAICompatibleClient: new OpenAICompatibleClient(new HttpClient()),
+            chatClientResolver: new TestChatClientResolver(),
             toolInvoker: new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()),
             ragRetriever: retriever,
             vectorQueryTool: tool);
@@ -366,8 +367,7 @@ public sealed class AgentExecutionRuntimeTests
 
         var runtime = new AgentExecutionRuntime(
             agents: [agent],
-            openAIResponsesClient: new OpenAIResponsesClient(new HttpClient()),
-            openAICompatibleClient: new OpenAICompatibleClient(new HttpClient()),
+            chatClientResolver: new TestChatClientResolver(),
             toolInvoker: new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()),
             contextSpaces: [contextSpace],
             skillDiscoveryService: new StubSkillDiscoveryService([
@@ -523,8 +523,7 @@ public sealed class AgentExecutionRuntimeTests
 
         var runtime = new AgentExecutionRuntime(
             agents: [agent],
-            openAIResponsesClient: new OpenAIResponsesClient(new HttpClient()),
-            openAICompatibleClient: new OpenAICompatibleClient(new HttpClient()),
+            chatClientResolver: new TestChatClientResolver(),
             toolInvoker: new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()),
             contextSpaces: [contextSpace],
             skillDiscoveryService: new StubSkillDiscoveryService([]),
@@ -752,8 +751,7 @@ public sealed class AgentExecutionRuntimeTests
 
         return new AgentExecutionRuntime(
             agents: [agent],
-            openAIResponsesClient: new OpenAIResponsesClient(new HttpClient()),
-            openAICompatibleClient: new OpenAICompatibleClient(new HttpClient()),
+            chatClientResolver: new TestChatClientResolver(),
             toolInvoker: new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()),
             contextSpaces: [contextSpace],
             skillDiscoveryService: new StubSkillDiscoveryService([]),
@@ -777,8 +775,7 @@ public sealed class AgentExecutionRuntimeTests
     {
         return new AgentExecutionRuntime(
             agents: [agent],
-            openAIResponsesClient: new OpenAIResponsesClient(new HttpClient()),
-            openAICompatibleClient: new OpenAICompatibleClient(new HttpClient()),
+            chatClientResolver: new TestChatClientResolver(),
             toolInvoker: new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()),
             ragRetriever: retriever);
     }
@@ -789,8 +786,7 @@ public sealed class AgentExecutionRuntimeTests
     {
         return new AgentExecutionRuntime(
             agents: [agent],
-            openAIResponsesClient: new OpenAIResponsesClient(new HttpClient()),
-            openAICompatibleClient: new OpenAICompatibleClient(new HttpClient()),
+            chatClientResolver: new TestChatClientResolver(),
             toolInvoker: new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()),
             ragRetriever: null,
             vectorQueryTool: tool);

@@ -2,9 +2,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Runiq.AI.Agents;
 using Runiq.AI.Agents.Providers.OpenAI;
+using Runiq.AI.Agents.Providers;
 using Runiq.AI.Agents.Runtime;
 using Runiq.AI.Agents.Tools;
 using Runiq.AI.Agents.Validation;
+using Runiq.AI.Core.AI.Chat;
 using Runiq.AI.ContextSpaces.Models.Sources;
 using Runiq.AI.Core.Agents;
 using Runiq.AI.Core.Configuration;
@@ -71,6 +73,7 @@ public static class RuniqAgentServerServiceCollectionExtensions
 
         services.AddHttpClient<OpenAIResponsesClient>();
         services.AddHttpClient<OpenAICompatibleClient>();
+        services.TryAddScoped<IChatClientResolver, ChatClientResolver>();
         services.AddSingleton<AgentToolInvoker>();
 
         services.AddScoped<ToolRunApiHandler>();

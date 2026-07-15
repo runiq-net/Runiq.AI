@@ -3,6 +3,7 @@ using Runiq.AI.Agents;
 using Runiq.AI.Agents.Providers.OpenAI;
 using Runiq.AI.Agents.Runtime;
 using Runiq.AI.Agents.Tools;
+using Runiq.AI.Agents.Tests.TestDoubles;
 using Runiq.AI.Rag.Abstractions.Embeddings;
 using Runiq.AI.Rag.Abstractions.Tools;
 using Runiq.AI.Rag.Abstractions.VectorStores;
@@ -167,8 +168,7 @@ public sealed class AgentVectorQueryToolIntegrationTests
     {
         return new AgentExecutionRuntime(
             agents: [agent],
-            openAIResponsesClient: new OpenAIResponsesClient(new HttpClient()),
-            openAICompatibleClient: new OpenAICompatibleClient(new HttpClient()),
+            chatClientResolver: new TestChatClientResolver(),
             toolInvoker: new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()),
             ragRetriever: null,
             vectorQueryTool: tool);
