@@ -20,7 +20,7 @@ internal static class CorporateDocumentAssistantContext
             .AddSources(sources => sources.FromFileSystem(
                 id: "corporate-document-files",
                 name: "Corporate Document Files",
-                path: Path.Combine(AppContext.BaseDirectory, "SampleDocuments"),
+                path: Path.Join(AppContext.BaseDirectory, "SampleDocuments"),
                 description: "Markdown source documents for the Corporate Document Assistant sample."));
     }
 }
