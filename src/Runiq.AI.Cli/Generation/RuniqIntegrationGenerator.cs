@@ -169,7 +169,7 @@ public sealed class RuniqIntegrationGenerator
               });
               """
             : """
-              builder.Services.AddRuniqServer(_ => { });
+              builder.Services.AddRuniqServer();
               """;
 
         var dashboardMiddleware = definition.EnableDashboard

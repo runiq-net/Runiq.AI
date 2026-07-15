@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Runiq.AI.ContextSpaces.Models.Sources;
 using Runiq.AI.Core;
 using Runiq.AI.Rag.CorporateDocumentAssistant.Context;
 using Runiq.AI.Rag.Configuration;
@@ -8,10 +9,11 @@ using Runiq.AI.Rag.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddRuniqServer(options =>
-{
-    options.AddContextSpace(CorporateDocumentAssistantContext.Create());
-});
+builder.Services.AddRuniqServer();
+builder.Services.AddSingleton<IReadOnlyList<ContextSpace>>(
+[
+    CorporateDocumentAssistantContext.Create(),
+]);
 builder.Services.AddRuniqRag(ragBuilder => ragBuilder.UseInMemoryVectorStore());
 builder.Services.AddRagEmbeddingProvider<DeterministicCorporateEmbeddingProvider>();
 builder.Services.Configure<RagOptions>(options =>

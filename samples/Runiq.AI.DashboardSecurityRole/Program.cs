@@ -18,7 +18,7 @@ builder.Services
     });
 
 builder.Services.AddAuthorization();
-builder.Services.AddRuniqServer(_ => { });
+builder.Services.AddRuniqServer();
 
 var app = builder.Build();
 

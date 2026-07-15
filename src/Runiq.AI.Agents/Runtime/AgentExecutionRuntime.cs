@@ -1,6 +1,8 @@
 using System.Runtime.CompilerServices;
-using Runiq.AI.Agents.Providers;
-using Runiq.AI.Agents.Providers.OpenAI;
+using System.Text.Json;
+using Runiq.AI.Core.AI.Chat;
+using Runiq.AI.Core.Metadata;
+using Runiq.AI.Core.Providers;
 using Runiq.AI.Agents.Tools;
 using Runiq.AI.ContextSpaces.Models.Sources;
 using Runiq.AI.ContextSpaces.Services;
@@ -16,7 +18,7 @@ using Runiq.AI.Rag.Models.Tools;
 namespace Runiq.AI.Agents.Runtime;
 
 /// <summary>
-/// Kayitli agent tanimlarini provider pipeline'i üzerinden çalistiran runtime servisidir.
+/// Kayitli agent tanimlarini provider pipeline'i Ã¼zerinden Ã§alistiran runtime servisidir.
 /// </summary>
 public sealed class AgentExecutionRuntime
 {
@@ -25,8 +27,7 @@ public sealed class AgentExecutionRuntime
     private const int MaxSelectedSourceExcerptCount = 4;
 
     private readonly IEnumerable<Agent> agents;
-    private readonly OpenAIResponsesClient openAIResponsesClient;
-    private readonly OpenAICompatibleClient openAICompatibleClient;
+    private readonly IChatClientResolver chatClientResolver;
     private readonly AgentToolInvoker toolInvoker;
     private readonly IReadOnlyList<ContextSpace> contextSpaces;
     private readonly IContextSpaceSkillDiscoveryService skillDiscoveryService;
@@ -34,128 +35,31 @@ public sealed class AgentExecutionRuntime
     private readonly IRagRetriever? ragRetriever;
     private readonly IVectorQueryTool? vectorQueryTool;
 
-
     /// <summary>
-    /// Yeni bir agent execution runtime örnegi olusturur.
+    /// Initializes the runtime with two provider-neutral clients for compatibility with existing manual construction.
     /// </summary>
-    /// <param name="agents">Runtime tarafindan çalistirilabilecek kayitli agent koleksiyonudur.</param>
-    /// <param name="openAIResponsesClient">OpenAI Responses API provider çagrilarini yürüten client örnegidir.</param>
-    /// <param name="openAICompatibleClient">OpenAI-compatible provider çagrilarini yürüten client örnegidir.</param>
-    /// <param name="toolInvoker">Agent tool çagrilarini çalistiran invoker örnegidir.</param>
-    /// <param name="contextSpaces">Agent çalismasinda kullanilabilecek context space tanimlaridir.</param>
-    /// <param name="skillDiscoveryService">Context space skill kesif servisidir.</param>
-    /// <param name="sourceSearchService">Context source arama servisidir.</param>
+    /// <param name="agents">The registered agents available to the runtime.</param>
+    /// <param name="openAIResponsesClient">The client used for native OpenAI requests.</param>
+    /// <param name="openAICompatibleClient">The client used for OpenAI-compatible and Ollama requests.</param>
+    /// <param name="toolInvoker">The agent-owned tool invoker.</param>
+    /// <param name="contextSpaces">Optional context spaces.</param>
+    /// <param name="skillDiscoveryService">Optional skill discovery service.</param>
+    /// <param name="sourceSearchService">Optional context source search service.</param>
+    /// <param name="ragRetriever">Optional RAG retriever.</param>
+    /// <param name="vectorQueryTool">Optional vector query tool.</param>
     public AgentExecutionRuntime(
         IEnumerable<Agent> agents,
-        OpenAIResponsesClient openAIResponsesClient,
-        OpenAICompatibleClient openAICompatibleClient,
+        IChatClient openAIResponsesClient,
+        IChatClient openAICompatibleClient,
         AgentToolInvoker toolInvoker,
         IReadOnlyList<ContextSpace>? contextSpaces = null,
         IContextSpaceSkillDiscoveryService? skillDiscoveryService = null,
-        IContextSpaceSourceSearchService? sourceSearchService = null)
+        IContextSpaceSourceSearchService? sourceSearchService = null,
+        IRagRetriever? ragRetriever = null,
+        IVectorQueryTool? vectorQueryTool = null)
         : this(
             agents,
-            openAIResponsesClient,
-            openAICompatibleClient,
-            toolInvoker,
-            contextSpaces,
-            skillDiscoveryService,
-            sourceSearchService,
-            ragRetriever: null)
-    {
-    }
-
-    /// <summary>
-    /// Yeni bir agent execution runtime örnegi ve RAG retriever entegrasyonu olusturur.
-    /// </summary>
-    /// <param name="agents">Runtime tarafindan çalistirilabilecek kayitli agent koleksiyonudur.</param>
-    /// <param name="openAIResponsesClient">OpenAI Responses API provider çagrilarini yürüten client örnegidir.</param>
-    /// <param name="openAICompatibleClient">OpenAI-compatible provider çagrilarini yürüten client örnegidir.</param>
-    /// <param name="toolInvoker">Agent tool çagrilarini çalistiran invoker örnegidir.</param>
-    /// <param name="ragRetriever">Agent RAG sorgularini çalistiracak opsiyonel retriever servisidir.</param>
-    /// <param name="contextSpaces">Agent çalismasinda kullanilabilecek context space tanimlaridir.</param>
-    /// <param name="skillDiscoveryService">Context space skill kesif servisidir.</param>
-    /// <param name="sourceSearchService">Context source arama servisidir.</param>
-    public AgentExecutionRuntime(
-        IEnumerable<Agent> agents,
-        OpenAIResponsesClient openAIResponsesClient,
-        OpenAICompatibleClient openAICompatibleClient,
-        AgentToolInvoker toolInvoker,
-        IRagRetriever? ragRetriever,
-        IReadOnlyList<ContextSpace>? contextSpaces = null,
-        IContextSpaceSkillDiscoveryService? skillDiscoveryService = null,
-        IContextSpaceSourceSearchService? sourceSearchService = null)
-        : this(
-            agents,
-            openAIResponsesClient,
-            openAICompatibleClient,
-            toolInvoker,
-            contextSpaces,
-            skillDiscoveryService,
-            sourceSearchService,
-            ragRetriever)
-    {
-    }
-
-    /// <summary>
-    /// Yeni bir agent execution runtime örnegi olusturur.
-    /// </summary>
-    /// <param name="agents">Runtime tarafindan çalistirilabilecek kayitli agent koleksiyonudur.</param>
-    /// <param name="openAIResponsesClient">OpenAI Responses API provider çagrilarini yürüten client örnegidir.</param>
-    /// <param name="openAICompatibleClient">OpenAI-compatible provider çagrilarini yürüten client örnegidir.</param>
-    /// <param name="toolInvoker">Agent tool çagrilarini çalistiran invoker örnegidir.</param>
-    /// <param name="contextSpaces">Agent çalismasinda kullanilabilecek context space tanimlaridir.</param>
-    /// <param name="skillDiscoveryService">Context space skill kesif servisidir.</param>
-    /// <param name="sourceSearchService">Context source arama servisidir.</param>
-    /// <param name="ragRetriever">Agent RAG sorgularini çalistiracak opsiyonel retriever servisidir.</param>
-    public AgentExecutionRuntime(
-        IEnumerable<Agent> agents,
-        OpenAIResponsesClient openAIResponsesClient,
-        OpenAICompatibleClient openAICompatibleClient,
-        AgentToolInvoker toolInvoker,
-        IReadOnlyList<ContextSpace>? contextSpaces,
-        IContextSpaceSkillDiscoveryService? skillDiscoveryService,
-        IContextSpaceSourceSearchService? sourceSearchService,
-        IRagRetriever? ragRetriever)
-        : this(
-            agents,
-            openAIResponsesClient,
-            openAICompatibleClient,
-            toolInvoker,
-            contextSpaces,
-            skillDiscoveryService,
-            sourceSearchService,
-            ragRetriever,
-            vectorQueryTool: null)
-    {
-    }
-
-    /// <summary>
-    /// Yeni bir agent execution runtime örnegi ile RAG retriever ve Vector Query Tool entegrasyonu olusturur.
-    /// </summary>
-    /// <param name="agents">Runtime tarafindan çalistirilabilecek kayitli agent koleksiyonudur.</param>
-    /// <param name="openAIResponsesClient">OpenAI Responses API provider çagrilarini yürüten client örnegidir.</param>
-    /// <param name="openAICompatibleClient">OpenAI-compatible provider çagrilarini yürüten client örnegidir.</param>
-    /// <param name="toolInvoker">Agent tool çagrilarini çalistiran invoker örnegidir.</param>
-    /// <param name="ragRetriever">Agent RAG sorgularini çalistiracak opsiyonel retriever servisidir.</param>
-    /// <param name="vectorQueryTool">Agent'a bagli Vector Query Tool sorgularini çalistiracak opsiyonel tool örnegidir.</param>
-    /// <param name="contextSpaces">Agent çalismasinda kullanilabilecek context space tanimlaridir.</param>
-    /// <param name="skillDiscoveryService">Context space skill kesif servisidir.</param>
-    /// <param name="sourceSearchService">Context source arama servisidir.</param>
-    public AgentExecutionRuntime(
-        IEnumerable<Agent> agents,
-        OpenAIResponsesClient openAIResponsesClient,
-        OpenAICompatibleClient openAICompatibleClient,
-        AgentToolInvoker toolInvoker,
-        IRagRetriever? ragRetriever,
-        IVectorQueryTool? vectorQueryTool,
-        IReadOnlyList<ContextSpace>? contextSpaces = null,
-        IContextSpaceSkillDiscoveryService? skillDiscoveryService = null,
-        IContextSpaceSourceSearchService? sourceSearchService = null)
-        : this(
-            agents,
-            openAIResponsesClient,
-            openAICompatibleClient,
+            new FixedChatClientResolver(openAIResponsesClient, openAICompatibleClient),
             toolInvoker,
             contextSpaces,
             skillDiscoveryService,
@@ -165,33 +69,31 @@ public sealed class AgentExecutionRuntime
     {
     }
 
+
     /// <summary>
-    /// Tüm bagimliliklari atayan çekirdek runtime kurucu metodudur.
+    /// Initializes the agent runtime with provider-neutral model resolution and agent-owned orchestration services.
     /// </summary>
-    /// <param name="agents">Runtime tarafindan çalistirilabilecek kayitli agent koleksiyonudur.</param>
-    /// <param name="openAIResponsesClient">OpenAI Responses API provider çagrilarini yürüten client örnegidir.</param>
-    /// <param name="openAICompatibleClient">OpenAI-compatible provider çagrilarini yürüten client örnegidir.</param>
-    /// <param name="toolInvoker">Agent tool çagrilarini çalistiran invoker örnegidir.</param>
-    /// <param name="contextSpaces">Agent çalismasinda kullanilabilecek context space tanimlaridir.</param>
+    /// <param name="agents">Runtime tarafindan Ã§alistirilabilecek kayitli agent koleksiyonudur.</param>
+    /// <param name="chatClientResolver">Resolves the shared chat client for each agent model.</param>
+    /// <param name="toolInvoker">Agent tool Ã§agrilarini Ã§alistiran invoker Ã¶rnegidir.</param>
+    /// <param name="contextSpaces">Agent Ã§alismasinda kullanilabilecek context space tanimlaridir.</param>
     /// <param name="skillDiscoveryService">Context space skill kesif servisidir.</param>
     /// <param name="sourceSearchService">Context source arama servisidir.</param>
-    /// <param name="ragRetriever">Agent RAG sorgularini çalistiracak opsiyonel retriever servisidir.</param>
-    /// <param name="vectorQueryTool">Agent'a bagli Vector Query Tool sorgularini çalistiracak opsiyonel tool örnegidir.</param>
-    private AgentExecutionRuntime(
+    /// <param name="ragRetriever">Agent RAG sorgularini Ã§alistiracak opsiyonel retriever servisidir.</param>
+    /// <param name="vectorQueryTool">Agent'a bagli Vector Query Tool sorgularini Ã§alistiracak opsiyonel tool Ã¶rnegidir.</param>
+    public AgentExecutionRuntime(
         IEnumerable<Agent> agents,
-        OpenAIResponsesClient openAIResponsesClient,
-        OpenAICompatibleClient openAICompatibleClient,
+        IChatClientResolver chatClientResolver,
         AgentToolInvoker toolInvoker,
-        IReadOnlyList<ContextSpace>? contextSpaces,
-        IContextSpaceSkillDiscoveryService? skillDiscoveryService,
-        IContextSpaceSourceSearchService? sourceSearchService,
-        IRagRetriever? ragRetriever,
-        IVectorQueryTool? vectorQueryTool)
+        IReadOnlyList<ContextSpace>? contextSpaces = null,
+        IContextSpaceSkillDiscoveryService? skillDiscoveryService = null,
+        IContextSpaceSourceSearchService? sourceSearchService = null,
+        IRagRetriever? ragRetriever = null,
+        IVectorQueryTool? vectorQueryTool = null)
     {
-        this.agents = agents;
-        this.openAIResponsesClient = openAIResponsesClient;
-        this.openAICompatibleClient = openAICompatibleClient;
-        this.toolInvoker = toolInvoker;
+        this.agents = agents ?? throw new ArgumentNullException(nameof(agents));
+        this.chatClientResolver = chatClientResolver ?? throw new ArgumentNullException(nameof(chatClientResolver));
+        this.toolInvoker = toolInvoker ?? throw new ArgumentNullException(nameof(toolInvoker));
         this.contextSpaces = contextSpaces ?? [];
         this.skillDiscoveryService = skillDiscoveryService ?? new ContextSpaceSkillDiscoveryService();
         this.sourceSearchService = sourceSearchService
@@ -201,12 +103,12 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Agent cevabini agent kimligine göre tek seferlik sonuç olarak üretir.
+    /// Agent cevabini agent kimligine gÃ¶re tek seferlik sonuÃ§ olarak Ã¼retir.
     /// </summary>
-    /// <param name="agentId">Çalistirilacak agent kimligidir.</param>
-    /// <param name="input">Agent'a gönderilecek kullanici girdisidir.</param>
+    /// <param name="agentId">Ã‡alistirilacak agent kimligidir.</param>
+    /// <param name="input">Agent'a gÃ¶nderilecek kullanici girdisidir.</param>
     /// <param name="cancellationToken">Iptal bildirimidir.</param>
-    /// <returns>Agent çalistirma sonucudur.</returns>
+    /// <returns>Agent Ã§alistirma sonucudur.</returns>
     public async Task<AgentExecutionResult> ExecuteAsync(
         string agentId,
         string input,
@@ -228,12 +130,12 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Agent cevabini agent kimligine göre runtime query bilgisiyle tek seferlik sonuç olarak üretir.
+    /// Agent cevabini agent kimligine gÃ¶re runtime query bilgisiyle tek seferlik sonuÃ§ olarak Ã¼retir.
     /// </summary>
-    /// <param name="agentId">Çalistirilacak agent kimligidir.</param>
-    /// <param name="query">Agent'a gönderilecek runtime query bilgisidir.</param>
+    /// <param name="agentId">Ã‡alistirilacak agent kimligidir.</param>
+    /// <param name="query">Agent'a gÃ¶nderilecek runtime query bilgisidir.</param>
     /// <param name="cancellationToken">Iptal bildirimidir.</param>
-    /// <returns>Agent çalistirma sonucudur.</returns>
+    /// <returns>Agent Ã§alistirma sonucudur.</returns>
     public async Task<AgentExecutionResult> ExecuteAsync(
         string agentId,
         AgentQuery query,
@@ -255,12 +157,12 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Kayit listesine bagli olmayan geçici bir agent tanimiyla tek seferlik sonuç üretir.
+    /// Kayit listesine bagli olmayan geÃ§ici bir agent tanimiyla tek seferlik sonuÃ§ Ã¼retir.
     /// </summary>
-    /// <param name="agent">Çalistirilacak agent tanimidir.</param>
-    /// <param name="input">Agent'a gönderilecek kullanici girdisidir.</param>
+    /// <param name="agent">Ã‡alistirilacak agent tanimidir.</param>
+    /// <param name="input">Agent'a gÃ¶nderilecek kullanici girdisidir.</param>
     /// <param name="cancellationToken">Iptal bildirimidir.</param>
-    /// <returns>Agent çalistirma sonucudur.</returns>
+    /// <returns>Agent Ã§alistirma sonucudur.</returns>
     public Task<AgentExecutionResult> ExecuteAsync(
         Agent agent,
         string input,
@@ -273,12 +175,12 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Kayit listesine bagli olmayan geçici bir agent tanimiyla runtime query bilgisiyle tek seferlik sonuç üretir.
+    /// Kayit listesine bagli olmayan geÃ§ici bir agent tanimiyla runtime query bilgisiyle tek seferlik sonuÃ§ Ã¼retir.
     /// </summary>
-    /// <param name="agent">Çalistirilacak agent tanimidir.</param>
-    /// <param name="query">Agent'a gönderilecek runtime query bilgisidir.</param>
+    /// <param name="agent">Ã‡alistirilacak agent tanimidir.</param>
+    /// <param name="query">Agent'a gÃ¶nderilecek runtime query bilgisidir.</param>
     /// <param name="cancellationToken">Iptal bildirimidir.</param>
-    /// <returns>Agent çalistirma sonucudur.</returns>
+    /// <returns>Agent Ã§alistirma sonucudur.</returns>
     public Task<AgentExecutionResult> ExecuteAsync(
         Agent agent,
         AgentQuery query,
@@ -291,13 +193,13 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Agent cevabini agent kimligine göre event stream olarak üretir.
+    /// Agent cevabini agent kimligine gÃ¶re event stream olarak Ã¼retir.
     /// </summary>
-    /// <param name="agentId">Çalistirilacak agent kimligidir.</param>
-    /// <param name="input">Agent'a gönderilecek kullanici girdisidir.</param>
-    /// <param name="toolInvoker">Varsa bu çagri için kullanilacak tool invoker örnegidir.</param>
+    /// <param name="agentId">Ã‡alistirilacak agent kimligidir.</param>
+    /// <param name="input">Agent'a gÃ¶nderilecek kullanici girdisidir.</param>
+    /// <param name="toolInvoker">Varsa bu Ã§agri iÃ§in kullanilacak tool invoker Ã¶rnegidir.</param>
     /// <param name="cancellationToken">Iptal bildirimidir.</param>
-    /// <returns>Agent çalismasi sirasinda üretilen olay stream'idir.</returns>
+    /// <returns>Agent Ã§alismasi sirasinda Ã¼retilen olay stream'idir.</returns>
     public async IAsyncEnumerable<AgentExecutionEvent> ExecuteStreamAsync(
         string agentId,
         string input,
@@ -326,13 +228,13 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Agent cevabini agent kimligine göre runtime query bilgisiyle event stream olarak üretir.
+    /// Agent cevabini agent kimligine gÃ¶re runtime query bilgisiyle event stream olarak Ã¼retir.
     /// </summary>
-    /// <param name="agentId">Çalistirilacak agent kimligidir.</param>
-    /// <param name="query">Agent'a gönderilecek runtime query bilgisidir.</param>
-    /// <param name="toolInvoker">Varsa bu çagri için kullanilacak tool invoker örnegidir.</param>
+    /// <param name="agentId">Ã‡alistirilacak agent kimligidir.</param>
+    /// <param name="query">Agent'a gÃ¶nderilecek runtime query bilgisidir.</param>
+    /// <param name="toolInvoker">Varsa bu Ã§agri iÃ§in kullanilacak tool invoker Ã¶rnegidir.</param>
     /// <param name="cancellationToken">Iptal bildirimidir.</param>
-    /// <returns>Agent çalismasi sirasinda üretilen olay stream'idir.</returns>
+    /// <returns>Agent Ã§alismasi sirasinda Ã¼retilen olay stream'idir.</returns>
     public async IAsyncEnumerable<AgentExecutionEvent> ExecuteStreamAsync(
         string agentId,
         AgentQuery query,
@@ -361,12 +263,12 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Agent cevabini tek seferlik sonuç olarak üretir.
+    /// Agent cevabini tek seferlik sonuÃ§ olarak Ã¼retir.
     /// </summary>
-    /// <param name="agent">Çalistirilacak agent tanimidir.</param>
-    /// <param name="query">Agent'a gönderilecek runtime query bilgisidir.</param>
+    /// <param name="agent">Ã‡alistirilacak agent tanimidir.</param>
+    /// <param name="query">Agent'a gÃ¶nderilecek runtime query bilgisidir.</param>
     /// <param name="cancellationToken">Iptal bildirimidir.</param>
-    /// <returns>Agent çalistirma sonucudur.</returns>
+    /// <returns>Agent Ã§alistirma sonucudur.</returns>
     private async Task<AgentExecutionResult> ExecuteAgentAsync(
         Agent agent,
         AgentQuery query,
@@ -404,13 +306,13 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Agent cevabini event stream olarak üretir.
+    /// Agent cevabini event stream olarak Ã¼retir.
     /// </summary>
-    /// <param name="agent">Çalistirilacak agent tanimidir.</param>
-    /// <param name="query">Agent'a gönderilecek runtime query bilgisidir.</param>
-    /// <param name="toolInvoker">Tool çagrilarini çalistiracak invoker örnegidir.</param>
+    /// <param name="agent">Ã‡alistirilacak agent tanimidir.</param>
+    /// <param name="query">Agent'a gÃ¶nderilecek runtime query bilgisidir.</param>
+    /// <param name="toolInvoker">Tool Ã§agrilarini Ã§alistiracak invoker Ã¶rnegidir.</param>
     /// <param name="cancellationToken">Iptal bildirimidir.</param>
-    /// <returns>Agent çalismasi sirasinda üretilen olay stream'idir.</returns>
+    /// <returns>Agent Ã§alismasi sirasinda Ã¼retilen olay stream'idir.</returns>
     private async IAsyncEnumerable<AgentExecutionEvent> ExecuteAgentStreamAsync(
         Agent agent,
         AgentQuery query,
@@ -488,126 +390,98 @@ public sealed class AgentExecutionRuntime
             yield break;
         }
 
-        var endpoint = ProviderDefaults.ResolveUrl(agent);
-        var providerDefault = ProviderDefaults.Get(agent.ProviderName);
-
-        switch (providerDefault.Protocol)
+        var endpoint = ProviderDefaults.ResolveUrl(
+            agent.ProviderName,
+            agent.Id,
+            agent.Provider?.Url);
+        var messages = new List<ChatMessage>
         {
-            case ProviderProtocol.OpenAICompatible:
-                await foreach (var executionEvent in ExecuteOpenAICompatibleStreamAsync(
-                          agent,
-                          endpoint,
-                          query.Message,
-                          instructions,
-                          toolInvoker,
-                          cancellationToken))
+            new(ChatRole.System, instructions),
+            new(ChatRole.User, query.Message)
+        };
+        string? previousResponseId = null;
+
+        while (true)
+        {
+            var options = new ChatRequestOptions
+            {
+                ReasoningEffort = agent.ReasoningEffort,
+                Verbosity = agent.Verbosity
+            };
+            if (!string.IsNullOrWhiteSpace(previousResponseId))
+            {
+                options.Extensions["previous_response_id"] = previousResponseId;
+            }
+
+            var chatRequest = new ChatRequest(
+                agent.ModelReference,
+                messages,
+                endpoint,
+                agent.ApiKey,
+                agent.Tools.Select(MapToolDefinition).ToArray(),
+                Options: options);
+            var client = chatClientResolver.Resolve(chatRequest);
+            var toolCalls = new List<ChatToolCall>();
+
+            await foreach (var update in client.CompleteStreamingAsync(chatRequest, cancellationToken))
+            {
+                previousResponseId = update.ProviderResponseId ?? previousResponseId;
+                if (update.Kind == ChatStreamingUpdateKind.ContentDelta && !string.IsNullOrEmpty(update.ContentDelta))
                 {
-                    yield return executionEvent;
+                    yield return AgentExecutionEvent.AssistantDelta(update.ContentDelta);
                 }
-
-                yield break;
-
-            case ProviderProtocol.Ollama:
-                var ollamaResult = await ExecuteOllamaAsync(
-                    agent,
-                    endpoint,
-                    query.Message,
-                    cancellationToken);
-
-                if (!ollamaResult.IsSuccess)
+                else if (update.Kind == ChatStreamingUpdateKind.ToolCallDelta && update.ToolCall is not null)
                 {
-                    yield return AgentExecutionEvent.Failed(
-                        ollamaResult.ErrorMessage ?? "Ollama execution failed.",
-                        ollamaResult.ErrorCode);
-
-                    yield break;
+                    toolCalls.Add(update.ToolCall);
                 }
+            }
 
-                if (!string.IsNullOrWhiteSpace(ollamaResult.Message))
-                {
-                    yield return AgentExecutionEvent.AssistantDelta(ollamaResult.Message);
-                }
-
+            if (toolCalls.Count == 0)
+            {
                 yield return AgentExecutionEvent.Completed();
                 yield break;
-
-            default:
-                yield return AgentExecutionEvent.Failed(
-                    $"Provider protocol '{providerDefault.Protocol}' is not supported.",
-                    "UnsupportedProviderProtocol");
-
-                yield break;
-        }
-    }
-
-    /// <summary>
-    /// OpenAI veya OpenAI-compatible provider için stream çalistirmasini yürütür.
-    /// </summary>
-    /// <param name="agent">Çalistirilacak agent tanimidir.</param>
-    /// <param name="endpoint">Provider endpoint adresidir.</param>
-    /// <param name="input">Agent'a gönderilecek kullanici girdisidir.</param>
-    /// <param name="instructions">Runtime context ile zenginlestirilmis system yönergeleridir.</param>
-    /// <param name="toolInvoker">Tool çagrilarini çalistiracak invoker örnegidir.</param>
-    /// <param name="cancellationToken">Iptal bildirimidir.</param>
-    /// <returns>Provider tarafindan üretilen agent execution event stream'idir.</returns>
-    private async IAsyncEnumerable<AgentExecutionEvent> ExecuteOpenAICompatibleStreamAsync(
-        Agent agent,
-        Uri endpoint,
-        string input,
-        string instructions,
-        AgentToolInvoker? toolInvoker,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        if (IsNativeOpenAIProvider(agent))
-        {
-            await foreach (var executionEvent in openAIResponsesClient.StreamAsync(
-                               agent: agent,
-                               endpoint: endpoint,
-                               input: input,
-                               toolInvoker: toolInvoker,
-                               instructions: instructions,
-                               cancellationToken: cancellationToken))
-            {
-                yield return executionEvent;
             }
-            yield break;
-        }
-        await foreach (var executionEvent in openAICompatibleClient.StreamAsync(
-                           agent: agent,
-                           endpoint: endpoint,
-                           input: input,
-                           instructions: instructions,
-                           cancellationToken: cancellationToken))
-        {
-            yield return executionEvent;
+
+            messages.Add(new ChatMessage(ChatRole.Assistant, string.Empty, ToolCalls: toolCalls));
+            foreach (var toolCall in toolCalls)
+            {
+                yield return AgentExecutionEvent.ToolCallStarted(toolCall.Id, toolCall.Name, toolCall.ArgumentsJson);
+                var result = await toolInvoker!.InvokeAsync(agent, toolCall.Name, toolCall.ArgumentsJson, cancellationToken);
+                string output;
+                if (result.IsSuccess)
+                {
+                    output = string.IsNullOrWhiteSpace(result.OutputJson) ? "{}" : result.OutputJson;
+                    yield return AgentExecutionEvent.ToolCallCompleted(toolCall.Id, toolCall.Name, output);
+                }
+                else
+                {
+                    output = JsonSerializer.Serialize(new
+                    {
+                        isSuccess = false,
+                        errorCode = result.ErrorCode ?? "ToolExecutionFailed",
+                        errorMessage = result.ErrorMessage ?? "Tool execution failed."
+                    });
+                    yield return AgentExecutionEvent.ToolCallFailed(
+                        toolCall.Id,
+                        toolCall.Name,
+                        result.ErrorMessage ?? "Tool execution failed.",
+                        result.ErrorCode);
+                }
+                messages.Add(new ChatMessage(ChatRole.Tool, output, toolCall.Id));
+            }
         }
     }
 
-    /// <summary>
-    /// Ollama provider için geçici agent çalistirma sonucunu üretir.
-    /// </summary>
-    /// <param name="agent">Çalistirilacak agent tanimidir.</param>
-    /// <param name="endpoint">Ollama endpoint adresidir.</param>
-    /// <param name="input">Agent'a gönderilecek kullanici girdisidir.</param>
-    /// <param name="cancellationToken">Iptal bildirimidir.</param>
-    /// <returns>Agent çalistirma sonucudur.</returns>
-    private static Task<AgentExecutionResult> ExecuteOllamaAsync(
-        Agent agent,
-        Uri endpoint,
-        string input,
-        CancellationToken cancellationToken)
-    {
-        var message =
-            $"Agent '{agent.Name}' will call Ollama endpoint '{endpoint}' with model '{agent.ModelName}'. Input: {input}";
-
-        return Task.FromResult(AgentExecutionResult.Success(message));
-    }
+    private static ChatToolDefinition MapToolDefinition(AgentToolRegistration tool) => new(
+        tool.Name,
+        string.IsNullOrWhiteSpace(tool.Description) ? $"Executes the {tool.Name} tool." : tool.Description,
+        JsonSerializer.Serialize(ToolJsonSchemaGenerator.CreateSchema(tool.InputType)));
 
     /// <summary>
-    /// Provider runtime ayarlarinin çalistirma öncesi geçerli olup olmadigini dogrular.
+    /// Provider runtime ayarlarinin Ã§alistirma Ã¶ncesi geÃ§erli olup olmadigini dogrular.
     /// </summary>
     /// <param name="agent">Dogrulanacak agent tanimidir.</param>
-    /// <returns>Geçersiz ayar varsa hata sonucudur; aksi halde null döner.</returns>
+    /// <returns>GeÃ§ersiz ayar varsa hata sonucudur; aksi halde null dÃ¶ner.</returns>
     private static AgentExecutionResult? ValidateProviderRuntime(Agent agent)
     {
         var providerDefault = ProviderDefaults.Get(agent.ProviderName);
@@ -626,23 +500,10 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Agent'in native OpenAI provider kullanip kullanmadigini belirtir.
-    /// </summary>
-    /// <param name="agent">Kontrol edilecek agent tanimidir.</param>
-    /// <returns>Agent native OpenAI provider kullaniyorsa true döner.</returns>
-    private static bool IsNativeOpenAIProvider(Agent agent)
-    {
-        return string.Equals(
-            agent.ProviderName,
-            "openai",
-            StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// Kayitli agent koleksiyonu içinde agent kimligine göre arama yapar.
+    /// Kayitli agent koleksiyonu iÃ§inde agent kimligine gÃ¶re arama yapar.
     /// </summary>
     /// <param name="agentId">Aranacak agent kimligidir.</param>
-    /// <returns>Bulunan agent tanimidir; bulunamazsa null döner.</returns>
+    /// <returns>Bulunan agent tanimidir; bulunamazsa null dÃ¶ner.</returns>
     private Agent? FindAgent(string agentId)
     {
         return agents.FirstOrDefault(agent =>
@@ -650,7 +511,31 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Agent'a bagli context space, skill ve source search bilgilerini runtime için çözümler.
+    /// Resolves manually supplied Core clients while preserving the runtime's provider-neutral boundary.
+    /// </summary>
+    private sealed class FixedChatClientResolver : IChatClientResolver
+    {
+        private readonly IChatClient responsesClient;
+        private readonly IChatClient compatibleClient;
+
+        /// <summary>
+        /// Initializes a resolver for the two supported chat protocol families.
+        /// </summary>
+        public FixedChatClientResolver(IChatClient responsesClient, IChatClient compatibleClient)
+        {
+            this.responsesClient = responsesClient ?? throw new ArgumentNullException(nameof(responsesClient));
+            this.compatibleClient = compatibleClient ?? throw new ArgumentNullException(nameof(compatibleClient));
+        }
+
+        /// <inheritdoc />
+        public IChatClient Resolve(ChatRequest request) =>
+            string.Equals(request.Model.ProviderName, "openai", StringComparison.OrdinalIgnoreCase)
+                ? responsesClient
+                : compatibleClient;
+    }
+
+    /// <summary>
+    /// Agent'a bagli context space, skill ve source search bilgilerini runtime iÃ§in Ã§Ã¶zÃ¼mler.
     /// </summary>
     private AgentRuntimeContext CreateRuntimeContext(Agent agent)
     {
@@ -680,7 +565,7 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Runtime context içindeki bagli source'lari arar ve seçilen excerpt bilgileriyle context'i döner.
+    /// Runtime context iÃ§indeki bagli source'lari arar ve seÃ§ilen excerpt bilgileriyle context'i dÃ¶ner.
     /// </summary>
     private async Task<AgentRuntimeContext> SearchRuntimeContextSourcesAsync(
         AgentRuntimeContext runtimeContext,
@@ -727,7 +612,7 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Agent RAG yapilandirmasi varsa RAG retrieval çalistirir ve sonuçlari runtime context'e ekler.
+    /// Agent RAG yapilandirmasi varsa RAG retrieval Ã§alistirir ve sonuÃ§lari runtime context'e ekler.
     /// </summary>
     private async Task<AgentRuntimeContext> SearchRagContextAsync(
         Agent agent,
@@ -777,10 +662,10 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Agent'a bagli Vector Query Tool yapilandirmasindan bir tool istegi olusturur, tool'u çalistirir ve mevcut
-    /// RAG context formatina eslenmis sonuçlari runtime context'e yerlestirir. Basarisiz bir tool sonucu, mevcut
-    /// RAG retriever hatasiyla ayni deterministik akisa uyacak biçimde <see cref="InvalidOperationException"/>
-    /// olarak yükseltilir.
+    /// Agent'a bagli Vector Query Tool yapilandirmasindan bir tool istegi olusturur, tool'u Ã§alistirir ve mevcut
+    /// RAG context formatina eslenmis sonuÃ§lari runtime context'e yerlestirir. Basarisiz bir tool sonucu, mevcut
+    /// RAG retriever hatasiyla ayni deterministik akisa uyacak biÃ§imde <see cref="InvalidOperationException"/>
+    /// olarak yÃ¼kseltilir.
     /// </summary>
     private async Task<AgentRuntimeContext> SearchRagContextWithVectorQueryToolAsync(
         Agent agent,
@@ -820,9 +705,9 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Vector Query Tool sonucundaki eslesmeleri, mevcut RAG context assembly'sinin tükettigi
-    /// <see cref="RagSearchResult"/> formatina dönüstürür. Içerik, skor ve metadata korunur; bos kayit kimlikleri
-    /// ve eksik document kimlikleri, required chunk alanlarinin ihlal edilmemesi için güvenli degerlere düser.
+    /// Vector Query Tool sonucundaki eslesmeleri, mevcut RAG context assembly'sinin tÃ¼kettigi
+    /// <see cref="RagSearchResult"/> formatina dÃ¶nÃ¼stÃ¼rÃ¼r. IÃ§erik, skor ve metadata korunur; bos kayit kimlikleri
+    /// ve eksik document kimlikleri, required chunk alanlarinin ihlal edilmemesi iÃ§in gÃ¼venli degerlere dÃ¼ser.
     /// </summary>
     private static IReadOnlyList<RagSearchResult> MapVectorQueryMatches(
         IReadOnlyList<RetrievalResultItem> matches)
@@ -867,7 +752,7 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Ranked source candidates içinden model context'ine gönderilecek yüksek güvenli excerpt'leri seçer.
+    /// Ranked source candidates iÃ§inden model context'ine gÃ¶nderilecek yÃ¼ksek gÃ¼venli excerpt'leri seÃ§er.
     /// </summary>
     private static IReadOnlyList<ContextSpaceSourceSearchResult> SelectSourceContext(
         IReadOnlyList<ContextSpaceSourceSearchResult> candidates)
@@ -889,7 +774,7 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Runtime context bilgisinden chat ekranina gönderilecek context saglandi olayini üretir.
+    /// Runtime context bilgisinden chat ekranina gÃ¶nderilecek context saglandi olayini Ã¼retir.
     /// </summary>
     private static AgentExecutionEvent? CreateContextProvidedEvent(
         AgentRuntimeContext runtimeContext)
@@ -933,7 +818,7 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Runtime context içindeki yüklenen skill bilgilerinden chat ekranina gönderilecek skill loaded olayini üretir.
+    /// Runtime context iÃ§indeki yÃ¼klenen skill bilgilerinden chat ekranina gÃ¶nderilecek skill loaded olayini Ã¼retir.
     /// </summary>
     private static AgentExecutionEvent? CreateSkillLoadedEvent(
         AgentRuntimeContext runtimeContext)
@@ -955,7 +840,7 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Runtime context içindeki source arama sonuçlarindan chat ekranina gönderilecek context arandi olayini üretir.
+    /// Runtime context iÃ§indeki source arama sonuÃ§larindan chat ekranina gÃ¶nderilecek context arandi olayini Ã¼retir.
     /// </summary>
     private static AgentExecutionEvent? CreateContextSearchedEvent(
         AgentRuntimeContext runtimeContext)

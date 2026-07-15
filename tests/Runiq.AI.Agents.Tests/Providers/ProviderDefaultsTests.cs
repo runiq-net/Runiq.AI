@@ -1,5 +1,4 @@
-using Runiq.AI.Agents.Configuration;
-using Runiq.AI.Agents.Providers;
+using Runiq.AI.Core.Providers;
 
 namespace Runiq.AI.Agents.Tests.Providers;
 
@@ -64,14 +63,10 @@ public sealed class ProviderDefaultsTests
     [Fact]
     public void ResolveUrl_ShouldReturnDefaultUrl_WhenAgentDoesNotHaveCustomProviderUrl()
     {
-        var agent = new Agent(
-            id: "test-agent",
-            name: "Test Agent",
-            instructions: "Test instructions.",
-            model: "openai/gpt-5",
-            apiKey: "test-key");
-
-        var url = ProviderDefaults.ResolveUrl(agent);
+        var url = ProviderDefaults.ResolveUrl(
+            providerName: "openai",
+            registrationId: "test-agent",
+            configuredUrl: null);
 
         Assert.Equal(new Uri("https://api.openai.com/v1"), url);
     }
@@ -80,18 +75,10 @@ public sealed class ProviderDefaultsTests
     [Fact]
     public void ResolveUrl_ShouldReturnCustomUrl_WhenAgentHasProviderUrl()
     {
-        var agent = new Agent(
-            id: "test-agent",
-            name: "Test Agent",
-            instructions: "Test instructions.",
-            model: "openai/gpt-5",
-            apiKey: "test-key",
-            provider: new ProviderOptions
-            {
-                Url = "https://custom.provider.local/v1"
-            });
-
-        var url = ProviderDefaults.ResolveUrl(agent);
+        var url = ProviderDefaults.ResolveUrl(
+            providerName: "openai",
+            registrationId: "test-agent",
+            configuredUrl: "https://custom.provider.local/v1");
 
         Assert.Equal(new Uri("https://custom.provider.local/v1"), url);
     }
@@ -100,14 +87,10 @@ public sealed class ProviderDefaultsTests
     [Fact]
     public void ResolveUrl_ShouldThrowInvalidOperationException_WhenProviderRequiresCustomUrlButItIsMissing()
     {
-        var agent = new Agent(
-            id: "azure-agent",
-            name: "Azure Agent",
-            instructions: "Test instructions.",
-            model: "azure-openai/gpt-5",
-            apiKey: "test-key");
-
-        var exception = Assert.Throws<InvalidOperationException>(() => ProviderDefaults.ResolveUrl(agent));
+        var exception = Assert.Throws<InvalidOperationException>(() => ProviderDefaults.ResolveUrl(
+            providerName: "azure-openai",
+            registrationId: "azure-agent",
+            configuredUrl: null));
 
         Assert.Contains("Provider.Url is missing", exception.Message);
         Assert.Contains("azure-agent", exception.Message);

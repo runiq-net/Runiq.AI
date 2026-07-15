@@ -13,7 +13,7 @@ public sealed class AgentTests
             typeof(string),
             typeof(string),
             typeof(string),
-            typeof(Runiq.AI.Agents.Configuration.ProviderOptions),
+            typeof(Runiq.AI.Core.Configuration.ProviderOptions),
             typeof(string),
             typeof(string)
         ]);
@@ -30,7 +30,7 @@ public sealed class AgentTests
             typeof(string),
             typeof(string),
             typeof(string),
-            typeof(Runiq.AI.Agents.Configuration.ProviderOptions),
+            typeof(Runiq.AI.Core.Configuration.ProviderOptions),
             typeof(string),
             typeof(string),
             typeof(Runiq.AI.Agents.Configuration.AgentRagOptions)

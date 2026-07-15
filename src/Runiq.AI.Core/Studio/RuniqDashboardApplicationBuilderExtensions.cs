@@ -2,15 +2,11 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
-using Runiq.AI.Core.Agents;
 using Runiq.AI.Core.ContextSpaces;
 using Runiq.AI.Core.Dashboard;
 using Runiq.AI.Core.Mcp;
-using Runiq.AI.Core.Metadata;
 using Runiq.AI.Core.Rag;
 using Runiq.AI.Core.Studio;
-using Runiq.AI.Core.Tools;
-using Runiq.AI.Core.Workflows;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -68,13 +64,14 @@ public static class RuniqDashboardApplicationBuilderExtensions
 
         app.UseEndpoints(endpoints =>
         {
-            endpoints.MapRuniqMetadataApi($"{basePath}/metadata");
-            endpoints.MapRuniqAgentApi($"{basePath}/api");
             endpoints.MapRuniqContextSpaceApi($"{basePath}/api");
-            endpoints.MapRuniqToolApi($"{basePath}/api");
-            endpoints.MapRuniqWorkflowApi($"{basePath}/api");
             endpoints.MapRuniqMcpApi($"{basePath}/api");
             endpoints.MapRuniqRagApi($"{basePath}/api");
+
+            foreach (var contributor in app.ApplicationServices.GetServices<IRuniqDashboardEndpointContributor>())
+            {
+                contributor.MapEndpoints(endpoints, basePath);
+            }
         });
 
         app.Use(async (context, next) =>

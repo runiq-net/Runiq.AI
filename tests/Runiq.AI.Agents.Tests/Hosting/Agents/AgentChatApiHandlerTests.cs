@@ -2,9 +2,11 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Runiq.AI.Agents;
 using Runiq.AI.Agents.Configuration;
+using Runiq.AI.Core.Configuration;
 using Runiq.AI.Agents.Providers.OpenAI;
 using Runiq.AI.Agents.Runtime;
 using Runiq.AI.Agents.Tools;
+using Runiq.AI.Agents.Tests.TestDoubles;
 using Runiq.AI.Core.Agents;
 using Runiq.AI.Rag.Abstractions.Retrieval;
 using Runiq.AI.Rag.Models.Queries;
@@ -69,8 +71,7 @@ public sealed class AgentChatApiHandlerTests
     {
         var runtime = new AgentExecutionRuntime(
             agents: [agent],
-            openAIResponsesClient: new OpenAIResponsesClient(new HttpClient()),
-            openAICompatibleClient: new OpenAICompatibleClient(new HttpClient()),
+            chatClientResolver: new TestChatClientResolver(),
             toolInvoker: new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()),
             ragRetriever: retriever);
 

@@ -10,8 +10,17 @@ using Runiq.AI.Workflows.Infrastructure;
 
 namespace Runiq.AI.Core.Workflows;
 
+/// <summary>
+/// Maps workflow dashboard endpoints for listing, inspecting, and executing registered flows.
+/// </summary>
 public static class WorkflowEndpointExtensions
 {
+    /// <summary>
+    /// Adds workflow dashboard API endpoints under the supplied path prefix.
+    /// </summary>
+    /// <param name="endpoints">The endpoint route builder used by the host application.</param>
+    /// <param name="pathPrefix">The dashboard API path prefix.</param>
+    /// <returns>The same endpoint route builder for fluent endpoint composition.</returns>
     public static IEndpointRouteBuilder MapRuniqWorkflowApi(
         this IEndpointRouteBuilder endpoints,
         string pathPrefix = "/runiq/api")

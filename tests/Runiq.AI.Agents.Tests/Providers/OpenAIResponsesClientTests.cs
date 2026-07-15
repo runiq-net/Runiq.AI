@@ -1,242 +1,161 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.DependencyInjection;
 using Runiq.AI.Agents.Providers.OpenAI;
-using Runiq.AI.Agents.Tools;
+using Runiq.AI.Core.AI.Chat;
+using Runiq.AI.Core.Models;
 
 namespace Runiq.AI.Agents.Tests.Providers;
 
 /// <summary>
-/// Verifies OpenAI Responses client behavior for tool output continuation requests.
+/// Verifies the native Responses protocol mapping at the shared chat-client boundary.
 /// </summary>
 public sealed class OpenAIResponsesClientTests
 {
-    /// <summary>
-    /// Verifies that function call output continuation uses the exact call_id provided by OpenAI.
-    /// </summary>
-    // Verifies that function call output continuation uses the exact call_id provided by OpenAI.
+    // Verifies that the provider client exposes only the shared chat-client invocation surface.
     [Fact]
-    public async Task StreamAsync_ShouldSubmitFunctionCallOutputWithExactCallId()
+    public void Client_ShouldImplementSharedChatClient()
     {
-        var handler = new CapturingResponsesHandler(
-            CreateFunctionCallStream(
-                responseId: "resp_exact",
-                itemId: "fc_item_should_not_be_used",
-                callId: "call_exact_123",
-                toolName: "echo_tool",
-                argumentsJson: "{\"text\":\"hello\"}"),
-            CreateTextStream("done"));
-
-        var client = new OpenAIResponsesClient(new HttpClient(handler));
-        var agent = CreateAgent<EchoTool>();
-        var toolInvoker = CreateToolInvoker();
-
-        var events = await client.StreamAsync(
-                agent,
-                new Uri("https://api.example.test/v1"),
-                "Run tool.",
-                toolInvoker)
-            .ToListAsync();
-
-        Assert.Contains(events, executionEvent =>
-            executionEvent.Kind == AgentExecutionEventKind.ToolCallCompleted &&
-            executionEvent.ToolCallId == "call_exact_123");
-
-        var continuationJson = handler.RequestBodies[1];
-        using var document = JsonDocument.Parse(continuationJson);
-        var root = document.RootElement;
-        var inputItem = root.GetProperty("input")[0];
-
-        Assert.Equal("resp_exact", root.GetProperty("previous_response_id").GetString());
-        Assert.Equal("function_call_output", inputItem.GetProperty("type").GetString());
-        Assert.Equal("call_exact_123", inputItem.GetProperty("call_id").GetString());
-        Assert.NotEqual("fc_item_should_not_be_used", inputItem.GetProperty("call_id").GetString());
-        Assert.False(string.IsNullOrWhiteSpace(inputItem.GetProperty("output").GetString()));
+        Assert.IsAssignableFrom<IChatClient>(new OpenAIResponsesClient(new HttpClient()));
     }
 
-    /// <summary>
-    /// Verifies that local tool failures still submit function_call_output for the same call_id.
-    /// </summary>
-    // Verifies that local tool failures still submit function_call_output for the same call_id.
+    // Verifies that non-streaming text, usage, finish reason, and response id map to Core contracts.
     [Fact]
-    public async Task StreamAsync_ShouldSubmitFunctionCallOutput_WhenLocalToolFails()
+    public async Task CompleteAsync_ShouldMapTextAndMetadata()
     {
-        var handler = new CapturingResponsesHandler(
-            CreateFunctionCallStream(
-                responseId: "resp_failed_tool",
-                itemId: "fc_item_failed",
-                callId: "call_failed_123",
-                toolName: "failing_tool",
-                argumentsJson: "{\"text\":\"hello\"}"),
-            CreateTextStream("handled"));
-
+        var handler = new CapturingHandler("""
+            {"id":"resp_1","output_text":"hello","usage":{"input_tokens":2,"output_tokens":3,"total_tokens":5}}
+            """, "application/json");
         var client = new OpenAIResponsesClient(new HttpClient(handler));
-        var agent = CreateAgent<FailingTool>();
-        var toolInvoker = CreateToolInvoker();
 
-        var events = await client.StreamAsync(
-                agent,
-                new Uri("https://api.example.test/v1"),
-                "Run tool.",
-                toolInvoker)
-            .ToListAsync();
+        var response = await client.CompleteAsync(CreateRequest());
 
-        Assert.Contains(events, executionEvent =>
-            executionEvent.Kind == AgentExecutionEventKind.ToolCallFailed &&
-            executionEvent.ToolCallId == "call_failed_123");
-
-        var continuationJson = handler.RequestBodies[1];
-        using var document = JsonDocument.Parse(continuationJson);
-        var inputItem = document.RootElement.GetProperty("input")[0];
-        var outputJson = inputItem.GetProperty("output").GetString();
-
-        Assert.Equal("call_failed_123", inputItem.GetProperty("call_id").GetString());
-        Assert.False(string.IsNullOrWhiteSpace(outputJson));
-
-        using var outputDocument = JsonDocument.Parse(outputJson!);
-
-        Assert.False(outputDocument.RootElement.GetProperty("isSuccess").GetBoolean());
-        Assert.Equal("ToolExecutionFailed", outputDocument.RootElement.GetProperty("errorCode").GetString());
-        Assert.Equal("Demo tool failed.", outputDocument.RootElement.GetProperty("errorMessage").GetString());
+        Assert.Equal("hello", response.Message.Content);
+        Assert.Equal(ChatFinishReason.Stop, response.FinishReason);
+        Assert.Equal(5, response.Usage?.TotalTokens);
+        Assert.Equal("resp_1", response.ProviderResponseId);
     }
 
-    /// <summary>
-    /// Verifies that pending tool outputs continue when the stream closes without a DONE line.
-    /// </summary>
-    // Verifies that pending tool outputs continue when the stream closes without a DONE line.
+    // Verifies that streaming tool calls retain the Responses call_id and remain unexecuted by the provider client.
     [Fact]
-    public async Task StreamAsync_ShouldContinuePendingToolOutputs_WhenStreamClosesWithoutDone()
+    public async Task CompleteStreamingAsync_ShouldMapToolCallWithoutExecutingIt()
     {
-        var handler = new CapturingResponsesHandler(
-            CreateFunctionCallStream(
-                responseId: "resp_without_done",
-                itemId: "fc_item_without_done",
-                callId: "call_without_done",
-                toolName: "echo_tool",
-                argumentsJson: "{\"text\":\"hello\"}",
-                includeDone: false),
-            CreateTextStream("continued"));
+        var stream = string.Join("\n",
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_tools\"}}",
+            "data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"function_call\",\"call_id\":\"call_123\",\"name\":\"echo\",\"arguments\":\"{}\"}}",
+            "data: [DONE]", string.Empty);
+        var client = new OpenAIResponsesClient(new HttpClient(new CapturingHandler(stream, "text/event-stream")));
 
+        var updates = await client.CompleteStreamingAsync(CreateRequest()).ToListAsync();
+
+        var toolUpdate = Assert.Single(updates, update => update.Kind == ChatStreamingUpdateKind.ToolCallDelta);
+        Assert.Equal("call_123", toolUpdate.ToolCall?.Id);
+        Assert.Equal("echo", toolUpdate.ToolCall?.Name);
+        Assert.Equal(ChatFinishReason.ToolCalls, updates[^1].FinishReason);
+    }
+
+    // Verifies that tool results and the prior response id map to a Responses continuation payload.
+    [Fact]
+    public async Task CompleteStreamingAsync_ShouldMapToolResultContinuation()
+    {
+        var handler = new CapturingHandler("data: [DONE]\n", "text/event-stream");
         var client = new OpenAIResponsesClient(new HttpClient(handler));
-        var agent = CreateAgent<EchoTool>();
-        var toolInvoker = CreateToolInvoker();
-
-        var events = await client.StreamAsync(
-                agent,
-                new Uri("https://api.example.test/v1"),
-                "Run tool.",
-                toolInvoker)
-            .ToListAsync();
-
-        Assert.Equal(2, handler.RequestBodies.Count);
-        Assert.Contains(events, executionEvent =>
-            executionEvent.Kind == AgentExecutionEventKind.AssistantDelta &&
-            executionEvent.Content == "continued");
-    }
-
-    private static Agent CreateAgent<TTool>()
-        where TTool : class
-    {
-        return new Agent(
-                id: "agent",
-                name: "Agent",
-                instructions: "Use tools.",
-                model: "openai/gpt-5",
-                apiKey: "test-key")
-            .AddTool<TTool>();
-    }
-
-    private static AgentToolInvoker CreateToolInvoker()
-    {
-        return new AgentToolInvoker(new ServiceCollection().BuildServiceProvider());
-    }
-
-    private static string CreateFunctionCallStream(
-        string responseId,
-        string itemId,
-        string callId,
-        string toolName,
-        string argumentsJson,
-        bool includeDone = true)
-    {
-        var lines = new List<string>
+        var options = new ChatRequestOptions();
+        options.Extensions["previous_response_id"] = "resp_previous";
+        var request = CreateRequest() with
         {
-            $"data: {{\"type\":\"response.created\",\"response\":{{\"id\":\"{responseId}\"}}}}",
-            $"data: {{\"type\":\"response.output_item.done\",\"item\":{{\"id\":\"{itemId}\",\"type\":\"function_call\",\"status\":\"completed\",\"call_id\":\"{callId}\",\"name\":\"{toolName}\",\"arguments\":{JsonSerializer.Serialize(argumentsJson)}}}}}",
-            $"data: {{\"type\":\"response.completed\",\"response\":{{\"id\":\"{responseId}\"}}}}",
+            Messages = [new ChatMessage(ChatRole.Tool, "{\"ok\":true}", "call_exact")],
+            Options = options
         };
 
-        if (includeDone)
-        {
-            lines.Add("data: [DONE]");
-        }
+        await client.CompleteStreamingAsync(request).ToListAsync();
 
-        lines.Add(string.Empty);
-
-        return string.Join("\n", lines);
+        using var document = JsonDocument.Parse(handler.RequestBodies.Single());
+        var root = document.RootElement;
+        Assert.Equal("resp_previous", root.GetProperty("previous_response_id").GetString());
+        Assert.Equal("call_exact", root.GetProperty("input")[0].GetProperty("call_id").GetString());
     }
 
-    private static string CreateTextStream(string text)
+    // Verifies that Responses argument delta events are combined before the Agent runtime receives a tool call.
+    [Fact]
+    public async Task CompleteStreamingAsync_ShouldAggregateToolArgumentDeltas()
     {
-        return string.Join(
-            "\n",
-            $"data: {{\"type\":\"response.output_text.delta\",\"delta\":{JsonSerializer.Serialize(text)}}}",
-            "data: [DONE]",
-            string.Empty);
+        var stream = string.Join("\n",
+            "data: {\"type\":\"response.output_item.added\",\"item\":{\"id\":\"item_1\",\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"echo\"}}",
+            "data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"item_1\",\"delta\":\"{\\\"value\\\":\"}",
+            "data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"item_1\",\"delta\":\"1}\"}",
+            "data: {\"type\":\"response.output_item.done\",\"item\":{\"id\":\"item_1\",\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"echo\",\"arguments\":\"\"}}",
+            "data: [DONE]", string.Empty);
+
+        var updates = await new OpenAIResponsesClient(new HttpClient(new CapturingHandler(stream, "text/event-stream")))
+            .CompleteStreamingAsync(CreateRequest()).ToListAsync();
+
+        var call = Assert.Single(updates, update => update.Kind == ChatStreamingUpdateKind.ToolCallDelta).ToolCall;
+        Assert.Equal("{\"value\":1}", call?.ArgumentsJson);
     }
 
-    private sealed class CapturingResponsesHandler : HttpMessageHandler
+    // Verifies that structured output and tool definitions are emitted in the native Responses request shape.
+    [Fact]
+    public async Task CompleteAsync_ShouldMapStructuredOutputAndTools()
     {
-        private readonly Queue<string> responseBodies;
-
-        public CapturingResponsesHandler(params string[] responseBodies)
+        var handler = new CapturingHandler("{\"id\":\"resp_1\",\"output_text\":\"{}\"}", "application/json");
+        var request = CreateRequest() with
         {
-            this.responseBodies = new Queue<string>(responseBodies);
-        }
+            ResponseFormat = new ChatResponseFormat("answer", "{\"type\":\"object\"}"),
+            Tools = [new ChatToolDefinition("echo", "Echo input", "{\"type\":\"object\"}")]
+        };
 
+        await new OpenAIResponsesClient(new HttpClient(handler)).CompleteAsync(request);
+
+        using var document = JsonDocument.Parse(handler.RequestBodies.Single());
+        Assert.Equal("json_schema", document.RootElement.GetProperty("text").GetProperty("format").GetProperty("type").GetString());
+        Assert.Equal("echo", document.RootElement.GetProperty("tools")[0].GetProperty("name").GetString());
+    }
+
+    // Verifies that HTTP status failures use the shared provider error contract.
+    [Fact]
+    public async Task CompleteAsync_ShouldMapHttpError()
+    {
+        var client = new OpenAIResponsesClient(new HttpClient(new CapturingHandler(
+            "{\"error\":{\"message\":\"missing model\"}}", "application/json", HttpStatusCode.NotFound)));
+
+        var exception = await Assert.ThrowsAsync<ChatProviderException>(() => client.CompleteAsync(CreateRequest()));
+
+        Assert.Equal(ProviderErrorKind.ModelNotFound, exception.Kind);
+    }
+
+    // Verifies that cancellation remains observable to Agent orchestration instead of becoming a mapped HTTP error.
+    [Fact]
+    public async Task CompleteAsync_ShouldPropagateCancellation()
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var client = new OpenAIResponsesClient(new HttpClient(new CapturingHandler("{}", "application/json")));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.CompleteAsync(CreateRequest(), cancellation.Token));
+    }
+
+    private static ChatRequest CreateRequest() => new(
+        ModelReference.Parse("openai/gpt-5"),
+        [new ChatMessage(ChatRole.User, "hello")],
+        new Uri("https://api.example.test/v1"),
+        "test-key");
+
+    private sealed class CapturingHandler(
+        string responseBody,
+        string mediaType,
+        HttpStatusCode statusCode = HttpStatusCode.OK) : HttpMessageHandler
+    {
         public List<string> RequestBodies { get; } = [];
 
-        protected override async Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request,
-            CancellationToken cancellationToken)
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             RequestBodies.Add(await request.Content!.ReadAsStringAsync(cancellationToken));
-
-            return new HttpResponseMessage(HttpStatusCode.OK)
+            return new HttpResponseMessage(statusCode)
             {
-                Content = new StringContent(
-                    responseBodies.Dequeue(),
-                    Encoding.UTF8,
-                    "text/event-stream")
+                Content = new StringContent(responseBody, Encoding.UTF8, mediaType)
             };
         }
     }
-
-    [RuniqTool("echo_tool", "Echoes text.")]
-    private sealed class EchoTool : IRuniqTool<EchoInput, EchoOutput>
-    {
-        public Task<EchoOutput> ExecuteAsync(
-            EchoInput input,
-            CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult(new EchoOutput(input.Text));
-        }
-    }
-
-    [RuniqTool("failing_tool", "Fails for testing.")]
-    private sealed class FailingTool : IRuniqTool<EchoInput, EchoOutput>
-    {
-        public Task<EchoOutput> ExecuteAsync(
-            EchoInput input,
-            CancellationToken cancellationToken = default)
-        {
-            throw new InvalidOperationException("Demo tool failed.");
-        }
-    }
-
-    private sealed record EchoInput(string Text);
-
-    private sealed record EchoOutput(string Text);
 }
-

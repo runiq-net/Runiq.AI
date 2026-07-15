@@ -1,4 +1,4 @@
-using Runiq.AI.Agents.Models;
+using Runiq.AI.Core.Models;
 
 namespace Runiq.AI.Agents.Tests.Models;
 
