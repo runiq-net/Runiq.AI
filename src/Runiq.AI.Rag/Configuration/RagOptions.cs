@@ -1,4 +1,5 @@
 using Runiq.AI.Rag.Chunking;
+using Runiq.AI.Core.Configuration;
 
 namespace Runiq.AI.Rag.Configuration;
 
@@ -36,5 +37,11 @@ public sealed class RagOptions
     /// Gets or sets provider-independent document chunking options.
     /// </summary>
     public RagChunkingOptions Chunking { get; set; } = new();
+
+    /// <summary>Gets or sets the provider/model reference used for document and query embeddings.</summary>
+    public string? EmbeddingModel { get; set; }
+
+    /// <summary>Gets or sets the provider configuration used to resolve named embedding models.</summary>
+    public ProviderOptions? EmbeddingProvider { get; set; }
 }
 

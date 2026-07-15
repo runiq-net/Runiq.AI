@@ -17,7 +17,7 @@ var services = new ServiceCollection();
 // The existing RAG DI entry point wires chunking, embedding generation, vector record mapping,
 // dimension validation, and the upsert pipeline; the builder swaps in the in-memory vector store.
 services.AddRuniqRag(builder => builder.UseInMemoryVectorStore());
-services.AddRagEmbeddingProvider<DeterministicSampleEmbeddingProvider>();
+services.AddRagEmbeddingClient<DeterministicSampleEmbeddingProvider>();
 
 services.Configure<RagOptions>(options =>
 {

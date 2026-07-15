@@ -11,7 +11,7 @@ using Runiq.AI.Rag.IngestionSample;
 var services = new ServiceCollection();
 
 services.AddRuniqRag();
-services.AddRagEmbeddingProvider<DeterministicSampleEmbeddingProvider>();
+services.AddRagEmbeddingClient<DeterministicSampleEmbeddingProvider>();
 
 services.Configure<RagOptions>(options =>
 {

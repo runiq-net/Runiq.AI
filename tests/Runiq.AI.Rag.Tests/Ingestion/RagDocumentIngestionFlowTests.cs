@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Runiq.AI.Core.AI.Embeddings;
 using Runiq.AI.Rag.Abstractions.Embeddings;
 using Runiq.AI.Rag.Abstractions.Services;
 using Runiq.AI.Rag.Chunking;
@@ -24,9 +25,9 @@ public sealed class RagDocumentIngestionFlowTests
             ["category"] = "manual",
         });
         var document = CreateDocument("document-1", "abcdefghij", documentMetadata);
-        var provider = new DeterministicTrackingEmbeddingProvider();
+        var embeddingClient = new DeterministicTrackingEmbeddingClient();
         var inputPreparer = new TrackingEmbeddingInputPreparer();
-        var service = CreateService(provider, inputPreparer, maxChunkLength: 4, chunkOverlap: 1);
+        var service = CreateService(embeddingClient, inputPreparer, maxChunkLength: 4, chunkOverlap: 1);
 
         var result = await service.IngestAsync(document);
 
@@ -35,7 +36,8 @@ public sealed class RagDocumentIngestionFlowTests
         Assert.Equal([0, 1, 2], result.Chunks.Select(chunk => chunk.Index));
         Assert.Equal(["document-1:chunk:0", "document-1:chunk:1", "document-1:chunk:2"], result.Chunks.Select(chunk => chunk.Id));
         Assert.All(result.Chunks, chunk => Assert.Equal("document-1", chunk.DocumentId));
-        Assert.Equal(["abcd", "defg", "ghij"], provider.Texts);
+        Assert.Equal(["abcd", "defg", "ghij"], embeddingClient.Texts);
+        Assert.Equal(1, embeddingClient.InvocationCount);
 
         Assert.Collection(
             result.Items,
@@ -60,11 +62,11 @@ public sealed class RagDocumentIngestionFlowTests
     }
 
     [Fact]
-    public async Task IngestAsync_ShouldReturnEmptyResultWithoutEmbeddingProviderCalls_WhenDocumentContentIsEmpty()
+    public async Task IngestAsync_ShouldReturnEmptyResultWithoutEmbeddingClientCalls_WhenDocumentContentIsEmpty()
     {
-        var provider = new DeterministicTrackingEmbeddingProvider();
+        var embeddingClient = new DeterministicTrackingEmbeddingClient();
         var inputPreparer = new TrackingEmbeddingInputPreparer();
-        var service = CreateService(provider, inputPreparer, maxChunkLength: 4, chunkOverlap: 1);
+        var service = CreateService(embeddingClient, inputPreparer, maxChunkLength: 4, chunkOverlap: 1);
 
         var result = await service.IngestAsync(CreateDocument("document-1", string.Empty));
 
@@ -72,28 +74,30 @@ public sealed class RagDocumentIngestionFlowTests
         Assert.Empty(result.Chunks);
         Assert.Empty(result.Items);
         Assert.Empty(inputPreparer.Inputs);
-        Assert.Empty(provider.Texts);
+        Assert.Empty(embeddingClient.Texts);
+        Assert.Equal(0, embeddingClient.InvocationCount);
     }
 
     [Fact]
     public async Task IngestAsync_ShouldUseConfiguredChunkOverlap_WhenDefaultChunkerRunsInTheIngestionFlow()
     {
-        var provider = new DeterministicTrackingEmbeddingProvider();
-        var service = CreateService(provider, new TrackingEmbeddingInputPreparer(), maxChunkLength: 5, chunkOverlap: 2);
+        var embeddingClient = new DeterministicTrackingEmbeddingClient();
+        var service = CreateService(embeddingClient, new TrackingEmbeddingInputPreparer(), maxChunkLength: 5, chunkOverlap: 2);
 
         var result = await service.IngestAsync(CreateDocument("document-1", "abcdefghijkl"));
 
         Assert.Equal(["abcde", "defgh", "ghijk", "jkl"], result.Chunks.Select(chunk => chunk.Content));
         Assert.Equal([0, 3, 6, 9], result.Chunks.Select(chunk => chunk.Metadata.StartIndex));
         Assert.Equal([5, 8, 11, 12], result.Chunks.Select(chunk => chunk.Metadata.EndIndex));
-        Assert.Equal(["abcde", "defgh", "ghijk", "jkl"], provider.Texts);
+        Assert.Equal(["abcde", "defgh", "ghijk", "jkl"], embeddingClient.Texts);
+        Assert.Equal(1, embeddingClient.InvocationCount);
     }
 
     [Fact]
     public async Task IngestAsync_ShouldSurfaceExistingChunkingFailure_WhenChunkingOptionsAreInvalid()
     {
         var service = CreateService(
-            new DeterministicTrackingEmbeddingProvider(),
+            new DeterministicTrackingEmbeddingClient(),
             new TrackingEmbeddingInputPreparer(),
             maxChunkLength: 4,
             chunkOverlap: 4);
@@ -106,13 +110,13 @@ public sealed class RagDocumentIngestionFlowTests
     }
 
     [Fact]
-    public async Task AddRuniqRag_ShouldRunIngestionWithFakeEmbeddingProviderWithoutExternalDependencies()
+    public async Task AddRuniqRag_ShouldRunIngestionWithFakeEmbeddingClientWithoutExternalDependencies()
     {
-        var provider = new DeterministicTrackingEmbeddingProvider();
+        var embeddingClient = new DeterministicTrackingEmbeddingClient();
         var inputPreparer = new TrackingEmbeddingInputPreparer();
         var services = new ServiceCollection();
 
-        services.AddSingleton<IRagEmbeddingProvider>(provider);
+        services.AddSingleton<IEmbeddingClient>(embeddingClient);
         services.AddSingleton<IRagEmbeddingInputPreparer>(inputPreparer);
         services.AddRuniqRag();
         services.Configure<RagOptions>(options =>
@@ -126,18 +130,19 @@ public sealed class RagDocumentIngestionFlowTests
 
         var result = await service.IngestAsync(CreateDocument("document-1", "abcdefgh"));
 
-        Assert.Equal(["abcd", "efgh"], provider.Texts);
+        Assert.Equal(["abcd", "efgh"], embeddingClient.Texts);
+        Assert.Equal(1, embeddingClient.InvocationCount);
         Assert.Equal(["document-1:chunk:0", "document-1:chunk:1"], inputPreparer.Inputs.Select(input => input.ChunkId));
-        Assert.Equal(provider.Texts.Count, result.Items.Count);
+        Assert.Equal(embeddingClient.Texts.Count, result.Items.Count);
     }
 
     private static DefaultRagDocumentIngestionService CreateService(
-        IRagEmbeddingProvider provider,
+        IEmbeddingClient embeddingClient,
         IRagEmbeddingInputPreparer inputPreparer,
         int maxChunkLength,
         int chunkOverlap)
     {
-        // Builds the production ingestion chain with a test provider so the flow stays end-to-end without external calls.
+        // Builds the production ingestion chain with a test client so the flow stays end-to-end without external calls.
         var options = Options.Create(new RagOptions
         {
             Chunking = new RagChunkingOptions
@@ -147,7 +152,7 @@ public sealed class RagDocumentIngestionFlowTests
             },
         });
         var chunker = new DefaultRagChunker(options);
-        var generator = new DefaultRagChunkEmbeddingGenerator(provider, inputPreparer);
+        var generator = new DefaultRagChunkEmbeddingGenerator(embeddingClient, inputPreparer);
 
         return new DefaultRagDocumentIngestionService(chunker, generator);
     }
@@ -182,7 +187,7 @@ public sealed class RagDocumentIngestionFlowTests
         Assert.Equal(chunk.Id, embeddingResult.ChunkId);
         Assert.Equal(chunk.DocumentId, embeddingResult.DocumentId);
         Assert.Equal(chunk.Index, embeddingResult.ChunkIndex);
-        Assert.Equal(DeterministicTrackingEmbeddingProvider.CreateEmbeddingValues(expectedContent), embeddingResult.Embedding.Values);
+        Assert.Equal(DeterministicTrackingEmbeddingClient.CreateEmbeddingValues(expectedContent), embeddingResult.Embedding.Values);
     }
 
     private static void AssertEmbeddingInput(
@@ -227,19 +232,32 @@ public sealed class RagDocumentIngestionFlowTests
         }
     }
 
-    private sealed class DeterministicTrackingEmbeddingProvider : IRagEmbeddingProvider
+    private sealed class DeterministicTrackingEmbeddingClient : IEmbeddingClient
     {
-        // The fake provider records provider-bound text and returns vectors derived only from that text.
+        // The fake client records each ordered batch and returns one deterministic result per input.
         public IList<string> Texts { get; } = new List<string>();
 
-        public Task<RagEmbedding> GenerateAsync(
-            string text,
-            CancellationToken cancellationToken = default)
-        {
-            // No network or SDK call is made; the generated vector is deterministic for the provider input text.
-            Texts.Add(text);
+        public int InvocationCount { get; private set; }
 
-            return Task.FromResult(new RagEmbedding(CreateEmbeddingValues(text)));
+        public Task<EmbeddingResponse> EmbedAsync(
+            EmbeddingRequest request,
+            CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+
+            InvocationCount++;
+            foreach (var input in request.Inputs)
+            {
+                Texts.Add(input);
+            }
+
+            var results = request.Inputs.Select((input, index) =>
+            {
+                var vector = CreateEmbeddingValues(input);
+                return new EmbeddingResult(index, vector, vector.Count);
+            }).ToList();
+
+            return Task.FromResult(new EmbeddingResponse(results));
         }
 
         public static IReadOnlyList<float> CreateEmbeddingValues(string text)

@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Runiq.AI.Rag.Abstractions.Chunking;
-using Runiq.AI.Rag.Abstractions.Embeddings;
+using Runiq.AI.Core.AI.Embeddings;
 using Runiq.AI.Rag.Abstractions.Retrieval;
 using Runiq.AI.Rag.Abstractions.Tools;
 using Runiq.AI.Rag.Abstractions.VectorStores;
@@ -26,14 +26,14 @@ public sealed class RagBuilder
     }
 
     /// <summary>
-    /// Replaces the configured embedding provider with the specified provider type.
+    /// Replaces the Core embedding client used by RAG with the specified client type.
     /// </summary>
-    /// <typeparam name="TProvider">The embedding provider implementation type.</typeparam>
+    /// <typeparam name="TClient">The Core embedding client implementation type.</typeparam>
     /// <returns>The same builder instance so calls can be chained.</returns>
-    public RagBuilder UseEmbedding<TProvider>()
-        where TProvider : class, IRagEmbeddingProvider
+    public RagBuilder UseEmbeddingClient<TClient>()
+        where TClient : class, IEmbeddingClient
     {
-        services.AddRagEmbeddingProvider<TProvider>();
+        services.AddRagEmbeddingClient<TClient>();
 
         return this;
     }

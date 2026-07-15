@@ -29,6 +29,5 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Runiq.AI.ContextSpaces\Runiq.AI.ContextSpaces.csproj" />
-    <ProjectReference Include="..\Runiq.AI.Rag\Runiq.AI.Rag.csproj" />
   </ItemGroup>
 </Project>

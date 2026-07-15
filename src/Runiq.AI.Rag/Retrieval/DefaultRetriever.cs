@@ -1,8 +1,12 @@
 using Microsoft.Extensions.Options;
+using Runiq.AI.Core.AI.Embeddings;
+using Runiq.AI.Core.Configuration;
+using Runiq.AI.Core.Models;
 using Runiq.AI.Rag.Abstractions.Embeddings;
 using Runiq.AI.Rag.Abstractions.Retrieval;
 using Runiq.AI.Rag.Abstractions.VectorStores;
 using Runiq.AI.Rag.Configuration;
+using Runiq.AI.Rag.Embeddings;
 using Runiq.AI.Rag.Models.Queries;
 using Runiq.AI.Rag.Models.Search;
 
@@ -15,22 +19,22 @@ public sealed class DefaultRetriever : IRagRetriever
 {
     private const string MissingIndexNameMessage = "RAG retrieval requires a non-empty vector index name. Set RagQuery.IndexName or RagOptions.DefaultIndexName.";
 
-    private readonly IRagEmbeddingProvider embeddingProvider;
+    private readonly IEmbeddingClient embeddingClient;
     private readonly IRagVectorStore vectorStore;
     private readonly RagOptions options;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DefaultRetriever"/> class.
     /// </summary>
-    /// <param name="embeddingProvider">The embedding provider used to embed query text.</param>
+    /// <param name="embeddingClient">The Core embedding client used to embed query text.</param>
     /// <param name="vectorStore">The vector store used to search for matching chunks.</param>
     /// <param name="options">The RAG options used to resolve default retrieval settings.</param>
     public DefaultRetriever(
-        IRagEmbeddingProvider embeddingProvider,
+        IEmbeddingClient embeddingClient,
         IRagVectorStore vectorStore,
         IOptions<RagOptions>? options = null)
     {
-        this.embeddingProvider = embeddingProvider ?? throw new ArgumentNullException(nameof(embeddingProvider));
+        this.embeddingClient = embeddingClient ?? throw new ArgumentNullException(nameof(embeddingClient));
         this.vectorStore = vectorStore ?? throw new ArgumentNullException(nameof(vectorStore));
         this.options = options?.Value ?? new RagOptions();
     }
@@ -48,7 +52,9 @@ public sealed class DefaultRetriever : IRagRetriever
         ArgumentNullException.ThrowIfNull(query);
 
         var indexName = ResolveIndexName(query);
-        var embedding = await embeddingProvider.GenerateAsync(query.Text, cancellationToken).ConfigureAwait(false);
+        var model = ResolveEmbeddingModel();
+        var response = await embeddingClient.EmbedAsync(new EmbeddingRequest(model, [query.Text], Dimensions: model.EmbeddingDimensions), cancellationToken).ConfigureAwait(false);
+        var embedding = new Models.Embeddings.RagEmbedding(response.Results.Single().Vector);
         var resolvedQuery = new RagQuery
         {
             Text = query.Text,
@@ -70,6 +76,12 @@ public sealed class DefaultRetriever : IRagRetriever
         }
 
         return indexName.Trim();
+    }
+
+    private ModelReference ResolveEmbeddingModel()
+    {
+        if (string.IsNullOrWhiteSpace(options.EmbeddingModel)) return ModelReference.Parse("openai/rag-embedding");
+        return ProviderModelReferenceResolver.Resolve(ModelReference.Parse(options.EmbeddingModel), options.EmbeddingProvider);
     }
 }
 

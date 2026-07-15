@@ -1,4 +1,4 @@
-using Runiq.AI.Rag.Abstractions.Embeddings;
+using Runiq.AI.Core.AI.Embeddings;
 using Runiq.AI.Rag.Abstractions.VectorStores;
 using Runiq.AI.Rag.Models.Embeddings;
 using Runiq.AI.Rag.Models.Metadata;
@@ -17,9 +17,9 @@ public sealed class DefaultRagRetrievalPipelineTests
     {
         // Verifies that the pipeline rejects a null embedding provider as a programming error.
         var exception = Assert.Throws<ArgumentNullException>(() =>
-            new DefaultRagRetrievalPipeline(null!, new TrackingVectorStore()));
+            new DefaultRagRetrievalPipeline((IEmbeddingClient)null!, new TrackingVectorStore()));
 
-        Assert.Equal("embeddingProvider", exception.ParamName);
+        Assert.Equal("embeddingClient", exception.ParamName);
     }
 
     [Fact]
@@ -27,7 +27,7 @@ public sealed class DefaultRagRetrievalPipelineTests
     {
         // Verifies that the pipeline rejects a null vector store as a programming error.
         var exception = Assert.Throws<ArgumentNullException>(() =>
-            new DefaultRagRetrievalPipeline(new TrackingEmbeddingProvider(), null!));
+            new DefaultRagRetrievalPipeline(new TrackingEmbeddingClient(), null!));
 
         Assert.Equal("vectorStore", exception.ParamName);
     }
@@ -36,13 +36,13 @@ public sealed class DefaultRagRetrievalPipelineTests
     public async Task RetrieveAsync_ShouldReturnInvalidRequestFailure_WhenRequestIsNull()
     {
         // Verifies that a null retrieval request returns a managed invalid request failure without calling embedding or vector store services.
-        var embeddingProvider = new TrackingEmbeddingProvider();
+        var embeddingClient = new TrackingEmbeddingClient();
         var vectorStore = new TrackingVectorStore();
-        var pipeline = CreatePipeline(embeddingProvider, vectorStore);
+        var pipeline = CreatePipeline(embeddingClient, vectorStore);
 
         var result = await pipeline.RetrieveAsync(null!);
 
-        Assert.False(embeddingProvider.WasCalled);
+        Assert.False(embeddingClient.WasCalled);
         Assert.False(vectorStore.QueryWasCalled);
         Assert.False(result.Succeeded);
         Assert.Equal(RetrievalErrorCode.InvalidRequest, result.ErrorCode);
@@ -53,25 +53,25 @@ public sealed class DefaultRagRetrievalPipelineTests
     public async Task RetrieveAsync_ShouldSendQueryTextToEmbeddingAbstraction()
     {
         // Verifies that the retrieval pipeline forwards the request's query text to the embedding abstraction.
-        var embeddingProvider = new TrackingEmbeddingProvider();
-        var pipeline = CreatePipeline(embeddingProvider, new TrackingVectorStore());
+        var embeddingClient = new TrackingEmbeddingClient();
+        var pipeline = CreatePipeline(embeddingClient, new TrackingVectorStore());
 
         await pipeline.RetrieveAsync(CreateRequest(queryText: "how do I configure retrieval?"));
 
-        Assert.True(embeddingProvider.WasCalled);
-        Assert.Equal("how do I configure retrieval?", embeddingProvider.LastText);
+        Assert.True(embeddingClient.WasCalled);
+        Assert.Equal("how do I configure retrieval?", embeddingClient.LastRequest!.Inputs.Single());
     }
 
     [Fact]
     public async Task RetrieveAsync_ShouldForwardQueryVectorIndexNameTopKAndMetadataFilterToVectorStore()
     {
         // Verifies that the retrieval pipeline forwards the query vector, index name, top-k value, and metadata filter to the vector store.
-        var embeddingProvider = new TrackingEmbeddingProvider
+        var embeddingClient = new TrackingEmbeddingClient
         {
-            ForcedEmbedding = new RagEmbedding([0.1f, 0.2f, 0.3f]),
+            ForcedVector = [0.1f, 0.2f, 0.3f],
         };
         var vectorStore = new TrackingVectorStore();
-        var pipeline = CreatePipeline(embeddingProvider, vectorStore);
+        var pipeline = CreatePipeline(embeddingClient, vectorStore);
         var metadataFilter = new RetrievalMetadataFilter(new Dictionary<string, string>
         {
             ["source"] = "handbook",
@@ -123,7 +123,7 @@ public sealed class DefaultRagRetrievalPipelineTests
                 ],
             },
         };
-        var pipeline = CreatePipeline(new TrackingEmbeddingProvider(), vectorStore);
+        var pipeline = CreatePipeline(new TrackingEmbeddingClient(), vectorStore);
 
         var result = await pipeline.RetrieveAsync(CreateRequest());
 
@@ -150,7 +150,7 @@ public sealed class DefaultRagRetrievalPipelineTests
                 Records = [],
             },
         };
-        var pipeline = CreatePipeline(new TrackingEmbeddingProvider(), vectorStore);
+        var pipeline = CreatePipeline(new TrackingEmbeddingClient(), vectorStore);
 
         var result = await pipeline.RetrieveAsync(CreateRequest());
 
@@ -163,9 +163,9 @@ public sealed class DefaultRagRetrievalPipelineTests
     public async Task RetrieveAsync_ShouldSkipEmbeddingGeneration_WhenRequestSuppliesPrecomputedQueryVector()
     {
         // Verifies that a pre-computed query vector is forwarded directly without invoking the embedding abstraction.
-        var embeddingProvider = new TrackingEmbeddingProvider();
+        var embeddingClient = new TrackingEmbeddingClient();
         var vectorStore = new TrackingVectorStore();
-        var pipeline = CreatePipeline(embeddingProvider, vectorStore);
+        var pipeline = CreatePipeline(embeddingClient, vectorStore);
         var request = new RetrievalRequest
         {
             IndexName = "documents-index",
@@ -175,7 +175,7 @@ public sealed class DefaultRagRetrievalPipelineTests
         var result = await pipeline.RetrieveAsync(request);
 
         Assert.True(result.Succeeded);
-        Assert.False(embeddingProvider.WasCalled);
+        Assert.False(embeddingClient.WasCalled);
         Assert.Equal([0.4f, 0.5f], vectorStore.LastQueryRequest?.Values);
     }
 
@@ -184,7 +184,7 @@ public sealed class DefaultRagRetrievalPipelineTests
     {
         // Verifies that vector store query is not called when embedding generation fails.
         var vectorStore = new TrackingVectorStore();
-        var pipeline = CreatePipeline(new ThrowingEmbeddingProvider(), vectorStore);
+        var pipeline = CreatePipeline(new ThrowingEmbeddingClient(), vectorStore);
 
         var result = await pipeline.RetrieveAsync(CreateRequest());
 
@@ -198,7 +198,7 @@ public sealed class DefaultRagRetrievalPipelineTests
     public async Task RetrieveAsync_ShouldNotLeakProviderDetails_WhenEmbeddingProviderThrows()
     {
         // Verifies that an embedding failure reason never surfaces provider-specific exception details.
-        var pipeline = CreatePipeline(new ThrowingEmbeddingProvider(), new TrackingVectorStore());
+        var pipeline = CreatePipeline(new ThrowingEmbeddingClient(), new TrackingVectorStore());
 
         var result = await pipeline.RetrieveAsync(CreateRequest());
 
@@ -212,12 +212,12 @@ public sealed class DefaultRagRetrievalPipelineTests
     public async Task RetrieveAsync_ShouldReturnEmbeddingFailure_WhenEmbeddingProviderReturnsEmptyEmbedding()
     {
         // Verifies that an empty embedding is treated as an embedding failure and the vector store is not queried.
-        var embeddingProvider = new TrackingEmbeddingProvider
+        var embeddingClient = new TrackingEmbeddingClient
         {
-            ForcedEmbedding = new RagEmbedding(),
+            ForcedVector = [],
         };
         var vectorStore = new TrackingVectorStore();
-        var pipeline = CreatePipeline(embeddingProvider, vectorStore);
+        var pipeline = CreatePipeline(embeddingClient, vectorStore);
 
         var result = await pipeline.RetrieveAsync(CreateRequest());
 
@@ -231,7 +231,7 @@ public sealed class DefaultRagRetrievalPipelineTests
     {
         // Verifies that a vector store exception is normalized into a managed failure result without leaking provider details.
         var vectorStore = new ThrowingVectorStore();
-        var pipeline = CreatePipeline(new TrackingEmbeddingProvider(), vectorStore);
+        var pipeline = CreatePipeline(new TrackingEmbeddingClient(), vectorStore);
 
         var result = await pipeline.RetrieveAsync(CreateRequest());
 
@@ -257,7 +257,7 @@ public sealed class DefaultRagRetrievalPipelineTests
                 Reason = rawProviderReason,
             },
         };
-        var pipeline = CreatePipeline(new TrackingEmbeddingProvider(), vectorStore);
+        var pipeline = CreatePipeline(new TrackingEmbeddingClient(), vectorStore);
 
         var result = await pipeline.RetrieveAsync(CreateRequest());
 
@@ -276,9 +276,9 @@ public sealed class DefaultRagRetrievalPipelineTests
     public async Task RetrieveAsync_ShouldReturnInvalidRequestFailure_WhenQueryTextIsMissing(string? queryText)
     {
         // Verifies that invalid retrieval requests fail before any provider abstraction is invoked.
-        var embeddingProvider = new TrackingEmbeddingProvider();
+        var embeddingClient = new TrackingEmbeddingClient();
         var vectorStore = new TrackingVectorStore();
-        var pipeline = CreatePipeline(embeddingProvider, vectorStore);
+        var pipeline = CreatePipeline(embeddingClient, vectorStore);
         var request = new RetrievalRequest
         {
             IndexName = "documents-index",
@@ -287,7 +287,7 @@ public sealed class DefaultRagRetrievalPipelineTests
 
         var result = await pipeline.RetrieveAsync(request);
 
-        Assert.False(embeddingProvider.WasCalled);
+        Assert.False(embeddingClient.WasCalled);
         Assert.False(vectorStore.QueryWasCalled);
         Assert.False(result.Succeeded);
         Assert.Equal(RetrievalErrorCode.InvalidRequest, result.ErrorCode);
@@ -301,9 +301,9 @@ public sealed class DefaultRagRetrievalPipelineTests
     public async Task RetrieveAsync_ShouldReturnInvalidRequestFailure_WhenIndexNameIsInvalid(string? indexName)
     {
         // Verifies that an invalid index name returns a managed failure result before any provider abstraction is invoked.
-        var embeddingProvider = new TrackingEmbeddingProvider();
+        var embeddingClient = new TrackingEmbeddingClient();
         var vectorStore = new TrackingVectorStore();
-        var pipeline = CreatePipeline(embeddingProvider, vectorStore);
+        var pipeline = CreatePipeline(embeddingClient, vectorStore);
         var request = new RetrievalRequest
         {
             IndexName = indexName!,
@@ -312,7 +312,7 @@ public sealed class DefaultRagRetrievalPipelineTests
 
         var result = await pipeline.RetrieveAsync(request);
 
-        Assert.False(embeddingProvider.WasCalled);
+        Assert.False(embeddingClient.WasCalled);
         Assert.False(vectorStore.QueryWasCalled);
         Assert.False(result.Succeeded);
         Assert.Equal(RetrievalErrorCode.InvalidRequest, result.ErrorCode);
@@ -325,9 +325,9 @@ public sealed class DefaultRagRetrievalPipelineTests
     public async Task RetrieveAsync_ShouldReturnInvalidRequestFailure_WhenTopKIsInvalid(int topK)
     {
         // Verifies that an invalid top-k value returns an invalid request result without calling embedding or vector store services.
-        var embeddingProvider = new TrackingEmbeddingProvider();
+        var embeddingClient = new TrackingEmbeddingClient();
         var vectorStore = new TrackingVectorStore();
-        var pipeline = CreatePipeline(embeddingProvider, vectorStore);
+        var pipeline = CreatePipeline(embeddingClient, vectorStore);
         var request = new RetrievalRequest
         {
             IndexName = "documents-index",
@@ -337,7 +337,7 @@ public sealed class DefaultRagRetrievalPipelineTests
 
         var result = await pipeline.RetrieveAsync(request);
 
-        Assert.False(embeddingProvider.WasCalled);
+        Assert.False(embeddingClient.WasCalled);
         Assert.False(vectorStore.QueryWasCalled);
         Assert.False(result.Succeeded);
         Assert.Equal(RetrievalErrorCode.InvalidRequest, result.ErrorCode);
@@ -348,14 +348,14 @@ public sealed class DefaultRagRetrievalPipelineTests
     public async Task RetrieveAsync_ShouldPassCancellationTokenToEmbeddingProviderAndVectorStore()
     {
         // Verifies that the cancellation token is forwarded to both the embedding generation and the vector store query.
-        var embeddingProvider = new TrackingEmbeddingProvider();
+        var embeddingClient = new TrackingEmbeddingClient();
         var vectorStore = new TrackingVectorStore();
-        var pipeline = CreatePipeline(embeddingProvider, vectorStore);
+        var pipeline = CreatePipeline(embeddingClient, vectorStore);
         using var cancellationTokenSource = new CancellationTokenSource();
 
         await pipeline.RetrieveAsync(CreateRequest(), cancellationTokenSource.Token);
 
-        Assert.Equal(cancellationTokenSource.Token, embeddingProvider.LastCancellationToken);
+        Assert.Equal(cancellationTokenSource.Token, embeddingClient.LastCancellationToken);
         Assert.Equal(cancellationTokenSource.Token, vectorStore.LastQueryCancellationToken);
     }
 
@@ -363,16 +363,16 @@ public sealed class DefaultRagRetrievalPipelineTests
     public async Task RetrieveAsync_ShouldThrowBeforeCallingProviders_WhenCancellationIsAlreadyRequested()
     {
         // Verifies that an already-cancelled token throws before the embedding or vector store abstraction is invoked.
-        var embeddingProvider = new TrackingEmbeddingProvider();
+        var embeddingClient = new TrackingEmbeddingClient();
         var vectorStore = new TrackingVectorStore();
-        var pipeline = CreatePipeline(embeddingProvider, vectorStore);
+        var pipeline = CreatePipeline(embeddingClient, vectorStore);
         using var cancellationTokenSource = new CancellationTokenSource();
         cancellationTokenSource.Cancel();
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             pipeline.RetrieveAsync(CreateRequest(), cancellationTokenSource.Token));
 
-        Assert.False(embeddingProvider.WasCalled);
+        Assert.False(embeddingClient.WasCalled);
         Assert.False(vectorStore.QueryWasCalled);
     }
 
@@ -380,7 +380,7 @@ public sealed class DefaultRagRetrievalPipelineTests
     public async Task RetrieveAsync_ShouldPropagateOperationCanceledException_WhenEmbeddingProviderCancels()
     {
         // Verifies that cancellation raised during embedding generation propagates instead of becoming a failure result.
-        var pipeline = CreatePipeline(new CancellingEmbeddingProvider(), new TrackingVectorStore());
+        var pipeline = CreatePipeline(new CancellingEmbeddingClient(), new TrackingVectorStore());
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             pipeline.RetrieveAsync(CreateRequest()));
@@ -390,17 +390,17 @@ public sealed class DefaultRagRetrievalPipelineTests
     public async Task RetrieveAsync_ShouldPropagateOperationCanceledException_WhenVectorStoreCancels()
     {
         // Verifies that cancellation raised during the vector store query propagates instead of becoming a failure result.
-        var pipeline = CreatePipeline(new TrackingEmbeddingProvider(), new CancellingVectorStore());
+        var pipeline = CreatePipeline(new TrackingEmbeddingClient(), new CancellingVectorStore());
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             pipeline.RetrieveAsync(CreateRequest()));
     }
 
     private static DefaultRagRetrievalPipeline CreatePipeline(
-        IRagEmbeddingProvider embeddingProvider,
+        IEmbeddingClient embeddingClient,
         IRagVectorStore vectorStore)
     {
-        return new DefaultRagRetrievalPipeline(embeddingProvider, vectorStore);
+        return new DefaultRagRetrievalPipeline(embeddingClient, vectorStore);
     }
 
     private static RetrievalRequest CreateRequest(string queryText = "query text")
@@ -420,32 +420,32 @@ public sealed class DefaultRagRetrievalPipelineTests
         }
     }
 
-    private sealed class TrackingEmbeddingProvider : IRagEmbeddingProvider
+    private sealed class TrackingEmbeddingClient : IEmbeddingClient
     {
         public bool WasCalled { get; private set; }
 
-        public string? LastText { get; private set; }
+        public EmbeddingRequest? LastRequest { get; private set; }
 
         public CancellationToken LastCancellationToken { get; private set; }
 
-        public RagEmbedding? ForcedEmbedding { get; set; }
+        public IReadOnlyList<float>? ForcedVector { get; set; }
 
-        public Task<RagEmbedding> GenerateAsync(
-            string text,
+        public Task<EmbeddingResponse> EmbedAsync(
+            EmbeddingRequest request,
             CancellationToken cancellationToken = default)
         {
             WasCalled = true;
-            LastText = text;
+            LastRequest = request;
             LastCancellationToken = cancellationToken;
-
-            return Task.FromResult(ForcedEmbedding ?? new RagEmbedding([0.1f, 0.2f]));
+            var vector = ForcedVector ?? [0.1f, 0.2f];
+            return Task.FromResult(new EmbeddingResponse(request.Inputs.Select((_, index) => new EmbeddingResult(index, vector, vector.Count)).ToList()));
         }
     }
 
-    private sealed class ThrowingEmbeddingProvider : IRagEmbeddingProvider
+    private sealed class ThrowingEmbeddingClient : IEmbeddingClient
     {
-        public Task<RagEmbedding> GenerateAsync(
-            string text,
+        public Task<EmbeddingResponse> EmbedAsync(
+            EmbeddingRequest request,
             CancellationToken cancellationToken = default)
         {
             throw new FakeProviderSdkException(
@@ -453,10 +453,10 @@ public sealed class DefaultRagRetrievalPipelineTests
         }
     }
 
-    private sealed class CancellingEmbeddingProvider : IRagEmbeddingProvider
+    private sealed class CancellingEmbeddingClient : IEmbeddingClient
     {
-        public Task<RagEmbedding> GenerateAsync(
-            string text,
+        public Task<EmbeddingResponse> EmbedAsync(
+            EmbeddingRequest request,
             CancellationToken cancellationToken = default)
         {
             throw new OperationCanceledException();

@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Runiq.AI.Core.AI.Embeddings;
+using Runiq.AI.Core.Models;
 using Runiq.AI.Rag.Abstractions.VectorStores;
 using Runiq.AI.Rag.Configuration;
 using Runiq.AI.Rag.CorporateDocumentAssistant.Models;
@@ -79,11 +81,11 @@ public sealed class CorporateDocumentAssistantSampleTests
     {
         var provider = new DeterministicCorporateEmbeddingProvider();
 
-        var first = await provider.GenerateAsync("same corporate document chunk");
-        var second = await provider.GenerateAsync("same corporate document chunk");
+        var first = (await provider.EmbedAsync(new EmbeddingRequest(ModelReference.Parse("openai/sample"), ["same corporate document chunk"]))).Results.Single();
+        var second = (await provider.EmbedAsync(new EmbeddingRequest(ModelReference.Parse("openai/sample"), ["same corporate document chunk"]))).Results.Single();
 
         Assert.Equal(DeterministicCorporateEmbeddingProvider.Dimensions, first.Dimensions);
-        Assert.Equal(first.Values, second.Values);
+        Assert.Equal(first.Vector, second.Vector);
     }
 
     // Verifies that the sample query-time flow retrieves stored chunks and exposes them as answer sources.
@@ -121,7 +123,7 @@ public sealed class CorporateDocumentAssistantSampleTests
         var services = new ServiceCollection();
 
         services.AddRuniqRag(builder => builder.UseInMemoryVectorStore());
-        services.AddRagEmbeddingProvider<DeterministicCorporateEmbeddingProvider>();
+        services.AddRagEmbeddingClient<DeterministicCorporateEmbeddingProvider>();
         services.Configure<RagOptions>(options =>
         {
             options.Chunking.MaxChunkLength = 180;

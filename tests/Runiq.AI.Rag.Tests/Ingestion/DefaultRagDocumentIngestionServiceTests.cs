@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Runiq.AI.Core.AI.Embeddings;
 using Runiq.AI.Rag.Abstractions.Chunking;
 using Runiq.AI.Rag.Abstractions.Embeddings;
 using Runiq.AI.Rag.Abstractions.Services;
@@ -97,16 +98,15 @@ public sealed class DefaultRagDocumentIngestionServiceTests
         };
         var chunker = new TrackingChunker(chunks);
         var preparer = new PrefixingInputPreparer("prepared:");
-        var provider = new TrackingEmbeddingProvider(
-            new RagEmbedding([1.0f]),
-            new RagEmbedding([2.0f]));
-        var generator = new DefaultRagChunkEmbeddingGenerator(provider, preparer);
+        var embeddingClient = new TrackingEmbeddingClient([1.0f], [2.0f]);
+        var generator = new DefaultRagChunkEmbeddingGenerator(embeddingClient, preparer);
         var service = new DefaultRagDocumentIngestionService(chunker, generator);
 
         await service.IngestAsync(CreateDocument("document-1", "content"));
 
         Assert.Equal(["chunk-1", "chunk-2"], preparer.PreparedChunkIds);
-        Assert.Equal(["prepared: raw first ", "prepared: raw second "], provider.Texts);
+        Assert.Equal(["prepared: raw first ", "prepared: raw second "], embeddingClient.Texts);
+        Assert.Equal(1, embeddingClient.InvocationCount);
     }
 
     [Fact]
@@ -118,18 +118,16 @@ public sealed class DefaultRagDocumentIngestionServiceTests
             CreateChunk("chunk-2", 1, "Second chunk."),
             CreateChunk("chunk-3", 2, "Third chunk."),
         };
-        var provider = new TrackingEmbeddingProvider(
-            new RagEmbedding([1.0f]),
-            new RagEmbedding([2.0f]),
-            new RagEmbedding([3.0f]));
+        var embeddingClient = new TrackingEmbeddingClient([1.0f], [2.0f], [3.0f]);
         var service = new DefaultRagDocumentIngestionService(
             new TrackingChunker(chunks),
-            new DefaultRagChunkEmbeddingGenerator(provider, new TrackingInputPreparer()));
+            new DefaultRagChunkEmbeddingGenerator(embeddingClient, new TrackingInputPreparer()));
 
         var result = await service.IngestAsync(CreateDocument("document-1", "content"));
 
         Assert.Equal(3, result.Items.Count);
-        Assert.Equal(["First chunk.", "Second chunk.", "Third chunk."], provider.Texts);
+        Assert.Equal(["First chunk.", "Second chunk.", "Third chunk."], embeddingClient.Texts);
+        Assert.Equal(1, embeddingClient.InvocationCount);
         Assert.Equal(["chunk-1", "chunk-2", "chunk-3"], result.Items.Select(item => item.EmbeddingResult.ChunkId));
     }
 
@@ -172,13 +170,13 @@ public sealed class DefaultRagDocumentIngestionServiceTests
             CreateChunk("chunk-1", 0, "First chunk."),
             CreateChunk("chunk-2", 1, "Second chunk."),
         };
-        var provider = new TrackingEmbeddingProvider(new RagEmbedding([1.0f]))
+        var embeddingClient = new TrackingEmbeddingClient([1.0f])
         {
             FailureText = "Second chunk.",
         };
         var service = new DefaultRagDocumentIngestionService(
             new TrackingChunker(chunks),
-            new DefaultRagChunkEmbeddingGenerator(provider, new TrackingInputPreparer()));
+            new DefaultRagChunkEmbeddingGenerator(embeddingClient, new TrackingInputPreparer()));
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.IngestAsync(CreateDocument("document-1", "content")));
@@ -187,7 +185,8 @@ public sealed class DefaultRagDocumentIngestionServiceTests
             "RAG document ingestion failed while generating chunk embeddings for document 'document-1'.",
             exception.Message);
         Assert.IsType<InvalidOperationException>(exception.InnerException);
-        Assert.Equal(["First chunk.", "Second chunk."], provider.Texts);
+        Assert.Equal(["First chunk.", "Second chunk."], embeddingClient.Texts);
+        Assert.Equal(1, embeddingClient.InvocationCount);
     }
 
     [Fact]
@@ -196,17 +195,17 @@ public sealed class DefaultRagDocumentIngestionServiceTests
         var chunk = CreateChunk("chunk-1", 0, "First chunk.");
         var chunker = new TrackingChunker(chunk);
         var preparer = new TrackingInputPreparer();
-        var provider = new TrackingEmbeddingProvider(new RagEmbedding([1.0f]));
+        var embeddingClient = new TrackingEmbeddingClient([1.0f]);
         var service = new DefaultRagDocumentIngestionService(
             chunker,
-            new DefaultRagChunkEmbeddingGenerator(provider, preparer));
+            new DefaultRagChunkEmbeddingGenerator(embeddingClient, preparer));
         using var cancellationTokenSource = new CancellationTokenSource();
 
         await service.IngestAsync(CreateDocument("document-1", "content"), cancellationTokenSource.Token);
 
         Assert.Equal(cancellationTokenSource.Token, chunker.CancellationTokens.Single());
         Assert.Equal(cancellationTokenSource.Token, preparer.CancellationTokens.Single());
-        Assert.Equal(cancellationTokenSource.Token, provider.CancellationTokens.Single());
+        Assert.Equal(cancellationTokenSource.Token, embeddingClient.CancellationTokens.Single());
     }
 
     [Fact]
@@ -243,7 +242,8 @@ public sealed class DefaultRagDocumentIngestionServiceTests
         var services = new ServiceCollection();
         services.AddSingleton<IRagVectorStore, ThrowingVectorStore>();
         services.AddSingleton<IRagChunker>(_ => new TrackingChunker(CreateChunk("chunk-1", 0, "First chunk.")));
-        services.AddSingleton<IRagEmbeddingProvider>(_ => new TrackingEmbeddingProvider(new RagEmbedding([1.0f])));
+        var embeddingClient = new TrackingEmbeddingClient([1.0f]);
+        services.AddSingleton<IEmbeddingClient>(embeddingClient);
         services.AddRuniqRag();
 
         using var serviceProvider = services.BuildServiceProvider();
@@ -258,7 +258,9 @@ public sealed class DefaultRagDocumentIngestionServiceTests
     public void AddRuniqRag_ShouldResolveDocumentIngestionService()
     {
         var services = new ServiceCollection();
+        var embeddingClient = new TrackingEmbeddingClient([1.0f]);
 
+        services.AddSingleton<IEmbeddingClient>(embeddingClient);
         services.AddRuniqRag();
 
         using var serviceProvider = services.BuildServiceProvider();
@@ -438,34 +440,49 @@ public sealed class DefaultRagDocumentIngestionServiceTests
         }
     }
 
-    private sealed class TrackingEmbeddingProvider : IRagEmbeddingProvider
+    private sealed class TrackingEmbeddingClient : IEmbeddingClient
     {
-        private readonly Queue<RagEmbedding> embeddings;
+        private readonly Queue<IReadOnlyList<float>> vectors;
 
-        public TrackingEmbeddingProvider(params RagEmbedding[] embeddings)
+        public TrackingEmbeddingClient(params IReadOnlyList<float>[] vectors)
         {
-            this.embeddings = new Queue<RagEmbedding>(embeddings);
+            this.vectors = new Queue<IReadOnlyList<float>>(vectors);
         }
 
         public IList<string> Texts { get; } = new List<string>();
 
         public IList<CancellationToken> CancellationTokens { get; } = new List<CancellationToken>();
 
+        public int InvocationCount { get; private set; }
+
         public string? FailureText { get; init; }
 
-        public Task<RagEmbedding> GenerateAsync(
-            string text,
-            CancellationToken cancellationToken = default)
+        public Task<EmbeddingResponse> EmbedAsync(
+            EmbeddingRequest request,
+            CancellationToken cancellationToken)
         {
-            Texts.Add(text);
+            ArgumentNullException.ThrowIfNull(request);
+
+            InvocationCount++;
+            foreach (var input in request.Inputs)
+            {
+                Texts.Add(input);
+            }
+
             CancellationTokens.Add(cancellationToken);
 
-            if (text == FailureText)
+            if (FailureText is not null && request.Inputs.Contains(FailureText, StringComparer.Ordinal))
             {
                 throw new InvalidOperationException("Provider failed.");
             }
 
-            return Task.FromResult(embeddings.Count > 0 ? embeddings.Dequeue() : new RagEmbedding());
+            var results = request.Inputs.Select((_, index) =>
+            {
+                var vector = vectors.Count > 0 ? vectors.Dequeue() : Array.Empty<float>();
+                return new EmbeddingResult(index, vector, vector.Count);
+            }).ToList();
+
+            return Task.FromResult(new EmbeddingResponse(results));
         }
     }
 

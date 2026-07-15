@@ -6,11 +6,11 @@ using Runiq.AI.Agents.Tools;
 using Runiq.AI.Agents.Tests.TestDoubles;
 using Runiq.AI.Core.AI.Chat;
 using Runiq.AI.Core.AI.Capabilities;
+using Runiq.AI.Core.AI.Embeddings;
 using Runiq.AI.Core.Configuration;
 using Runiq.AI.ContextSpaces.Models.Skills;
 using Runiq.AI.ContextSpaces.Models.Sources;
 using Runiq.AI.ContextSpaces.Services;
-using Runiq.AI.Rag.Abstractions.Embeddings;
 using Runiq.AI.Rag.Abstractions.Retrieval;
 using Runiq.AI.Rag.Abstractions.Tools;
 using Runiq.AI.Rag.Abstractions.VectorStores;
@@ -136,7 +136,7 @@ public sealed class AgentExecutionRuntimeTests
             rag: new());
         var vectorStore = new SearchOnlyRagVectorStore([]);
         var retriever = new DefaultRetriever(
-            new StaticEmbeddingProvider(new RagEmbedding([1.0f])),
+            new StaticEmbeddingClient([1.0f]),
             vectorStore,
             Options.Create(new RagOptions { DefaultIndexName = "default-index" }));
         var runtime = CreateRuntimeWithRag(agent, retriever);
@@ -157,7 +157,7 @@ public sealed class AgentExecutionRuntimeTests
             model: "ollama/llama3",
             rag: new());
         var retriever = new DefaultRetriever(
-            new StaticEmbeddingProvider(new RagEmbedding([1.0f])),
+            new StaticEmbeddingClient([1.0f]),
             new SearchOnlyRagVectorStore([]));
         var runtime = CreateRuntimeWithRag(
             agent,
@@ -192,7 +192,7 @@ public sealed class AgentExecutionRuntimeTests
         var agent = CreateRagAgent().UseRagIndex("documents");
         var vectorStore = new SearchOnlyRagVectorStore([]);
         var retriever = new DefaultRetriever(
-            new StaticEmbeddingProvider(new RagEmbedding([1.0f])),
+            new StaticEmbeddingClient([1.0f]),
             vectorStore,
             Options.Create(new RagOptions { DefaultIndexName = "default-index" }));
         var runtime = CreateRuntimeWithRag(agent, retriever);
@@ -649,20 +649,24 @@ public sealed class AgentExecutionRuntimeTests
         }
     }
 
-    private sealed class StaticEmbeddingProvider : IRagEmbeddingProvider
+    private sealed class StaticEmbeddingClient : IEmbeddingClient
     {
-        private readonly RagEmbedding embedding;
+        private readonly IReadOnlyList<float> vector;
 
-        public StaticEmbeddingProvider(RagEmbedding embedding)
+        public StaticEmbeddingClient(IReadOnlyList<float> vector)
         {
-            this.embedding = embedding;
+            this.vector = vector;
         }
 
-        public Task<RagEmbedding> GenerateAsync(
-            string text,
-            CancellationToken cancellationToken = default)
+        public Task<EmbeddingResponse> EmbedAsync(
+            EmbeddingRequest request,
+            CancellationToken cancellationToken)
         {
-            return Task.FromResult(embedding);
+            ArgumentNullException.ThrowIfNull(request);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult(new EmbeddingResponse(
+                request.Inputs.Select((_, index) => new EmbeddingResult(index, vector, vector.Count)).ToList()));
         }
     }
 

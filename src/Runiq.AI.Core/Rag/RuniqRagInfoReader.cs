@@ -1,10 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
-using Runiq.AI.Rag.Abstractions.Telemetry;
-using Runiq.AI.Rag.Abstractions.VectorStores;
-using Runiq.AI.Rag.Configuration;
-using Runiq.AI.Rag.Models.Telemetry;
-using Runiq.AI.Rag.VectorStores;
 
 namespace Runiq.AI.Core.Rag;
 
@@ -25,6 +18,9 @@ public sealed class RuniqRagInfoReader : IRuniqRagInfoProvider
 
     private const string ProviderRegistrationTypeName =
         "Runiq.AI.Rag.VectorStores.RagVectorStoreProviderRegistration";
+    private const string VectorStoreTypeName = "Runiq.AI.Rag.Abstractions.VectorStores.IRagVectorStore";
+    private const string RagOptionsTypeName = "Runiq.AI.Rag.Configuration.RagOptions";
+    private const string TelemetryReaderTypeName = "Runiq.AI.Rag.Abstractions.Telemetry.IRagOperationTelemetryReader";
 
     private readonly IServiceProvider services;
 
@@ -49,7 +45,8 @@ public sealed class RuniqRagInfoReader : IRuniqRagInfoProvider
     {
         try
         {
-            var vectorStore = services.GetService<IRagVectorStore>();
+            var vectorStoreType = FindRagType(VectorStoreTypeName);
+            var vectorStore = vectorStoreType is null ? null : services.GetService(vectorStoreType);
 
             if (vectorStore is null)
             {
@@ -63,12 +60,12 @@ public sealed class RuniqRagInfoReader : IRuniqRagInfoProvider
             var diagnostics = new List<string>();
             var providerVectorStore = ResolveProviderVectorStore(vectorStore);
 
-            if (providerVectorStore is NullVectorStore)
+            if (string.Equals(providerVectorStore.GetType().Name, "NullVectorStore", StringComparison.Ordinal))
             {
                 diagnostics.Add(NullVectorStoreDiagnostic);
             }
 
-            var options = services.GetService<IOptions<RagOptions>>()?.Value;
+            var options = ResolveOptions();
 
             if (options is null)
             {
@@ -79,8 +76,8 @@ public sealed class RuniqRagInfoReader : IRuniqRagInfoProvider
             {
                 Enabled = true,
                 VectorStore = providerVectorStore.GetType().Name,
-                IndexName = options?.DefaultIndexName,
-                DefaultTopK = options?.DefaultTopK,
+                IndexName = options?.GetType().GetProperty("DefaultIndexName")?.GetValue(options) as string,
+                DefaultTopK = options?.GetType().GetProperty("DefaultTopK")?.GetValue(options) as int?,
                 EmbeddingDimension = null,
                 LastUpsert = MapLastUpsertTelemetry(),
                 LastRetrieval = MapLastRetrievalTelemetry(),
@@ -98,16 +95,16 @@ public sealed class RuniqRagInfoReader : IRuniqRagInfoProvider
         }
     }
 
-    private IRagVectorStore ResolveProviderVectorStore(IRagVectorStore vectorStore)
+    private object ResolveProviderVectorStore(object vectorStore)
     {
-        if (vectorStore is not ValidatingRagVectorStore)
+        if (!string.Equals(vectorStore.GetType().Name, "ValidatingRagVectorStore", StringComparison.Ordinal))
         {
             return vectorStore;
         }
 
         // The configured provider store is held by an internal registration behind the validating
         // decorator; unwrap it so the dashboard shows the provider label instead of the decorator.
-        var registrationType = typeof(ValidatingRagVectorStore).Assembly
+        var registrationType = vectorStore.GetType().Assembly
             .GetType(ProviderRegistrationTypeName);
 
         if (registrationType is null)
@@ -124,48 +121,49 @@ public sealed class RuniqRagInfoReader : IRuniqRagInfoProvider
 
         var providerVectorStore = registrationType
             .GetProperty("VectorStore")
-            ?.GetValue(registration) as IRagVectorStore;
+            ?.GetValue(registration);
 
         return providerVectorStore ?? vectorStore;
     }
 
-    private RuniqRagLastUpsertInfo? MapLastUpsertTelemetry()
+    private object? ResolveOptions()
     {
-        var telemetry = services.GetService<IRagOperationTelemetryReader>()?.LastUpsert;
-
-        return telemetry is null ? null : MapLastUpsertTelemetry(telemetry);
+        var optionsType = FindRagType(RagOptionsTypeName);
+        if (optionsType is null) return null;
+        var optionsInterface = typeof(Microsoft.Extensions.Options.IOptions<>).MakeGenericType(optionsType);
+        return optionsInterface.GetProperty("Value")?.GetValue(services.GetService(optionsInterface));
     }
 
-    private static RuniqRagLastUpsertInfo MapLastUpsertTelemetry(RagLastUpsertTelemetry telemetry)
+    private RuniqRagLastUpsertInfo? MapLastUpsertTelemetry()
     {
+        var telemetry = ResolveTelemetry("LastUpsert");
+        if (telemetry is null) return null;
         return new RuniqRagLastUpsertInfo
         {
-            Succeeded = telemetry.Succeeded,
-            ErrorCode = telemetry.ErrorCode.ToString(),
-            Reason = telemetry.Reason,
-            ChunkCount = telemetry.ChunkCount,
-            Timestamp = telemetry.Timestamp
+            Succeeded = (bool)(telemetry.GetType().GetProperty("Succeeded")?.GetValue(telemetry) ?? false),
+            ErrorCode = telemetry.GetType().GetProperty("ErrorCode")?.GetValue(telemetry)?.ToString() ?? string.Empty,
+            Reason = telemetry.GetType().GetProperty("Reason")?.GetValue(telemetry)?.ToString() ?? string.Empty,
+            ChunkCount = (int)(telemetry.GetType().GetProperty("ChunkCount")?.GetValue(telemetry) ?? 0),
+            Timestamp = (DateTimeOffset)(telemetry.GetType().GetProperty("Timestamp")?.GetValue(telemetry) ?? default(DateTimeOffset))
         };
     }
 
     private RuniqRagLastRetrievalInfo? MapLastRetrievalTelemetry()
     {
-        var telemetry = services.GetService<IRagOperationTelemetryReader>()?.LastRetrieval;
-
-        return telemetry is null ? null : MapLastRetrievalTelemetry(telemetry);
-    }
-
-    private static RuniqRagLastRetrievalInfo MapLastRetrievalTelemetry(RagLastRetrievalTelemetry telemetry)
-    {
+        var telemetry = ResolveTelemetry("LastRetrieval");
+        if (telemetry is null) return null;
         return new RuniqRagLastRetrievalInfo
         {
-            Succeeded = telemetry.Succeeded,
-            ErrorCode = telemetry.ErrorCode.ToString(),
-            Reason = telemetry.Reason,
-            ResultCount = telemetry.ResultCount,
-            DurationMilliseconds = telemetry.Duration.TotalMilliseconds,
-            Timestamp = telemetry.Timestamp
+            Succeeded = (bool)(telemetry.GetType().GetProperty("Succeeded")?.GetValue(telemetry) ?? false),
+            ErrorCode = telemetry.GetType().GetProperty("ErrorCode")?.GetValue(telemetry)?.ToString() ?? string.Empty,
+            Reason = telemetry.GetType().GetProperty("Reason")?.GetValue(telemetry)?.ToString() ?? string.Empty,
+            ResultCount = (int)(telemetry.GetType().GetProperty("ResultCount")?.GetValue(telemetry) ?? 0),
+            DurationMilliseconds = ((TimeSpan)(telemetry.GetType().GetProperty("Duration")?.GetValue(telemetry) ?? TimeSpan.Zero)).TotalMilliseconds,
+            Timestamp = (DateTimeOffset)(telemetry.GetType().GetProperty("Timestamp")?.GetValue(telemetry) ?? default(DateTimeOffset))
         };
     }
+
+    private object? ResolveTelemetry(string property) => FindRagType(TelemetryReaderTypeName) is { } type ? type.GetProperty(property)?.GetValue(services.GetService(type)) : null;
+    private static Type? FindRagType(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type is not null);
 }
 

@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Options;
-using Runiq.AI.Rag.Abstractions.Embeddings;
+using Runiq.AI.Core.AI.Embeddings;
+using Runiq.AI.Core.Models;
 using Runiq.AI.Rag.Abstractions.VectorStores;
 using Runiq.AI.Rag.Configuration;
-using Runiq.AI.Rag.Embeddings;
 using Runiq.AI.Rag.Models.Embeddings;
 using Runiq.AI.Rag.Models.Metadata;
 using Runiq.AI.Rag.Models.Queries;
@@ -20,16 +20,16 @@ public sealed class DefaultRetrieverTests
     public void Constructor_ShouldThrow_WhenEmbeddingProviderIsNull()
     {
         var exception = Assert.Throws<ArgumentNullException>(() =>
-            new DefaultRetriever(null!, new NullVectorStore()));
+            new DefaultRetriever((IEmbeddingClient)null!, new NullVectorStore()));
 
-        Assert.Equal("embeddingProvider", exception.ParamName);
+        Assert.Equal("embeddingClient", exception.ParamName);
     }
 
     [Fact]
     public void Constructor_ShouldThrow_WhenVectorStoreIsNull()
     {
         var exception = Assert.Throws<ArgumentNullException>(() =>
-            new DefaultRetriever(new NullEmbeddingProvider(), null!));
+            new DefaultRetriever(new TrackingEmbeddingClient([1.0f]), null!));
 
         Assert.Equal("vectorStore", exception.ParamName);
     }
@@ -37,20 +37,20 @@ public sealed class DefaultRetrieverTests
     [Fact]
     public async Task RetrieveAsync_ShouldCallEmbeddingProviderWithQueryText()
     {
-        var embeddingProvider = new TrackingEmbeddingProvider(new RagEmbedding([1.0f]));
+        var embeddingProvider = new TrackingEmbeddingClient([1.0f]);
         var vectorStore = new TrackingVectorStore([]);
         var retriever = new DefaultRetriever(embeddingProvider, vectorStore);
 
         await retriever.RetrieveAsync(new RagQuery { Text = "search text", IndexName = "documents" });
 
-        Assert.Equal("search text", embeddingProvider.GeneratedText);
+        Assert.Equal("search text", embeddingProvider.LastRequest!.Inputs.Single());
     }
 
     [Fact]
     public async Task RetrieveAsync_ShouldCallSearchAsyncWithIndexNameAndGeneratedEmbedding()
     {
-        var embedding = new RagEmbedding([1.0f, 2.0f]);
-        var embeddingProvider = new TrackingEmbeddingProvider(embedding);
+        var embedding = new[] { 1.0f, 2.0f };
+        var embeddingProvider = new TrackingEmbeddingClient(embedding);
         var vectorStore = new SearchOnlyTrackingVectorStore([
             new RagSearchResult
             {
@@ -68,13 +68,13 @@ public sealed class DefaultRetrieverTests
         Assert.NotNull(vectorStore.SearchQuery);
         Assert.NotSame(query, vectorStore.SearchQuery);
         Assert.Equal("documents", vectorStore.SearchQuery.IndexName);
-        Assert.Same(embedding, vectorStore.SearchEmbedding);
+        Assert.Equal(embedding, vectorStore.SearchEmbedding!.Values);
     }
 
     [Fact]
     public async Task RetrieveAsync_ShouldUseDefaultIndexName_WhenQueryIndexNameIsMissing()
     {
-        var embeddingProvider = new TrackingEmbeddingProvider(new RagEmbedding([1.0f]));
+        var embeddingProvider = new TrackingEmbeddingClient([1.0f]);
         var vectorStore = new TrackingVectorStore([]);
         var retriever = new DefaultRetriever(
             embeddingProvider,
@@ -89,7 +89,7 @@ public sealed class DefaultRetrieverTests
     [Fact]
     public async Task RetrieveAsync_ShouldUseQueryIndexName_WhenDefaultIndexNameAlsoExists()
     {
-        var embeddingProvider = new TrackingEmbeddingProvider(new RagEmbedding([1.0f]));
+        var embeddingProvider = new TrackingEmbeddingClient([1.0f]);
         var vectorStore = new TrackingVectorStore([]);
         var retriever = new DefaultRetriever(
             embeddingProvider,
@@ -108,7 +108,7 @@ public sealed class DefaultRetrieverTests
         {
             ["tenant"] = "north",
         });
-        var embeddingProvider = new TrackingEmbeddingProvider(new RagEmbedding([1.0f]));
+        var embeddingProvider = new TrackingEmbeddingClient([1.0f]);
         var vectorStore = new TrackingVectorStore([]);
         var retriever = new DefaultRetriever(embeddingProvider, vectorStore);
 
@@ -128,7 +128,7 @@ public sealed class DefaultRetrieverTests
     public async Task RetrieveAsync_ShouldFailDeterministically_WhenIndexNameIsMissing()
     {
         var retriever = new DefaultRetriever(
-            new TrackingEmbeddingProvider(new RagEmbedding([1.0f])),
+            new TrackingEmbeddingClient([1.0f]),
             new TrackingVectorStore([]));
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -143,7 +143,7 @@ public sealed class DefaultRetrieverTests
     public async Task RetrieveAsync_ShouldFailDeterministically_WhenQueryIndexNameIsInvalid(string indexName)
     {
         var retriever = new DefaultRetriever(
-            new TrackingEmbeddingProvider(new RagEmbedding([1.0f])),
+            new TrackingEmbeddingClient([1.0f]),
             new TrackingVectorStore([]),
             Options.Create(new RagOptions { DefaultIndexName = "default-index" }));
 
@@ -155,7 +155,7 @@ public sealed class DefaultRetrieverTests
     public async Task RetrieveAsync_ShouldReturnEmptyList_WhenUsingNullDependencies()
     {
         var retriever = new DefaultRetriever(
-            new NullEmbeddingProvider(),
+            new TrackingEmbeddingClient([]),
             new NullVectorStore());
 
         var results = await retriever.RetrieveAsync(new RagQuery { Text = "search text", IndexName = "documents" });
@@ -168,7 +168,7 @@ public sealed class DefaultRetrieverTests
     public async Task RetrieveAsync_ShouldPropagateVectorStoreQueryFailure()
     {
         var retriever = new DefaultRetriever(
-            new TrackingEmbeddingProvider(new RagEmbedding([1.0f, 0.0f, 0.0f])),
+            new TrackingEmbeddingClient([1.0f, 0.0f, 0.0f]),
             new InMemoryRagVectorStore());
 
         var exception = await Assert.ThrowsAsync<RagVectorStoreQueryException>(() =>
@@ -178,24 +178,23 @@ public sealed class DefaultRetrieverTests
         Assert.Equal("missing-index", exception.IndexName);
     }
 
-    private sealed class TrackingEmbeddingProvider : IRagEmbeddingProvider
+    private sealed class TrackingEmbeddingClient : IEmbeddingClient
     {
-        private readonly RagEmbedding embedding;
+        private readonly IReadOnlyList<float> vector;
 
-        public TrackingEmbeddingProvider(RagEmbedding embedding)
+        public TrackingEmbeddingClient(IReadOnlyList<float> vector)
         {
-            this.embedding = embedding;
+            this.vector = vector;
         }
 
-        public string? GeneratedText { get; private set; }
+        public EmbeddingRequest? LastRequest { get; private set; }
 
-        public Task<RagEmbedding> GenerateAsync(
-            string text,
+        public Task<EmbeddingResponse> EmbedAsync(
+            EmbeddingRequest request,
             CancellationToken cancellationToken = default)
         {
-            GeneratedText = text;
-
-            return Task.FromResult(embedding);
+            LastRequest = request;
+            return Task.FromResult(new EmbeddingResponse(request.Inputs.Select((_, index) => new EmbeddingResult(index, vector, vector.Count)).ToList()));
         }
     }
 

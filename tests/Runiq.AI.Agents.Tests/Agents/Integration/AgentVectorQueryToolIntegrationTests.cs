@@ -4,12 +4,11 @@ using Runiq.AI.Agents.Providers.OpenAI;
 using Runiq.AI.Agents.Runtime;
 using Runiq.AI.Agents.Tools;
 using Runiq.AI.Agents.Tests.TestDoubles;
-using Runiq.AI.Rag.Abstractions.Embeddings;
+using Runiq.AI.Core.AI.Embeddings;
 using Runiq.AI.Rag.Abstractions.Tools;
 using Runiq.AI.Rag.Abstractions.VectorStores;
 using Runiq.AI.Rag.Configuration;
 using Runiq.AI.Rag.DependencyInjection;
-using Runiq.AI.Rag.Models.Embeddings;
 using Runiq.AI.Rag.Models.Metadata;
 using Runiq.AI.Rag.Models.Tools;
 using Runiq.AI.Rag.Models.VectorStores;
@@ -116,7 +115,7 @@ public sealed class AgentVectorQueryToolIntegrationTests
     private static ServiceProvider BuildRagProvider()
     {
         var services = new ServiceCollection();
-        services.AddSingleton<IRagEmbeddingProvider>(new ConstantEmbeddingProvider());
+        services.AddSingleton<IEmbeddingClient>(new ConstantEmbeddingClient());
         services.AddRuniqRag(builder => builder.UseInMemoryVectorStore());
 
         return services.BuildServiceProvider();
@@ -192,15 +191,17 @@ public sealed class AgentVectorQueryToolIntegrationTests
     /// It keeps the integration focused on the agent → tool → store wiring rather than similarity ranking, which
     /// the RAG-level Vector Query Tool integration tests already prove with keyword overlap.
     /// </summary>
-    private sealed class ConstantEmbeddingProvider : IRagEmbeddingProvider
+    private sealed class ConstantEmbeddingClient : IEmbeddingClient
     {
-        public Task<RagEmbedding> GenerateAsync(
-            string text,
-            CancellationToken cancellationToken = default)
+        public Task<EmbeddingResponse> EmbedAsync(
+            EmbeddingRequest request,
+            CancellationToken cancellationToken)
         {
+            ArgumentNullException.ThrowIfNull(request);
             cancellationToken.ThrowIfCancellationRequested();
 
-            return Task.FromResult(new RagEmbedding([1f]));
+            return Task.FromResult(new EmbeddingResponse(
+                request.Inputs.Select((_, index) => new EmbeddingResult(index, [1f], Dimensions)).ToList()));
         }
     }
 }

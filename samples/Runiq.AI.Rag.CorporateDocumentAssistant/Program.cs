@@ -15,7 +15,7 @@ builder.Services.AddSingleton<IReadOnlyList<ContextSpace>>(
     CorporateDocumentAssistantContext.Create(),
 ]);
 builder.Services.AddRuniqRag(ragBuilder => ragBuilder.UseInMemoryVectorStore());
-builder.Services.AddRagEmbeddingProvider<DeterministicCorporateEmbeddingProvider>();
+builder.Services.AddRagEmbeddingClient<DeterministicCorporateEmbeddingProvider>();
 builder.Services.Configure<RagOptions>(options =>
 {
     options.DefaultIndexName = "corporate-document-assistant";

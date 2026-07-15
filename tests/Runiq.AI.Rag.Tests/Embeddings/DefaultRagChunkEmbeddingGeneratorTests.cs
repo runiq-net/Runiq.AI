@@ -1,3 +1,4 @@
+using Runiq.AI.Core.AI.Embeddings;
 using Runiq.AI.Rag.Abstractions.Embeddings;
 using Runiq.AI.Rag.Embeddings;
 using Runiq.AI.Rag.Models.Documents;
@@ -12,16 +13,16 @@ public sealed class DefaultRagChunkEmbeddingGeneratorTests
     public void Constructor_ShouldThrow_WhenEmbeddingProviderIsNull()
     {
         var exception = Assert.Throws<ArgumentNullException>(() =>
-            new DefaultRagChunkEmbeddingGenerator(null!, new DefaultRagEmbeddingInputPreparer()));
+            new DefaultRagChunkEmbeddingGenerator((IEmbeddingClient)null!, new DefaultRagEmbeddingInputPreparer()));
 
-        Assert.Equal("embeddingProvider", exception.ParamName);
+        Assert.Equal("embeddingClient", exception.ParamName);
     }
 
     [Fact]
     public void Constructor_ShouldThrow_WhenInputPreparerIsNull()
     {
         var exception = Assert.Throws<ArgumentNullException>(() =>
-            new DefaultRagChunkEmbeddingGenerator(new TrackingEmbeddingProvider(), null!));
+            new DefaultRagChunkEmbeddingGenerator(new TrackingEmbeddingClient(), null!));
 
         Assert.Equal("inputPreparer", exception.ParamName);
     }
@@ -35,11 +36,8 @@ public sealed class DefaultRagChunkEmbeddingGeneratorTests
             CreateChunk("chunk-2", "document-1", 1, "Second chunk."),
             CreateChunk("chunk-3", "document-2", 0, "Third chunk."),
         };
-        var provider = new TrackingEmbeddingProvider(
-            new RagEmbedding([1.0f]),
-            new RagEmbedding([2.0f]),
-            new RagEmbedding([3.0f]));
-        var generator = new DefaultRagChunkEmbeddingGenerator(provider, new DefaultRagEmbeddingInputPreparer());
+        var client = new TrackingEmbeddingClient([1.0f], [2.0f], [3.0f]);
+        var generator = new DefaultRagChunkEmbeddingGenerator(client, new DefaultRagEmbeddingInputPreparer());
 
         var results = await generator.GenerateAsync(chunks);
 
@@ -76,27 +74,29 @@ public sealed class DefaultRagChunkEmbeddingGeneratorTests
             CreateChunk("chunk-1", "document-1", 0, " raw first "),
             CreateChunk("chunk-2", "document-1", 1, " raw second "),
         };
-        var provider = new TrackingEmbeddingProvider(new RagEmbedding([1.0f]), new RagEmbedding([2.0f]));
+        var client = new TrackingEmbeddingClient([1.0f], [2.0f]);
         var preparer = new PrefixingEmbeddingInputPreparer("prepared:");
-        var generator = new DefaultRagChunkEmbeddingGenerator(provider, preparer);
+        var generator = new DefaultRagChunkEmbeddingGenerator(client, preparer);
 
         await generator.GenerateAsync(chunks);
 
-        Assert.Equal(["prepared: raw first ", "prepared: raw second "], provider.Texts);
+        Assert.Equal(["prepared: raw first ", "prepared: raw second "], client.Texts);
+        Assert.Equal(1, client.InvocationCount);
         Assert.Equal(["chunk-1", "chunk-2"], preparer.PreparedChunkIds);
     }
 
     [Fact]
     public async Task GenerateAsync_ShouldReturnEmptyResultsAndNotCallProvider_WhenChunksAreEmpty()
     {
-        var provider = new TrackingEmbeddingProvider();
+        var client = new TrackingEmbeddingClient();
         var preparer = new TrackingEmbeddingInputPreparer();
-        var generator = new DefaultRagChunkEmbeddingGenerator(provider, preparer);
+        var generator = new DefaultRagChunkEmbeddingGenerator(client, preparer);
 
         var results = await generator.GenerateAsync(Array.Empty<RagChunk>());
 
         Assert.Empty(results);
-        Assert.Empty(provider.Texts);
+        Assert.Empty(client.Texts);
+        Assert.Equal(0, client.InvocationCount);
         Assert.Empty(preparer.PreparedChunkIds);
     }
 
@@ -104,7 +104,7 @@ public sealed class DefaultRagChunkEmbeddingGeneratorTests
     public async Task GenerateAsync_ShouldThrowForNullChunkList()
     {
         var generator = new DefaultRagChunkEmbeddingGenerator(
-            new TrackingEmbeddingProvider(),
+            new TrackingEmbeddingClient(),
             new DefaultRagEmbeddingInputPreparer());
 
         var exception = await Assert.ThrowsAsync<ArgumentNullException>(() => generator.GenerateAsync(null!));
@@ -117,7 +117,7 @@ public sealed class DefaultRagChunkEmbeddingGeneratorTests
     {
         var chunks = new RagChunk?[] { CreateChunk("chunk-1", "document-1", 0, "First chunk."), null };
         var generator = new DefaultRagChunkEmbeddingGenerator(
-            new TrackingEmbeddingProvider(new RagEmbedding([1.0f])),
+            new TrackingEmbeddingClient([1.0f]),
             new DefaultRagEmbeddingInputPreparer());
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -134,32 +134,29 @@ public sealed class DefaultRagChunkEmbeddingGeneratorTests
             CreateChunk("chunk-1", "document-1", 0, "First chunk."),
             CreateChunk("chunk-2", "document-1", 1, "Second chunk."),
         };
-        var provider = new TrackingEmbeddingProvider(new RagEmbedding([1.0f]))
+        var client = new TrackingEmbeddingClient([1.0f], [2.0f])
         {
             FailureText = "Second chunk.",
         };
-        var generator = new DefaultRagChunkEmbeddingGenerator(provider, new DefaultRagEmbeddingInputPreparer());
+        var generator = new DefaultRagChunkEmbeddingGenerator(client, new DefaultRagEmbeddingInputPreparer());
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => generator.GenerateAsync(chunks));
 
-        Assert.Equal(
-            "Chunk embedding generation failed for chunk 'chunk-2' in document 'document-1' at input index 1.",
-            exception.Message);
-        Assert.IsType<InvalidOperationException>(exception.InnerException);
-        Assert.Equal(["First chunk.", "Second chunk."], provider.Texts);
+        Assert.Equal("Provider failed.", exception.Message);
+        Assert.Equal(["First chunk.", "Second chunk."], client.Texts);
     }
 
     [Fact]
     public async Task GenerateAsync_ShouldPassCancellationTokenToProvider()
     {
         var chunk = CreateChunk("chunk-1", "document-1", 0, "First chunk.");
-        var provider = new TrackingEmbeddingProvider(new RagEmbedding([1.0f]));
-        var generator = new DefaultRagChunkEmbeddingGenerator(provider, new DefaultRagEmbeddingInputPreparer());
+        var client = new TrackingEmbeddingClient([1.0f]);
+        var generator = new DefaultRagChunkEmbeddingGenerator(client, new DefaultRagEmbeddingInputPreparer());
         using var cancellationTokenSource = new CancellationTokenSource();
 
         await generator.GenerateAsync([chunk], cancellationTokenSource.Token);
 
-        Assert.Equal(cancellationTokenSource.Token, provider.CancellationTokens.Single());
+        Assert.Equal(cancellationTokenSource.Token, client.CancellationTokens.Single());
     }
 
     [Fact]
@@ -168,7 +165,7 @@ public sealed class DefaultRagChunkEmbeddingGeneratorTests
         var chunk = CreateChunk("chunk-1", "document-1", 0, "First chunk.");
         var preparer = new TrackingEmbeddingInputPreparer();
         var generator = new DefaultRagChunkEmbeddingGenerator(
-            new TrackingEmbeddingProvider(new RagEmbedding([1.0f])),
+            new TrackingEmbeddingClient([1.0f]),
             preparer);
         using var cancellationTokenSource = new CancellationTokenSource();
 
@@ -181,11 +178,11 @@ public sealed class DefaultRagChunkEmbeddingGeneratorTests
     public async Task GenerateAsync_ShouldPropagateCancellationWithoutWrapping()
     {
         var chunk = CreateChunk("chunk-1", "document-1", 0, "First chunk.");
-        var provider = new TrackingEmbeddingProvider(new RagEmbedding([1.0f]))
+        var client = new TrackingEmbeddingClient([1.0f])
         {
             CancelOnGenerate = true,
         };
-        var generator = new DefaultRagChunkEmbeddingGenerator(provider, new DefaultRagEmbeddingInputPreparer());
+        var generator = new DefaultRagChunkEmbeddingGenerator(client, new DefaultRagEmbeddingInputPreparer());
 
         await Assert.ThrowsAsync<OperationCanceledException>(() => generator.GenerateAsync([chunk]));
     }
@@ -196,43 +193,43 @@ public sealed class DefaultRagChunkEmbeddingGeneratorTests
     public async Task GenerateAsync_ShouldPassPreparedEmptyOrWhitespaceContentToProvider(string content)
     {
         var chunk = CreateChunk("chunk-1", "document-1", 0, content);
-        var provider = new TrackingEmbeddingProvider(new RagEmbedding([1.0f]));
+        var client = new TrackingEmbeddingClient([1.0f]);
         var preparer = new TrackingEmbeddingInputPreparer();
-        var generator = new DefaultRagChunkEmbeddingGenerator(provider, preparer);
+        var generator = new DefaultRagChunkEmbeddingGenerator(client, preparer);
 
         await generator.GenerateAsync([chunk]);
 
         Assert.Equal(["chunk-1"], preparer.PreparedChunkIds);
-        Assert.Equal([content], provider.Texts);
+        Assert.Equal([content], client.Texts);
     }
 
     [Fact]
     public async Task GenerateAsync_ShouldPreservePreparerMetadataMapping()
     {
         var chunk = CreateChunk("chunk-1", "document-1", 7, "First chunk.");
-        var provider = new TrackingEmbeddingProvider(new RagEmbedding([1.0f]));
+        var client = new TrackingEmbeddingClient([1.0f]);
         var preparer = new MetadataAwareEmbeddingInputPreparer();
-        var generator = new DefaultRagChunkEmbeddingGenerator(provider, preparer);
+        var generator = new DefaultRagChunkEmbeddingGenerator(client, preparer);
 
         var result = Assert.Single(await generator.GenerateAsync([chunk]));
 
-        Assert.Equal("chunk-1:10:42", provider.Texts.Single());
+        Assert.Equal("chunk-1:10:42", client.Texts.Single());
         Assert.Equal("chunk-1", result.ChunkId);
         Assert.Equal("document-1", result.DocumentId);
         Assert.Equal(7, result.ChunkIndex);
     }
 
     [Fact]
-    public void IRagEmbeddingProvider_ShouldKeepSingleTextGenerateContract()
+    public void IEmbeddingClient_ShouldExposeProviderNeutralBatchContract()
     {
         var method = Assert.Single(
-            typeof(IRagEmbeddingProvider).GetMethods(),
-            method => method.Name == nameof(IRagEmbeddingProvider.GenerateAsync));
+            typeof(IEmbeddingClient).GetMethods(),
+            method => method.Name == nameof(IEmbeddingClient.EmbedAsync));
         var parameters = method.GetParameters();
 
-        Assert.Equal(typeof(Task<RagEmbedding>), method.ReturnType);
+        Assert.Equal(typeof(Task<EmbeddingResponse>), method.ReturnType);
         Assert.Equal(2, parameters.Length);
-        Assert.Equal(typeof(string), parameters[0].ParameterType);
+        Assert.Equal(typeof(EmbeddingRequest), parameters[0].ParameterType);
         Assert.Equal(typeof(CancellationToken), parameters[1].ParameterType);
     }
 
@@ -261,13 +258,13 @@ public sealed class DefaultRagChunkEmbeddingGeneratorTests
         };
     }
 
-    private sealed class TrackingEmbeddingProvider : IRagEmbeddingProvider
+    private sealed class TrackingEmbeddingClient : IEmbeddingClient
     {
-        private readonly Queue<RagEmbedding> embeddings;
+        private readonly Queue<IReadOnlyList<float>> vectors;
 
-        public TrackingEmbeddingProvider(params RagEmbedding[] embeddings)
+        public TrackingEmbeddingClient(params IReadOnlyList<float>[] vectors)
         {
-            this.embeddings = new Queue<RagEmbedding>(embeddings);
+            this.vectors = new Queue<IReadOnlyList<float>>(vectors);
         }
 
         public IList<string> Texts { get; } = new List<string>();
@@ -278,11 +275,19 @@ public sealed class DefaultRagChunkEmbeddingGeneratorTests
 
         public bool CancelOnGenerate { get; init; }
 
-        public Task<RagEmbedding> GenerateAsync(
-            string text,
+        public int InvocationCount { get; private set; }
+
+        public Task<EmbeddingResponse> EmbedAsync(
+            EmbeddingRequest request,
             CancellationToken cancellationToken = default)
         {
-            Texts.Add(text);
+            ArgumentNullException.ThrowIfNull(request);
+            request.Validate();
+            InvocationCount++;
+            foreach (var text in request.Inputs)
+            {
+                Texts.Add(text);
+            }
             CancellationTokens.Add(cancellationToken);
 
             if (CancelOnGenerate)
@@ -290,12 +295,17 @@ public sealed class DefaultRagChunkEmbeddingGeneratorTests
                 throw new OperationCanceledException(cancellationToken);
             }
 
-            if (text == FailureText)
+            if (request.Inputs.Contains(FailureText, StringComparer.Ordinal))
             {
                 throw new InvalidOperationException("Provider failed.");
             }
 
-            return Task.FromResult(embeddings.Count > 0 ? embeddings.Dequeue() : new RagEmbedding());
+            var results = request.Inputs.Select((_, index) =>
+            {
+                var vector = vectors.Count > 0 ? vectors.Dequeue() : Array.Empty<float>();
+                return new EmbeddingResult(index, vector, vector.Count);
+            }).ToList();
+            return Task.FromResult(new EmbeddingResponse(results));
         }
     }
 

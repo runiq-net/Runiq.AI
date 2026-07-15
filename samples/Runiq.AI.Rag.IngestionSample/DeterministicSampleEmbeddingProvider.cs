@@ -1,12 +1,11 @@
-using Runiq.AI.Rag.Abstractions.Embeddings;
-using Runiq.AI.Rag.Models.Embeddings;
+using Runiq.AI.Core.AI.Embeddings;
 
 namespace Runiq.AI.Rag.IngestionSample;
 
 /// <summary>
 /// Generates small deterministic vectors so the sample can run without API keys, network calls, or provider-specific setup.
 /// </summary>
-public sealed class DeterministicSampleEmbeddingProvider : IRagEmbeddingProvider
+public sealed class DeterministicSampleEmbeddingProvider : IEmbeddingClient
 {
     /// <summary>
     /// Gets the fixed number of vector dimensions produced by the sample provider.
@@ -14,14 +13,15 @@ public sealed class DeterministicSampleEmbeddingProvider : IRagEmbeddingProvider
     public const int Dimensions = 8;
 
     /// <inheritdoc />
-    public Task<RagEmbedding> GenerateAsync(
-        string text,
+    public Task<EmbeddingResponse> EmbedAsync(
+        EmbeddingRequest request,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(text);
+        ArgumentNullException.ThrowIfNull(request);
+        request.Validate();
         cancellationToken.ThrowIfCancellationRequested();
 
-        return Task.FromResult(new RagEmbedding(CreateEmbeddingValues(text)));
+        return Task.FromResult(new EmbeddingResponse(request.Inputs.Select((text, index) => new EmbeddingResult(index, CreateEmbeddingValues(text), Dimensions)).ToList()));
     }
 
     /// <summary>

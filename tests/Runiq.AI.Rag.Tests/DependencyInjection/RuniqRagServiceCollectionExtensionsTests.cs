@@ -1,10 +1,12 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Runiq.AI.Core.AI.Embeddings;
 using Runiq.AI.Rag.Abstractions.Chunking;
 using Runiq.AI.Rag.Abstractions.Embeddings;
 using Runiq.AI.Rag.Abstractions.Retrieval;
 using Runiq.AI.Rag.Abstractions.Services;
+using Runiq.AI.Rag.Abstractions.Telemetry;
 using Runiq.AI.Rag.Abstractions.Tools;
 using Runiq.AI.Rag.Abstractions.VectorStores;
 using Runiq.AI.Rag.Chunking;
@@ -70,13 +72,29 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddRuniqRag_ShouldRegisterRagEmbeddingProvider()
+    public void AddRuniqRagWithCoreClient_ShouldRegisterEmbeddingClient()
     {
         var services = new ServiceCollection();
 
+        services.AddRuniqRag(rag => rag.UseEmbeddingClient<TestEmbeddingClient>());
+
+        var descriptor = Assert.Single(services, service => service.ServiceType == typeof(IEmbeddingClient));
+        Assert.Equal(typeof(TestEmbeddingClient), descriptor.ImplementationType);
+        Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldFailClearly_WhenEmbeddingConsumerResolvesWithoutCoreClient()
+    {
+        var services = new ServiceCollection();
         services.AddRuniqRag();
 
-        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagEmbeddingProvider));
+        using var serviceProvider = services.BuildServiceProvider();
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            serviceProvider.GetRequiredService<IRagRetriever>());
+
+        Assert.Contains(typeof(IEmbeddingClient).FullName!, exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -166,6 +184,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         // Verifies that the default RAG registration exposes the retrieval pipeline through DI.
         var services = new ServiceCollection();
         services.AddRuniqRag();
+        services.AddRagEmbeddingClient<TestEmbeddingClient>();
 
         using var serviceProvider = services.BuildServiceProvider();
 
@@ -230,6 +249,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         // Verifies that the default RAG registration resolves the Vector Query Tool without manual wiring, reusing the retrieval pipeline it depends on.
         var services = new ServiceCollection();
         services.AddRuniqRag();
+        services.AddRagEmbeddingClient<TestEmbeddingClient>();
 
         using var serviceProvider = services.BuildServiceProvider();
         using var scope = serviceProvider.CreateScope();
@@ -288,6 +308,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         var vectorStore = new QueryRecordingVectorStore();
         services.AddRuniqRag();
         services.AddRagVectorStore(_ => vectorStore);
+        services.AddRagEmbeddingClient<TestEmbeddingClient>();
 
         using var serviceProvider = services.BuildServiceProvider();
         var pipeline = serviceProvider.GetRequiredService<IRagRetrievalPipeline>();
@@ -305,14 +326,14 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public async Task AddRagEmbeddingProvider_ShouldMakeRetrievalPipelineEmbedThroughCustomEmbeddingProvider_WhenRegisteredAfterAddRuniqRag()
+    public async Task AddRagEmbeddingClient_ShouldMakeRetrievalPipelineEmbedThroughCustomCoreClient_WhenRegisteredAfterAddRuniqRag()
     {
-        // Verifies that the retrieval pipeline resolved from the service provider embeds the query text with a custom embedding provider and forwards the resulting vector to the vector store.
+        // Verifies that the retrieval pipeline embeds query text through the explicitly registered Core client.
         var services = new ServiceCollection();
-        var embeddingProvider = new RecordingEmbeddingProvider();
+        var embeddingClient = new RecordingEmbeddingClient();
         var vectorStore = new QueryRecordingVectorStore();
         services.AddRuniqRag();
-        services.AddRagEmbeddingProvider(_ => embeddingProvider);
+        services.AddRagEmbeddingClient(_ => embeddingClient);
         services.AddRagVectorStore(_ => vectorStore);
 
         using var serviceProvider = services.BuildServiceProvider();
@@ -325,17 +346,18 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         });
 
         Assert.True(result.Succeeded);
-        Assert.True(embeddingProvider.WasCalled);
-        Assert.Equal("how does retrieval resolve dependencies?", embeddingProvider.LastText);
+        Assert.True(embeddingClient.WasCalled);
+        Assert.Equal("how does retrieval resolve dependencies?", embeddingClient.LastText);
         Assert.Equal([0.5f, 0.6f], vectorStore.LastQueryRequest?.Values);
     }
 
     [Fact]
-    public async Task AddRuniqRag_ShouldResolveRetrievalPipelineDependenciesWithoutManualWiring()
+    public async Task AddRuniqRag_ShouldResolveRetrievalPipelineDependenciesWithConfiguredCoreClient()
     {
-        // Verifies that the retrieval pipeline and its embedding and vector store dependencies resolve from the default registration without any manual service wiring.
+        // Verifies that the retrieval pipeline executes through the configured Core client.
         var services = new ServiceCollection();
         services.AddRuniqRag();
+        services.AddRagEmbeddingClient<TestEmbeddingClient>();
 
         using var serviceProvider = services.BuildServiceProvider();
         var pipeline = serviceProvider.GetRequiredService<IRagRetrievalPipeline>();
@@ -346,9 +368,8 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
             QueryText = "query text",
         });
 
-        // The default null embedding provider returns an empty embedding, so the pipeline reports a managed embedding failure rather than throwing, which proves the whole dependency graph resolved and executed end to end.
-        Assert.False(result.Succeeded);
-        Assert.Equal(RetrievalErrorCode.EmbeddingFailed, result.ErrorCode);
+        Assert.True(result.Succeeded);
+        Assert.Empty(result.Items);
     }
 
     [Fact]
@@ -506,6 +527,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection();
         services.AddRuniqRag();
+        services.AddRagEmbeddingClient<TestEmbeddingClient>();
 
         using var serviceProvider = services.BuildServiceProvider();
 
@@ -517,6 +539,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection();
         services.AddRuniqRag();
+        services.AddRagEmbeddingClient<TestEmbeddingClient>();
 
         using var serviceProvider = services.BuildServiceProvider();
 
@@ -528,6 +551,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection();
         services.AddRuniqRag();
+        services.AddRagEmbeddingClient<TestEmbeddingClient>();
 
         using var serviceProvider = services.BuildServiceProvider();
 
@@ -546,14 +570,14 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddRuniqRag_ShouldResolveNullEmbeddingProviderByDefault()
+    public void AddRuniqRagWithCoreClient_ShouldResolveConfiguredEmbeddingClient()
     {
         var services = new ServiceCollection();
-        services.AddRuniqRag();
+        services.AddRuniqRag(rag => rag.UseEmbeddingClient<TestEmbeddingClient>());
 
         using var serviceProvider = services.BuildServiceProvider();
 
-        Assert.IsType<NullEmbeddingProvider>(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+        Assert.IsType<TestEmbeddingClient>(serviceProvider.GetRequiredService<IEmbeddingClient>());
     }
 
     [Fact]
@@ -573,6 +597,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection();
         services.AddRuniqRag();
+        services.AddRagEmbeddingClient<TestEmbeddingClient>();
 
         using var serviceProvider = services.BuildServiceProvider();
 
@@ -609,6 +634,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection();
         services.AddRuniqRag();
+        services.AddRagEmbeddingClient<TestEmbeddingClient>();
 
         using var serviceProvider = services.BuildServiceProvider();
 
@@ -713,16 +739,16 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddRuniqRag_ShouldNotOverwriteUserRegisteredEmbeddingProvider()
+    public void AddRuniqRag_ShouldNotOverwriteUserRegisteredCoreEmbeddingClient()
     {
         var services = new ServiceCollection();
-        services.AddSingleton<IRagEmbeddingProvider, TestEmbeddingProvider>();
+        services.AddSingleton<IEmbeddingClient, TestEmbeddingClient>();
 
         services.AddRuniqRag();
 
         using var serviceProvider = services.BuildServiceProvider();
 
-        Assert.IsType<TestEmbeddingProvider>(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+        Assert.IsType<TestEmbeddingClient>(serviceProvider.GetRequiredService<IEmbeddingClient>());
     }
 
     [Fact]
@@ -758,41 +784,41 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddRagEmbeddingProvider_ShouldRegisterCustomEmbeddingProvider()
+    public void AddRagEmbeddingClient_ShouldRegisterCustomCoreEmbeddingClient()
     {
         var services = new ServiceCollection();
 
-        services.AddRagEmbeddingProvider<TestEmbeddingProvider>();
+        services.AddRagEmbeddingClient<TestEmbeddingClient>();
 
         using var serviceProvider = services.BuildServiceProvider();
 
-        Assert.IsType<TestEmbeddingProvider>(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+        Assert.IsType<TestEmbeddingClient>(serviceProvider.GetRequiredService<IEmbeddingClient>());
     }
 
     [Fact]
-    public void AddRagEmbeddingProvider_ShouldOverrideDefaultEmbeddingProvider_WhenRegisteredAfterAddRuniqRag()
+    public void AddRagEmbeddingClient_ShouldOverrideTemporaryDefaultClient_WhenRegisteredAfterAddRuniqRag()
     {
         var services = new ServiceCollection();
 
         services.AddRuniqRag();
-        services.AddRagEmbeddingProvider<TestEmbeddingProvider>();
+        services.AddRagEmbeddingClient<TestEmbeddingClient>();
 
         using var serviceProvider = services.BuildServiceProvider();
 
-        Assert.IsType<TestEmbeddingProvider>(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+        Assert.IsType<TestEmbeddingClient>(serviceProvider.GetRequiredService<IEmbeddingClient>());
     }
 
     [Fact]
-    public void AddRagEmbeddingProviderWithFactory_ShouldRegisterCustomEmbeddingProviderInstance()
+    public void AddRagEmbeddingClientWithFactory_ShouldRegisterCustomCoreClientInstance()
     {
         var services = new ServiceCollection();
-        var provider = new TestEmbeddingProvider();
+        var embeddingClient = new TestEmbeddingClient();
 
-        services.AddRagEmbeddingProvider(_ => provider);
+        services.AddRagEmbeddingClient(_ => embeddingClient);
 
         using var serviceProvider = services.BuildServiceProvider();
 
-        Assert.Same(provider, serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+        Assert.Same(embeddingClient, serviceProvider.GetRequiredService<IEmbeddingClient>());
     }
 
     [Fact]
@@ -864,6 +890,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         var services = new ServiceCollection();
 
         services.AddRuniqRag(rag => rag.UseInMemoryVectorStore());
+        services.AddRagEmbeddingClient<TestEmbeddingClient>();
 
         using var serviceProvider = services.BuildServiceProvider();
 
@@ -1013,10 +1040,11 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         var services = new ServiceCollection();
 
         services.AddRuniqRag(_ => { });
+        services.AddRagEmbeddingClient<TestEmbeddingClient>();
 
         using var serviceProvider = services.BuildServiceProvider();
 
-        Assert.IsType<NullEmbeddingProvider>(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IEmbeddingClient));
         Assert.IsType<ValidatingRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
         Assert.NotNull(serviceProvider.GetRequiredService<IRagRetriever>());
         Assert.NotNull(serviceProvider.GetRequiredService<IRagService>());
@@ -1027,15 +1055,15 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddRuniqRagWithConfigure_ShouldAllowCustomEmbeddingProvider()
+    public void AddRuniqRagWithConfigure_ShouldAllowCustomCoreEmbeddingClient()
     {
         var services = new ServiceCollection();
 
-        services.AddRuniqRag(rag => rag.UseEmbedding<TestEmbeddingProvider>());
+        services.AddRuniqRag(rag => rag.UseEmbeddingClient<TestEmbeddingClient>());
 
         using var serviceProvider = services.BuildServiceProvider();
 
-        Assert.IsType<TestEmbeddingProvider>(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+        Assert.IsType<TestEmbeddingClient>(serviceProvider.GetRequiredService<IEmbeddingClient>());
     }
 
     [Fact]
@@ -1124,7 +1152,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
 
         services.AddRuniqRag(rag =>
         {
-            rag.UseEmbedding<TestEmbeddingProvider>();
+            rag.UseEmbeddingClient<TestEmbeddingClient>();
             rag.UseVectorStore<TestVectorStore>();
             rag.UseRetriever<TestRetriever>();
             rag.UseChunker<TestChunker>();
@@ -1222,6 +1250,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         var services = new ServiceCollection();
 
         services.AddRuniqRag(CreateConfiguration());
+        services.AddRagEmbeddingClient<TestEmbeddingClient>();
 
         using var serviceProvider = services.BuildServiceProvider();
 
@@ -1234,6 +1263,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         var services = new ServiceCollection();
 
         services.AddRuniqRag(CreateConfiguration());
+        services.AddRagEmbeddingClient<TestEmbeddingClient>();
 
         using var serviceProvider = services.BuildServiceProvider();
 
@@ -1241,15 +1271,15 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddRuniqRagWithConfiguration_ShouldRegisterRagEmbeddingProvider()
+    public void AddRuniqRagWithConfigurationAndCoreClient_ShouldRegisterEmbeddingClient()
     {
         var services = new ServiceCollection();
 
-        services.AddRuniqRag(CreateConfiguration());
+        services.AddRuniqRag(CreateConfiguration(), rag => rag.UseEmbeddingClient<TestEmbeddingClient>());
 
         using var serviceProvider = services.BuildServiceProvider();
 
-        Assert.NotNull(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+        Assert.IsType<TestEmbeddingClient>(serviceProvider.GetRequiredService<IEmbeddingClient>());
     }
 
     [Fact]
@@ -1287,7 +1317,7 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
 
         services.AddRuniqRag(configuration, rag =>
         {
-            rag.UseEmbedding<TestEmbeddingProvider>();
+            rag.UseEmbeddingClient<TestEmbeddingClient>();
             rag.UseVectorStore<TestVectorStore>();
             rag.UseRetriever<TestRetriever>();
             rag.UseChunker<TestChunker>();
@@ -1296,19 +1326,22 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         using var serviceProvider = services.BuildServiceProvider();
 
         Assert.Equal(9, serviceProvider.GetRequiredService<IOptions<RagOptions>>().Value.DefaultTopK);
-        Assert.IsType<TestEmbeddingProvider>(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+        Assert.IsType<TestEmbeddingClient>(serviceProvider.GetRequiredService<IEmbeddingClient>());
         Assert.IsType<ValidatingRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
         Assert.IsType<TestRetriever>(serviceProvider.GetRequiredService<IRagRetriever>());
         Assert.IsType<TestChunker>(serviceProvider.GetRequiredService<IRagChunker>());
     }
 
-    private sealed class TestEmbeddingProvider : IRagEmbeddingProvider
+    private sealed class TestEmbeddingClient : IEmbeddingClient
     {
-        public Task<RagEmbedding> GenerateAsync(
-            string text,
-            CancellationToken cancellationToken = default)
+        public Task<EmbeddingResponse> EmbedAsync(
+            EmbeddingRequest request,
+            CancellationToken cancellationToken)
         {
-            return Task.FromResult(new RagEmbedding());
+            ArgumentNullException.ThrowIfNull(request);
+
+            return Task.FromResult(new EmbeddingResponse(
+                request.Inputs.Select((_, index) => new EmbeddingResult(index, [0.0f], 1)).ToList()));
         }
     }
 
@@ -1430,20 +1463,22 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
         }
     }
 
-    private sealed class RecordingEmbeddingProvider : IRagEmbeddingProvider
+    private sealed class RecordingEmbeddingClient : IEmbeddingClient
     {
         public bool WasCalled { get; private set; }
 
         public string? LastText { get; private set; }
 
-        public Task<RagEmbedding> GenerateAsync(
-            string text,
-            CancellationToken cancellationToken = default)
+        public Task<EmbeddingResponse> EmbedAsync(
+            EmbeddingRequest request,
+            CancellationToken cancellationToken)
         {
-            WasCalled = true;
-            LastText = text;
+            ArgumentNullException.ThrowIfNull(request);
 
-            return Task.FromResult(new RagEmbedding([0.5f, 0.6f]));
+            WasCalled = true;
+            LastText = request.Inputs.Single();
+
+            return Task.FromResult(new EmbeddingResponse([new EmbeddingResult(0, [0.5f, 0.6f], 2)]));
         }
     }
 

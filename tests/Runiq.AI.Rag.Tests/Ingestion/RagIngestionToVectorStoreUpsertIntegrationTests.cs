@@ -1,9 +1,11 @@
 using Microsoft.Extensions.DependencyInjection;
+using Runiq.AI.Core.AI.Embeddings;
 using Runiq.AI.Rag.Abstractions.Embeddings;
 using Runiq.AI.Rag.Abstractions.Services;
 using Runiq.AI.Rag.Abstractions.VectorStores;
 using Runiq.AI.Rag.Configuration;
 using Runiq.AI.Rag.DependencyInjection;
+using Runiq.AI.Rag.Embeddings;
 using Runiq.AI.Rag.Models.Documents;
 using Runiq.AI.Rag.Models.Embeddings;
 using Runiq.AI.Rag.Models.Ingestion;
@@ -15,12 +17,12 @@ namespace Runiq.AI.Rag.Tests.Ingestion;
 /// <summary>
 /// Integration tests that run the full document → chunk → embedding → vector record → upsert chain
 /// through the real dependency injection graph registered by <c>AddRuniqRag</c>, using a deterministic
-/// fake embedding provider and the in-memory vector store so no external dependency is involved.
+/// fake embedding client and the in-memory vector store so no external dependency is involved.
 /// </summary>
 public sealed class RagIngestionToVectorStoreUpsertIntegrationTests
 {
     /// <summary>
-    /// The fixed vector dimension count produced by <see cref="DeterministicFakeEmbeddingProvider"/>.
+    /// The fixed vector dimension count produced by <see cref="DeterministicFakeEmbeddingClient"/>.
     /// </summary>
     private const int EmbeddingDimensions = 3;
 
@@ -30,8 +32,8 @@ public sealed class RagIngestionToVectorStoreUpsertIntegrationTests
     [Fact]
     public async Task IngestAndUpsert_ShouldWriteSingleDocumentEmbeddingsToInMemoryStoreUnderRequestedIndex()
     {
-        var embeddingProvider = new DeterministicFakeEmbeddingProvider();
-        using var serviceProvider = CreateRagServiceProvider(embeddingProvider);
+        var embeddingClient = new DeterministicFakeEmbeddingClient();
+        using var serviceProvider = CreateRagServiceProvider(embeddingClient);
         var vectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
         var document = CreateDocument("document-1", "abcdefgh");
         await CreateIndexAsync(vectorStore, "documents-index");
@@ -55,8 +57,8 @@ public sealed class RagIngestionToVectorStoreUpsertIntegrationTests
     [Fact]
     public async Task IngestAndUpsert_ShouldWriteAllChunkEmbeddingsOfMultiChunkDocumentToSameIndex()
     {
-        var embeddingProvider = new DeterministicFakeEmbeddingProvider();
-        using var serviceProvider = CreateRagServiceProvider(embeddingProvider);
+        var embeddingClient = new DeterministicFakeEmbeddingClient();
+        using var serviceProvider = CreateRagServiceProvider(embeddingClient);
         var vectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
         var document = CreateDocument("document-1", "abcdefghijklmnop");
         await CreateIndexAsync(vectorStore, "tenant-a-index");
@@ -81,8 +83,8 @@ public sealed class RagIngestionToVectorStoreUpsertIntegrationTests
     [Fact]
     public async Task IngestAndUpsert_ShouldPreserveChunkOrderInVectorRecordMetadata()
     {
-        var embeddingProvider = new DeterministicFakeEmbeddingProvider();
-        using var serviceProvider = CreateRagServiceProvider(embeddingProvider);
+        var embeddingClient = new DeterministicFakeEmbeddingClient();
+        using var serviceProvider = CreateRagServiceProvider(embeddingClient);
         var vectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
         var document = CreateDocument("document-1", "abcdefghijkl");
         await CreateIndexAsync(vectorStore, "documents-index");
@@ -100,8 +102,8 @@ public sealed class RagIngestionToVectorStoreUpsertIntegrationTests
     [Fact]
     public async Task IngestAndUpsert_ShouldPreserveDocumentIdInVectorRecordMetadata()
     {
-        var embeddingProvider = new DeterministicFakeEmbeddingProvider();
-        using var serviceProvider = CreateRagServiceProvider(embeddingProvider);
+        var embeddingClient = new DeterministicFakeEmbeddingClient();
+        using var serviceProvider = CreateRagServiceProvider(embeddingClient);
         var vectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
         var document = CreateDocument("handbook-2026", "abcdefgh");
         await CreateIndexAsync(vectorStore, "documents-index");
@@ -120,8 +122,8 @@ public sealed class RagIngestionToVectorStoreUpsertIntegrationTests
     [Fact]
     public async Task IngestAndUpsert_ShouldPreserveChunkIdInVectorRecordMetadata()
     {
-        var embeddingProvider = new DeterministicFakeEmbeddingProvider();
-        using var serviceProvider = CreateRagServiceProvider(embeddingProvider);
+        var embeddingClient = new DeterministicFakeEmbeddingClient();
+        using var serviceProvider = CreateRagServiceProvider(embeddingClient);
         var vectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
         var document = CreateDocument("document-1", "abcdefgh");
         await CreateIndexAsync(vectorStore, "documents-index");
@@ -143,8 +145,8 @@ public sealed class RagIngestionToVectorStoreUpsertIntegrationTests
     [Fact]
     public async Task IngestAndUpsert_ShouldCarryDocumentMetadataIntoVectorRecordMetadata()
     {
-        var embeddingProvider = new DeterministicFakeEmbeddingProvider();
-        using var serviceProvider = CreateRagServiceProvider(embeddingProvider);
+        var embeddingClient = new DeterministicFakeEmbeddingClient();
+        using var serviceProvider = CreateRagServiceProvider(embeddingClient);
         var vectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
         var document = CreateDocument(
             "document-1",
@@ -173,14 +175,14 @@ public sealed class RagIngestionToVectorStoreUpsertIntegrationTests
         });
     }
 
-    // Verifies that the deterministic fake embedding provider is the provider actually used by the flow:
+    // Verifies that the deterministic fake embedding client is the client actually used by the flow:
     // it observes exactly the chunk contents, and every stored vector equals the deterministic embedding
     // computed from the stored record content, proving no other embedding source was involved.
     [Fact]
     public async Task IngestAndUpsert_ShouldStoreDeterministicFakeEmbeddingsComputedFromChunkContent()
     {
-        var embeddingProvider = new DeterministicFakeEmbeddingProvider();
-        using var serviceProvider = CreateRagServiceProvider(embeddingProvider);
+        var embeddingClient = new DeterministicFakeEmbeddingClient();
+        using var serviceProvider = CreateRagServiceProvider(embeddingClient);
         var vectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
         var document = CreateDocument("document-1", "abcdefgh");
         await CreateIndexAsync(vectorStore, "documents-index");
@@ -188,7 +190,8 @@ public sealed class RagIngestionToVectorStoreUpsertIntegrationTests
         var ingestionResult = await IngestAsync(serviceProvider, document);
         await UpsertAsync(serviceProvider, ingestionResult, "documents-index", document.Metadata);
 
-        Assert.Equal(["abcd", "efgh"], embeddingProvider.Texts);
+        Assert.Equal(["abcd", "efgh"], embeddingClient.Texts);
+        Assert.Equal(1, embeddingClient.InvocationCount);
 
         var storedRecords = await QueryAllRecordsAsync(vectorStore, "documents-index");
 
@@ -197,7 +200,7 @@ public sealed class RagIngestionToVectorStoreUpsertIntegrationTests
         {
             Assert.NotNull(record.Values);
             Assert.Equal(
-                DeterministicFakeEmbeddingProvider.CreateEmbeddingValues(record.Content),
+                DeterministicFakeEmbeddingClient.CreateEmbeddingValues(record.Content),
                 record.Values);
         });
     }
@@ -208,8 +211,8 @@ public sealed class RagIngestionToVectorStoreUpsertIntegrationTests
     [Fact]
     public async Task IngestAndUpsert_ShouldBlockUpsertAndLeaveStoreEmpty_WhenExpectedDimensionsMismatch()
     {
-        var embeddingProvider = new DeterministicFakeEmbeddingProvider();
-        using var serviceProvider = CreateRagServiceProvider(embeddingProvider);
+        var embeddingClient = new DeterministicFakeEmbeddingClient();
+        using var serviceProvider = CreateRagServiceProvider(embeddingClient);
         var vectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
         var document = CreateDocument("document-1", "abcdefgh");
         await CreateIndexAsync(vectorStore, "documents-index");
@@ -239,8 +242,8 @@ public sealed class RagIngestionToVectorStoreUpsertIntegrationTests
     [Fact]
     public async Task IngestAndUpsert_ShouldPropagateUpsertCancellation_WithoutWritingToStore()
     {
-        var embeddingProvider = new DeterministicFakeEmbeddingProvider();
-        using var serviceProvider = CreateRagServiceProvider(embeddingProvider);
+        var embeddingClient = new DeterministicFakeEmbeddingClient();
+        using var serviceProvider = CreateRagServiceProvider(embeddingClient);
         var vectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
         var document = CreateDocument("document-1", "abcdefgh");
         await CreateIndexAsync(vectorStore, "documents-index");
@@ -268,8 +271,8 @@ public sealed class RagIngestionToVectorStoreUpsertIntegrationTests
     [Fact]
     public async Task Ingest_ShouldPropagateCancellation_BeforeChunkingAndEmbedding()
     {
-        var embeddingProvider = new DeterministicFakeEmbeddingProvider();
-        using var serviceProvider = CreateRagServiceProvider(embeddingProvider);
+        var embeddingClient = new DeterministicFakeEmbeddingClient();
+        using var serviceProvider = CreateRagServiceProvider(embeddingClient);
         var document = CreateDocument("document-1", "abcdefgh");
         using var cancellationTokenSource = new CancellationTokenSource();
         cancellationTokenSource.Cancel();
@@ -280,26 +283,27 @@ public sealed class RagIngestionToVectorStoreUpsertIntegrationTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             ingestionService.IngestAsync(document, cancellationTokenSource.Token));
 
-        Assert.Empty(embeddingProvider.Texts);
+        Assert.Empty(embeddingClient.Texts);
+        Assert.Equal(0, embeddingClient.InvocationCount);
     }
 
     /// <summary>
     /// Builds the real RAG dependency injection graph through <c>AddRuniqRag</c> with the in-memory
-    /// vector store and the supplied deterministic fake embedding provider, so integration tests
+    /// vector store and the supplied deterministic fake embedding client, so integration tests
     /// exercise the production wiring without any external dependency.
     /// </summary>
-    /// <param name="embeddingProvider">The deterministic fake embedding provider used instead of a real provider.</param>
+    /// <param name="embeddingClient">The deterministic fake embedding client used instead of a real client.</param>
     /// <param name="maxChunkLength">The maximum chunk length applied to the default chunker.</param>
     /// <param name="chunkOverlap">The chunk overlap applied to the default chunker.</param>
     /// <returns>The built service provider hosting the full RAG graph.</returns>
     private static ServiceProvider CreateRagServiceProvider(
-        DeterministicFakeEmbeddingProvider embeddingProvider,
+        DeterministicFakeEmbeddingClient embeddingClient,
         int maxChunkLength = 4,
         int chunkOverlap = 0)
     {
         var services = new ServiceCollection();
 
-        services.AddSingleton<IRagEmbeddingProvider>(embeddingProvider);
+        services.AddSingleton<IEmbeddingClient>(embeddingClient);
         services.AddRuniqRag(builder => builder.UseInMemoryVectorStore());
         services.Configure<RagOptions>(options =>
         {
@@ -419,31 +423,46 @@ public sealed class RagIngestionToVectorStoreUpsertIntegrationTests
 
     /// <summary>
     /// Provides deterministic embeddings for integration tests without calling an external provider,
-    /// and records every text it embeds so tests can prove this provider produced the stored vectors.
+    /// and records every ordered input so tests can prove this client produced the stored vectors.
     /// </summary>
-    private sealed class DeterministicFakeEmbeddingProvider : IRagEmbeddingProvider
+    private sealed class DeterministicFakeEmbeddingClient : IEmbeddingClient
     {
         /// <summary>
-        /// Gets the texts that were sent to the provider, in the order they were embedded.
+        /// Gets the texts that were sent to the client, in the order they were embedded.
         /// </summary>
         public IList<string> Texts { get; } = new List<string>();
 
         /// <summary>
-        /// Generates a deterministic embedding derived only from the supplied text, without any
+        /// Generates deterministic embeddings derived only from the supplied ordered inputs, without any
         /// network, SDK, or external provider call.
         /// </summary>
-        /// <param name="text">The chunk content to embed.</param>
+        /// <param name="request">The ordered chunk contents to embed.</param>
         /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
-        /// <returns>The deterministic embedding for the text.</returns>
-        public Task<RagEmbedding> GenerateAsync(
-            string text,
-            CancellationToken cancellationToken = default)
+        /// <returns>One ordered deterministic embedding result per request input.</returns>
+        public Task<EmbeddingResponse> EmbedAsync(
+            EmbeddingRequest request,
+            CancellationToken cancellationToken)
         {
+            ArgumentNullException.ThrowIfNull(request);
             cancellationToken.ThrowIfCancellationRequested();
-            Texts.Add(text);
 
-            return Task.FromResult(new RagEmbedding(CreateEmbeddingValues(text)));
+            InvocationCount++;
+            foreach (var input in request.Inputs)
+            {
+                Texts.Add(input);
+            }
+
+            var results = request.Inputs.Select((input, index) =>
+            {
+                var vector = CreateEmbeddingValues(input);
+                return new EmbeddingResult(index, vector, vector.Count);
+            }).ToList();
+
+            return Task.FromResult(new EmbeddingResponse(results));
         }
+
+        /// <summary>Gets the number of batch embedding requests received by the client.</summary>
+        public int InvocationCount { get; private set; }
 
         /// <summary>
         /// Computes the deterministic embedding values for the supplied text. The vector is
