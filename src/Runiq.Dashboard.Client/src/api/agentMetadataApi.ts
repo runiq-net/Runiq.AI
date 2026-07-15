@@ -13,6 +13,11 @@ export type AgentMetadata = {
   model?: string;
   reasoningEffort?: string;
   verbosity?: string;
+  rag: {
+    enabled: boolean;
+    indexName?: string | null;
+    executionMode?: string | null;
+  };
   tools?: AgentToolMetadata[];
 };
 

@@ -10,7 +10,16 @@ public sealed record AgentMetadataDto(
     string Model,
     string ReasoningEffort,
     string Verbosity,
+    AgentRagMetadataDto Rag,
     IReadOnlyList<AgentToolMetadataDto> Tools);
+
+/// <summary>
+/// Describes the framework-owned retrieval configuration shown by the agent inspector.
+/// </summary>
+public sealed record AgentRagMetadataDto(
+    bool Enabled,
+    string? IndexName,
+    string? ExecutionMode);
 
 /// <summary>
 /// Studio tarafinda gosterilecek agent tool metadata bilgisini temsil eder.

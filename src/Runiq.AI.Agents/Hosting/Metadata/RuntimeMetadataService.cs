@@ -29,6 +29,10 @@ internal sealed class RuntimeMetadataService : IRuntimeMetadataService
                 Model: agent.Model,
                 ReasoningEffort: agent.ReasoningEffort,
                 Verbosity: agent.Verbosity,
+                Rag: new AgentRagMetadataDto(
+                    Enabled: agent.Rag?.Enabled == true,
+                    IndexName: agent.Rag?.IndexName,
+                    ExecutionMode: agent.Rag?.Enabled == true ? agent.Rag.Mode.ToString() : null),
                 Tools: agent.Tools.Select(MapAgentTool).ToList()))
             .ToList();
     }

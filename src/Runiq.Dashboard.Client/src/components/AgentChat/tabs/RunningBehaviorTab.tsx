@@ -28,6 +28,9 @@ export function RunningBehaviorTab({
         />
 
         <OverviewRow label="Verbosity" value={formatValue(agent.verbosity)} />
+        <OverviewRow label="RAG" value={agent.rag.enabled ? 'Enabled' : 'Disabled'} />
+        <OverviewRow label="RAG index" value={formatValue(agent.rag.indexName)} />
+        <OverviewRow label="RAG mode" value={formatValue(agent.rag.executionMode)} />
       </InspectorCard>
     </div>
   );
@@ -94,7 +97,7 @@ function ChatMethodRadio({
   );
 }
 
-function formatValue(value: string | undefined): string {
+function formatValue(value: string | null | undefined): string {
   return value && value.trim().length > 0 ? value : 'Default';
 }
 

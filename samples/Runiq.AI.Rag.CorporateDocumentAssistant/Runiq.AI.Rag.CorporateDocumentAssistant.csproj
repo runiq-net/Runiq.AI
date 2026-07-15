@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Runiq.AI.Core\Runiq.AI.Core.csproj" />
+    <ProjectReference Include="..\..\src\Runiq.AI.Agents\Runiq.AI.Agents.csproj" />
     <ProjectReference Include="..\..\src\Runiq.AI.Rag\Runiq.AI.Rag.csproj" />
   </ItemGroup>
 

@@ -1,4 +1,4 @@
-using System.Runtime.CompilerServices;
+ï»¿using System.Runtime.CompilerServices;
 using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Core.Configuration;
 using Runiq.AI.Core.Models;
@@ -7,54 +7,54 @@ using Runiq.AI.Agents.Tools;
 namespace Runiq.AI.Agents;
 
 /// <summary>
-/// Runiq runtime içinde çalistirilabilir bir AI agent tanimini temsil eder.
+/// Runiq runtime iÃ§inde Ã§alistirilabilir bir AI agent tanimini temsil eder.
 /// </summary>
 public class Agent
 {
     private readonly List<AgentToolRegistration> tools = [];
 
     /// <summary>
-    /// Agent'a code-first olarak eklenmis tool kayitlarini döner.
+    /// Agent'a code-first olarak eklenmis tool kayitlarini dÃ¶ner.
     /// </summary>
     public IReadOnlyList<AgentToolRegistration> Tools => tools;
 
     /// <summary>
-    /// Ajanin sistem içindeki benzersiz kimligini alir.
+    /// Ajanin sistem iÃ§indeki benzersiz kimligini alir.
     /// </summary>
     public string Id { get; }
 
     /// <summary>
-    /// Ajanin kullanici arayüzünde veya metadata çiktilarinda gösterilecek adini alir.
+    /// Ajanin kullanici arayÃ¼zÃ¼nde veya metadata Ã§iktilarinda gÃ¶sterilecek adini alir.
     /// </summary>
     public string Name { get; }
 
     /// <summary>
-    /// Ajanin model çagrilarinda kullanilacak sistem yönergelerini alir.
+    /// Ajanin model Ã§agrilarinda kullanilacak sistem yÃ¶nergelerini alir.
     /// </summary>
     public string Instructions { get; }
 
     /// <summary>
-    /// Ajanin kullanacagi modeli provider/model biçiminde alir.
+    /// Ajanin kullanacagi modeli provider/model biÃ§iminde alir.
     /// </summary>
     public string Model { get; }
 
     /// <summary>
-    /// Model tanimindan çözümlenen provider adini alir.
+    /// Model tanimindan Ã§Ã¶zÃ¼mlenen provider adini alir.
     /// </summary>
     public string ProviderName => ModelReference.ProviderName;
 
     /// <summary>
-    /// Model tanimindan çözümlenen model adini alir.
+    /// Model tanimindan Ã§Ã¶zÃ¼mlenen model adini alir.
     /// </summary>
     public string ModelName => ModelReference.ModelName;
 
     /// <summary>
-    /// Provider çagrilarinda kullanilacak opsiyonel API anahtarini alir.
+    /// Provider Ã§agrilarinda kullanilacak opsiyonel API anahtarini alir.
     /// </summary>
     public string? ApiKey { get; }
 
     /// <summary>
-    /// Modelin yanit üretirken kullanacagi akil yürütme yogunlugunu alir.
+    /// Modelin yanit Ã¼retirken kullanacagi akil yÃ¼rÃ¼tme yogunlugunu alir.
     /// </summary>
     public string ReasoningEffort { get; }
 
@@ -64,30 +64,30 @@ public class Agent
     public string Verbosity { get; }
 
     /// <summary>
-    /// Provider için tanimlanan opsiyonel çalisma zamani ayarlarini alir.
+    /// Provider iÃ§in tanimlanan opsiyonel Ã§alisma zamani ayarlarini alir.
     /// </summary>
     public ProviderOptions? Provider { get; }
 
     /// <summary>
-    /// Agent RAG sorgulari için opsiyonel çalisma zamani ayarlarini alir.
+    /// Agent RAG sorgulari iÃ§in opsiyonel Ã§alisma zamani ayarlarini alir.
     /// </summary>
     public AgentRagOptions? Rag { get; private set; }
 
     /// <summary>
-    /// Provider ve model adini ayristirilmis biçimde temsil eden model referansini alir.
+    /// Provider ve model adini ayristirilmis biÃ§imde temsil eden model referansini alir.
     /// </summary>
     public ModelReference ModelReference { get; }
 
     /// <summary>
     /// Yeni bir agent tanimi olusturur.
     /// </summary>
-    /// <param name="id">Ajanin sistem içindeki benzersiz kimligidir.</param>
-    /// <param name="name">Ajanin gösterilecek adidir.</param>
-    /// <param name="instructions">Ajanin model çagrilarinda kullanilacak sistem yönergeleridir.</param>
-    /// <param name="model">Kullanilacak modelin provider/model biçimindeki adidir.</param>
-    /// <param name="apiKey">Provider çagrilarinda kullanilacak opsiyonel API anahtaridir.</param>
-    /// <param name="provider">Provider için opsiyonel çalisma zamani ayarlaridir.</param>
-    /// <param name="reasoningEffort">Modelin akil yürütme yogunlugudur.</param>
+    /// <param name="id">Ajanin sistem iÃ§indeki benzersiz kimligidir.</param>
+    /// <param name="name">Ajanin gÃ¶sterilecek adidir.</param>
+    /// <param name="instructions">Ajanin model Ã§agrilarinda kullanilacak sistem yÃ¶nergeleridir.</param>
+    /// <param name="model">Kullanilacak modelin provider/model biÃ§imindeki adidir.</param>
+    /// <param name="apiKey">Provider Ã§agrilarinda kullanilacak opsiyonel API anahtaridir.</param>
+    /// <param name="provider">Provider iÃ§in opsiyonel Ã§alisma zamani ayarlaridir.</param>
+    /// <param name="reasoningEffort">Modelin akil yÃ¼rÃ¼tme yogunlugudur.</param>
     /// <param name="verbosity">Model yanitinin ayrinti seviyesidir.</param>
     public Agent(
         string id,
@@ -112,53 +112,18 @@ public class Agent
     }
 
     /// <summary>
-    /// Yeni bir agent tanimi ve RAG çalisma zamani ayarlari olusturur.
-    /// </summary>
-    /// <param name="id">Ajanin sistem içindeki benzersiz kimligidir.</param>
-    /// <param name="name">Ajanin gösterilecek adidir.</param>
-    /// <param name="instructions">Ajanin model çagrilarinda kullanilacak sistem yönergeleridir.</param>
-    /// <param name="model">Kullanilacak modelin provider/model biçimindeki adidir.</param>
-    /// <param name="rag">Agent RAG sorgulari için opsiyonel çalisma zamani ayarlaridir.</param>
-    /// <param name="apiKey">Provider çagrilarinda kullanilacak opsiyonel API anahtaridir.</param>
-    /// <param name="provider">Provider için opsiyonel çalisma zamani ayarlaridir.</param>
-    /// <param name="reasoningEffort">Modelin akil yürütme yogunlugudur.</param>
-    /// <param name="verbosity">Model yanitinin ayrinti seviyesidir.</param>
-    public Agent(
-        string id,
-        string name,
-        string instructions,
-        string model,
-        AgentRagOptions? rag,
-        string? apiKey = null,
-        ProviderOptions? provider = null,
-        string reasoningEffort = "minimal",
-        string verbosity = "low")
-        : this(
-            id,
-            name,
-            instructions,
-            model,
-            apiKey,
-            provider,
-            reasoningEffort,
-            verbosity,
-            rag)
-    {
-    }
-
-    /// <summary>
     /// Yeni bir agent tanimi olusturur.
     /// </summary>
-    /// <param name="id">Ajanin sistem içindeki benzersiz kimligidir.</param>
-    /// <param name="name">Ajanin gösterilecek adidir.</param>
-    /// <param name="instructions">Ajanin model çagrilarinda kullanilacak sistem yönergeleridir.</param>
-    /// <param name="model">Kullanilacak modelin provider/model biçimindeki adidir.</param>
-    /// <param name="apiKey">Provider çagrilarinda kullanilacak opsiyonel API anahtaridir.</param>
-    /// <param name="provider">Provider için opsiyonel çalisma zamani ayarlaridir.</param>
-    /// <param name="reasoningEffort">Modelin akil yürütme yogunlugudur.</param>
+    /// <param name="id">Ajanin sistem iÃ§indeki benzersiz kimligidir.</param>
+    /// <param name="name">Ajanin gÃ¶sterilecek adidir.</param>
+    /// <param name="instructions">Ajanin model Ã§agrilarinda kullanilacak sistem yÃ¶nergeleridir.</param>
+    /// <param name="model">Kullanilacak modelin provider/model biÃ§imindeki adidir.</param>
+    /// <param name="apiKey">Provider Ã§agrilarinda kullanilacak opsiyonel API anahtaridir.</param>
+    /// <param name="provider">Provider iÃ§in opsiyonel Ã§alisma zamani ayarlaridir.</param>
+    /// <param name="reasoningEffort">Modelin akil yÃ¼rÃ¼tme yogunlugudur.</param>
     /// <param name="verbosity">Model yanitinin ayrinti seviyesidir.</param>
-    /// <param name="rag">Agent RAG sorgulari için opsiyonel çalisma zamani ayarlaridir.</param>
-    public Agent(
+    /// <param name="rag">Agent RAG sorgulari iÃ§in opsiyonel Ã§alisma zamani ayarlaridir.</param>
+    private Agent(
         string id,
         string name,
         string instructions,
@@ -182,7 +147,7 @@ public class Agent
     }
 
     /// <summary>
-    /// Agent cevabini tek seferlik tamamlanmis çikti olarak üretir.
+    /// Agent cevabini tek seferlik tamamlanmis Ã§ikti olarak Ã¼retir.
     /// </summary>
     public Task<AgentExecutionResult> ExecuteAsync(
         string input,
@@ -196,7 +161,7 @@ public class Agent
     }
 
     /// <summary>
-    /// Agent cevabini parça parça üretir.
+    /// Agent cevabini parÃ§a parÃ§a Ã¼retir.
     /// </summary>
     public async IAsyncEnumerable<AgentExecutionEvent> ExecuteStreamAsync(
         Agent agent,
@@ -213,50 +178,22 @@ public class Agent
     }
 
     /// <summary>
-    /// Agent RAG sorgulari için kullanilacak vector index adini yapilandirir.
+    /// Configures framework-owned retrieval before the agent's initial model invocation.
     /// </summary>
-    /// <param name="indexName">Kullanilacak vector index adidir.</param>
-    /// <returns>Akici yapilandirma için mevcut agent örnegi.</returns>
-    public Agent UseRagIndex(string indexName)
-    {
-        Rag = new AgentRagOptions
-        {
-            IndexName = ValidateRequired(indexName, nameof(indexName)),
-        };
-
-        return this;
-    }
-
-    /// <summary>
-    /// Associates the agent with a Vector Query Tool definition by configuring the vector store name, index
-    /// name, and optional embedding model identifier used by agent RAG queries. The values are carried as
-    /// configuration only: this method does not resolve a provider, select a vector store, or invoke the tool.
-    /// It reuses the existing <see cref="AgentRagOptions"/> surface and, like <see cref="UseRagIndex"/>,
-    /// replaces any previously configured RAG options.
-    /// </summary>
-    /// <param name="vectorStoreName">The vector store name to associate with the agent.</param>
-    /// <param name="indexName">The vector index name used by agent RAG queries.</param>
-    /// <param name="embeddingModel">
-    /// The optional embedding model identifier. A null or whitespace value associates no embedding model.
-    /// </param>
+    /// <param name="configure">Configures the required index and retrieval failure mode.</param>
     /// <returns>The same agent instance so calls can be chained.</returns>
-    public Agent UseVectorQueryTool(
-        string vectorStoreName,
-        string indexName,
-        string? embeddingModel = null)
+    public Agent UseRag(Action<AgentRagOptions> configure)
     {
-        var normalizedVectorStoreName = ValidateRequired(vectorStoreName, nameof(vectorStoreName));
-        var normalizedIndexName = ValidateRequired(indexName, nameof(indexName));
-        var normalizedEmbeddingModel = string.IsNullOrWhiteSpace(embeddingModel)
-            ? null
-            : embeddingModel.Trim();
+        ArgumentNullException.ThrowIfNull(configure);
+        var options = new AgentRagOptions();
+        configure(options);
 
-        Rag = new AgentRagOptions
+        if (options.Enabled)
         {
-            VectorStoreName = normalizedVectorStoreName,
-            IndexName = normalizedIndexName,
-            EmbeddingModel = normalizedEmbeddingModel,
-        };
+            options.IndexName = ValidateRequired(options.IndexName!, nameof(options.IndexName));
+        }
+
+        Rag = options;
 
         return this;
     }
