@@ -1,12 +1,12 @@
-# Runiq.Net
+# Runiq AI
 
-[![CI](https://github.com/runiq-net/Runiq.net/actions/workflows/ci.yml/badge.svg)](https://github.com/runiq-net/Runiq.net/actions/workflows/ci.yml)
-![Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/runiq-net/Runiq.net/main/badges/tests.json)
+[![CI](https://github.com/runiq-net/Runiq.AI/actions/workflows/ci.yml/badge.svg)](https://github.com/runiq-net/Runiq.AI/actions/workflows/ci.yml)
+![Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/runiq-net/Runiq.AI/main/badges/tests.json)
 ![.NET](https://img.shields.io/badge/.NET-10.0-512BD4)
-![NuGet Version](https://img.shields.io/nuget/vpre/Runiq.Core?label=nuget)
+![NuGet Version](https://img.shields.io/nuget/vpre/Runiq.AI.Core?label=nuget)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-Runiq.Net is a code-first agent runtime for .NET applications.
+Runiq AI is a code-first agent runtime for .NET applications.
 
 It gives ASP.NET Core teams a native way to define AI agents in C#, attach strongly typed tools, stream model responses, connect reusable context sources, orchestrate workflows, and inspect runtime activity through an embedded dashboard.
 
@@ -16,31 +16,31 @@ It gives ASP.NET Core teams a native way to define AI agents in C#, attach stron
 
 | Package | Purpose |
 | --- | --- |
-| `Runiq.Agents` | Agent definitions, tool execution, provider integration, streaming events, and execution results. |
-| `Runiq.ContextSpaces` | Context spaces, source readers, skill discovery, and document preview primitives. |
-| `Runiq.Core` | ASP.NET Core hosting extensions, runtime endpoints, and the embedded dashboard. |
-| `Runiq.Workflows` | Code-first workflow orchestration primitives for agent runtime and dashboard scenarios. |
+| `Runiq.AI.Agents` | Agent definitions, tool execution, provider integration, streaming events, and execution results. |
+| `Runiq.AI.ContextSpaces` | Context spaces, source readers, skill discovery, and document preview primitives. |
+| `Runiq.AI.Core` | ASP.NET Core hosting extensions, runtime endpoints, and the embedded dashboard. |
+| `Runiq.AI.Workflows` | Code-first workflow orchestration primitives for agent runtime and dashboard scenarios. |
 
 ## Installation
 
 Install the packages you need:
 
 ```powershell
-dotnet add package Runiq.Core --prerelease
-dotnet add package Runiq.Agents --prerelease
-dotnet add package Runiq.ContextSpaces --prerelease
-dotnet add package Runiq.Workflows --prerelease
+dotnet add package Runiq.AI.Core --prerelease
+dotnet add package Runiq.AI.Agents --prerelease
+dotnet add package Runiq.AI.ContextSpaces --prerelease
+dotnet add package Runiq.AI.Workflows --prerelease
 ```
 
-For most ASP.NET Core applications, start with `Runiq.Core`; it references the runtime pieces needed to host agents and the dashboard.
+For most ASP.NET Core applications, start with `Runiq.AI.Core`; it references the runtime pieces needed to host agents and the dashboard.
 
 ## Quickstart
 
 Register Runiq and define an agent:
 
 ```csharp
-using Runiq.Agents;
-using Runiq.Core;
+using Runiq.AI.Agents;
+using Runiq.AI.Core;
 
 builder.Services.AddRuniqServer(options =>
 {
@@ -75,7 +75,7 @@ Run the application and open `/dashboard` to inspect registered agents, test con
 Tools are plain C# types with strongly typed input and output:
 
 ```csharp
-using Runiq.Agents.Tools;
+using Runiq.AI.Agents.Tools;
 
 [RuniqTool("get_weather", "Gets the current weather for a city.")]
 public sealed class WeatherTool : IRuniqTool<WeatherInput, WeatherOutput>
@@ -111,8 +111,8 @@ Full documentation, guides, and examples are available at [runiq.net/docs](https
 
 ## Repository
 
-Source code and issue tracking are available on [GitHub](https://github.com/runiq-net/Runiq.net).
+Source code and issue tracking are available on [GitHub](https://github.com/runiq-net/Runiq.AI).
 
 ## License
 
-Runiq.Net is licensed under the [MIT License](LICENSE).
+Runiq AI is licensed under the [MIT License](LICENSE).

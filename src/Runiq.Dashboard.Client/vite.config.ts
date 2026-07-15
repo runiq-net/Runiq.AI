@@ -6,7 +6,7 @@ export default defineConfig({
   base: './',
   plugins: [react(), tailwindcss()],
   build: {
-    outDir: '../Runiq.Core/Studio/wwwroot',
+    outDir: '../Runiq.AI.Core/Studio/wwwroot',
     emptyOutDir: true,
   },
 });

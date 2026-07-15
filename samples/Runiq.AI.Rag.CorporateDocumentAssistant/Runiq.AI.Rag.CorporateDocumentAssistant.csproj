@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Runiq.AI.Core\Runiq.AI.Core.csproj" />
+    <ProjectReference Include="..\..\src\Runiq.AI.Rag\Runiq.AI.Rag.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="SampleDocuments\*.md">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
+

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>runiq</ToolCommandName>
+    <Version>1.0.2</Version>
+    <PackageOutputPath>./nupkg</PackageOutputPath>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageId>Runiq.AI.Cli</PackageId>
+    <AssemblyName>Runiq.AI.Cli</AssemblyName>
+    <RootNamespace>Runiq.AI.Cli</RootNamespace>
+    <Product>Runiq AI</Product>
+    <Description>Command-line tools for Runiq AI.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Spectre.Console" Version="0.57.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\assets\nuget\runiq-icon.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

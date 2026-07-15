@@ -28,15 +28,15 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore
-        run: dotnet restore Runiq.Net.slnx
+        run: dotnet restore Runiq.AI.slnx
 
       - name: Build
-        run: dotnet build Runiq.Net.slnx --no-restore -c Release -v:minimal
+        run: dotnet build Runiq.AI.slnx --no-restore -c Release -v:minimal
 
       - name: Test
         id: test
         continue-on-error: true
-        run: dotnet test Runiq.Net.slnx --no-build -c Release -v:minimal --logger trx --results-directory TestResults
+        run: dotnet test Runiq.AI.slnx --no-build -c Release -v:minimal --logger trx --results-directory TestResults
 
       - name: Update test badge
         if: always()
@@ -65,7 +65,7 @@ jobs:
         run: exit 1
 
       - name: Pack
-        run: dotnet pack Runiq.Net.slnx --no-build -c Release -o artifacts/packages
+        run: dotnet pack Runiq.AI.slnx --no-build -c Release -o artifacts/packages
 
       - name: Upload packages
         uses: actions/upload-artifact@v4

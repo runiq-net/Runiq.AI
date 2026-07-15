@@ -11,8 +11,6 @@
 *.sln.docstates
 *.env
 
-CLAUDE.md
-
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 
@@ -88,12 +86,6 @@ BenchmarkDotNet.Artifacts/
 project.lock.json
 project.fragment.lock.json
 artifacts/
-
-# AI local workspace
-.ai/plans/
-.ai/scratch/
-.ai/logs/
-.artifacts/
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt

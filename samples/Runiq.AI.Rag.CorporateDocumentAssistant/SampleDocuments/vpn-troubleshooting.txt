@@ -1,0 +1,7 @@
+VPN Troubleshooting Guide
+
+Employees should first confirm that their internet connection is stable before troubleshooting the VPN client. Restart the VPN client, verify that the company profile is selected, and check whether the operating system time is synchronized.
+
+If the connection still fails, clear saved credentials and sign in again with the current corporate account password. When multi-factor authentication prompts do not arrive, verify the registered authenticator device and contact IT support.
+
+Persistent VPN failures should be reported through the IT service desk with the error code, device name, network type, and approximate time of the failed connection attempt.

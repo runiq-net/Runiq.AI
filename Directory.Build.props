@@ -2,12 +2,12 @@
   <PropertyGroup>
     <Company>Runiq</Company>
     <Authors>Runiq</Authors>
-    <Product>Runiq.Net</Product>
+    <Product>Runiq AI</Product>
     <Copyright>Copyright © Runiq</Copyright>
 
     <RepositoryType>git</RepositoryType>
-    <RepositoryUrl>https://github.com/runiq-net/Runiq.net</RepositoryUrl>
-    <PackageProjectUrl>https://github.com/runiq-net/Runiq.net</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/runiq-net/Runiq.AI</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/runiq-net/Runiq.AI</PackageProjectUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>runiq-icon.png</PackageIcon>
