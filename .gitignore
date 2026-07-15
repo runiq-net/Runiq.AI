@@ -17,6 +17,10 @@
 # Mono auto generated files
 mono_crash.*
 
+# Local Codex instructions and engineering standards
+/AGENTS.md
+/docs/engineering/
+
 # Build results
 [Dd]ebug/
 [Dd]ebugPublic/

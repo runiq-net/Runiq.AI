@@ -1,5 +1,11 @@
-using Runiq.AI.Rag.Abstractions.Embeddings;
+using Microsoft.Extensions.Options;
+using Runiq.AI.Core.AI.Embeddings;
+using Runiq.AI.Core.Configuration;
+using Runiq.AI.Core.Models;
 using Runiq.AI.Rag.Abstractions.Retrieval;
+using Runiq.AI.Rag.Configuration;
+using Runiq.AI.Rag.Abstractions.Embeddings;
+using Runiq.AI.Rag.Embeddings;
 using Runiq.AI.Rag.Abstractions.Telemetry;
 using Runiq.AI.Rag.Abstractions.VectorStores;
 using Runiq.AI.Rag.Models.Retrieval;
@@ -8,7 +14,7 @@ using Runiq.AI.Rag.Models.VectorStores;
 namespace Runiq.AI.Rag.Retrieval;
 
 /// <summary>
-/// Runs the default query-time retrieval pipeline by combining <see cref="IRagEmbeddingProvider"/> and
+/// Runs the default query-time retrieval pipeline by combining <see cref="IEmbeddingClient"/> and
 /// <see cref="IRagVectorStore"/>. This is an orchestration layer only: it embeds the query text through the
 /// embedding abstraction, forwards the resulting query vector together with the request's index name, top-k
 /// value, and metadata filter to the vector store query operation, and maps the store's matches into the
@@ -35,15 +41,16 @@ public sealed class DefaultRagRetrievalPipeline : IRagRetrievalPipeline
     private const string EmbeddingFailedReason = "Query embedding generation failed.";
     private const string VectorStoreQueryFailedReason = "Vector store query failed.";
 
-    private readonly IRagEmbeddingProvider embeddingProvider;
+    private readonly IEmbeddingClient embeddingClient;
     private readonly IRagVectorStore vectorStore;
     private readonly IRagOperationTelemetryRecorder? telemetryRecorder;
     private readonly TimeProvider timeProvider;
+    private readonly RagOptions options;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DefaultRagRetrievalPipeline"/> class.
     /// </summary>
-    /// <param name="embeddingProvider">The provider-independent embedding abstraction used to embed query text.</param>
+    /// <param name="embeddingClient">The Core embedding client used to embed query text.</param>
     /// <param name="vectorStore">The provider-independent vector store contract used to run the similarity query.</param>
     /// <param name="telemetryRecorder">
     /// The optional, strictly observational telemetry recorder that receives each retrieval result and its
@@ -53,16 +60,19 @@ public sealed class DefaultRagRetrievalPipeline : IRagRetrievalPipeline
     /// The time source used only to measure retrieval duration for telemetry. Null falls back to
     /// <see cref="TimeProvider.System"/>.
     /// </param>
+    /// <param name="options">The RAG options used to resolve the embedding model.</param>
     public DefaultRagRetrievalPipeline(
-        IRagEmbeddingProvider embeddingProvider,
+        IEmbeddingClient embeddingClient,
         IRagVectorStore vectorStore,
         IRagOperationTelemetryRecorder? telemetryRecorder = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IOptions<RagOptions>? options = null)
     {
-        this.embeddingProvider = embeddingProvider ?? throw new ArgumentNullException(nameof(embeddingProvider));
+        this.embeddingClient = embeddingClient ?? throw new ArgumentNullException(nameof(embeddingClient));
         this.vectorStore = vectorStore ?? throw new ArgumentNullException(nameof(vectorStore));
         this.telemetryRecorder = telemetryRecorder;
         this.timeProvider = timeProvider ?? TimeProvider.System;
+        this.options = options?.Value ?? new RagOptions();
     }
 
     /// <inheritdoc />
@@ -195,14 +205,21 @@ public sealed class DefaultRagRetrievalPipeline : IRagRetrievalPipeline
     {
         try
         {
-            var embedding = await embeddingProvider.GenerateAsync(queryText, cancellationToken).ConfigureAwait(false);
-
-            return embedding?.Values;
+            var model = ResolveEmbeddingModel();
+            var response = await embeddingClient.EmbedAsync(new EmbeddingRequest(model, [queryText], Dimensions: model.EmbeddingDimensions), cancellationToken).ConfigureAwait(false);
+            return response.Results.SingleOrDefault()?.Vector;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             return null;
         }
+    }
+
+    private ModelReference ResolveEmbeddingModel()
+    {
+        if (string.IsNullOrWhiteSpace(options.EmbeddingModel)) return ModelReference.Parse("openai/rag-embedding");
+
+        return ProviderModelReferenceResolver.Resolve(ModelReference.Parse(options.EmbeddingModel), options.EmbeddingProvider);
     }
 
     /// <summary>

@@ -1,5 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
-using Runiq.AI.Rag.Abstractions.Embeddings;
+using Runiq.AI.Core.AI.Embeddings;
 using Runiq.AI.Rag.Abstractions.Retrieval;
 using Runiq.AI.Rag.Abstractions.Tools;
 using Runiq.AI.Rag.Abstractions.VectorStores;
@@ -21,7 +21,7 @@ namespace Runiq.AI.Rag.Tests.Retrieval.Integration.Support;
 public sealed class RetrievalIntegrationContext : IDisposable
 {
     private readonly ServiceProvider serviceProvider;
-    private readonly DeterministicKeywordEmbeddingProvider embeddingProvider;
+    private readonly DeterministicKeywordEmbeddingProvider embeddingClient;
     private readonly IRagVectorStore vectorStore;
     private readonly IRagRetrievalPipeline retrievalPipeline;
     private readonly IVectorQueryTool vectorQueryTool;
@@ -29,10 +29,10 @@ public sealed class RetrievalIntegrationContext : IDisposable
 
     private RetrievalIntegrationContext(
         ServiceProvider serviceProvider,
-        DeterministicKeywordEmbeddingProvider embeddingProvider)
+        DeterministicKeywordEmbeddingProvider embeddingClient)
     {
         this.serviceProvider = serviceProvider;
-        this.embeddingProvider = embeddingProvider;
+        this.embeddingClient = embeddingClient;
         vectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
         retrievalPipeline = serviceProvider.GetRequiredService<IRagRetrievalPipeline>();
         vectorQueryTool = serviceProvider.GetRequiredService<IVectorQueryTool>();
@@ -45,13 +45,13 @@ public sealed class RetrievalIntegrationContext : IDisposable
     /// <returns>The initialized retrieval integration context.</returns>
     public static RetrievalIntegrationContext Create()
     {
-        var embeddingProvider = new DeterministicKeywordEmbeddingProvider();
+        var embeddingClient = new DeterministicKeywordEmbeddingProvider();
         var services = new ServiceCollection();
 
-        services.AddSingleton<IRagEmbeddingProvider>(embeddingProvider);
+        services.AddSingleton<IEmbeddingClient>(embeddingClient);
         services.AddRuniqRag(builder => builder.UseInMemoryVectorStore());
 
-        return new RetrievalIntegrationContext(services.BuildServiceProvider(), embeddingProvider);
+        return new RetrievalIntegrationContext(services.BuildServiceProvider(), embeddingClient);
     }
 
     /// <summary>
@@ -80,7 +80,7 @@ public sealed class RetrievalIntegrationContext : IDisposable
             .Select(record => new VectorRecord
             {
                 Id = record.Id,
-                Values = embeddingProvider.Embed(record.Content),
+                Values = embeddingClient.Embed(record.Content),
                 Content = record.Content,
                 Metadata = new RagMetadata(record.Metadata.ToDictionary(pair => pair.Key, pair => pair.Value)),
             })
@@ -178,7 +178,7 @@ public sealed class RetrievalIntegrationContext : IDisposable
         var result = await vectorStore.CreateIndexAsync(new CreateVectorIndexRequest
         {
             IndexName = indexName,
-            Dimensions = embeddingProvider.Dimensions,
+            Dimensions = embeddingClient.Dimensions,
         });
 
         Assert.True(result.Succeeded);

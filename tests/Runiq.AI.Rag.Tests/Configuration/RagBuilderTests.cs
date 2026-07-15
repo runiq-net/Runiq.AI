@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Runiq.AI.Core.AI.Embeddings;
 using Runiq.AI.Rag.Abstractions.Chunking;
 using Runiq.AI.Rag.Abstractions.Embeddings;
 using Runiq.AI.Rag.Abstractions.Retrieval;
@@ -27,17 +28,20 @@ public sealed class RagBuilderTests
     }
 
     [Fact]
-    public void UseEmbedding_ShouldReplaceDefaultEmbeddingProviderRegistration()
+    public void UseEmbeddingClient_ShouldReplaceDefaultCoreEmbeddingClientRegistration()
     {
         var services = new ServiceCollection();
         services.AddRuniqRag();
         var builder = new RagBuilder(services);
 
-        builder.UseEmbedding<TestEmbeddingProvider>();
+        builder.UseEmbeddingClient<TestEmbeddingClient>();
 
-        var descriptor = Assert.Single(services, service => service.ServiceType == typeof(IRagEmbeddingProvider));
-        Assert.Equal(typeof(TestEmbeddingProvider), descriptor.ImplementationType);
+        var descriptor = Assert.Single(services, service => service.ServiceType == typeof(IEmbeddingClient));
+        Assert.Equal(typeof(TestEmbeddingClient), descriptor.ImplementationType);
         Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
+
+        using var serviceProvider = services.BuildServiceProvider();
+        Assert.IsType<TestEmbeddingClient>(serviceProvider.GetRequiredService<IEmbeddingClient>());
     }
 
     [Fact]
@@ -137,11 +141,11 @@ public sealed class RagBuilderTests
     }
 
     [Fact]
-    public void UseEmbedding_ShouldReturnSameBuilderInstance()
+    public void UseEmbeddingClient_ShouldReturnSameBuilderInstance()
     {
         var builder = new RagBuilder(new ServiceCollection());
 
-        var returnedBuilder = builder.UseEmbedding<TestEmbeddingProvider>();
+        var returnedBuilder = builder.UseEmbeddingClient<TestEmbeddingClient>();
 
         Assert.Same(builder, returnedBuilder);
     }
@@ -207,13 +211,21 @@ public sealed class RagBuilderTests
         Assert.Same(builder, returnedBuilder);
     }
 
-    private sealed class TestEmbeddingProvider : IRagEmbeddingProvider
+    private sealed class TestEmbeddingClient : IEmbeddingClient
     {
-        public Task<RagEmbedding> GenerateAsync(
-            string text,
-            CancellationToken cancellationToken = default)
+        public Task<EmbeddingResponse> EmbedAsync(
+            EmbeddingRequest request,
+            CancellationToken cancellationToken)
         {
-            return Task.FromResult(new RagEmbedding());
+            ArgumentNullException.ThrowIfNull(request);
+
+            var results = request.Inputs.Select((input, index) =>
+            {
+                IReadOnlyList<float> vector = [input.Length];
+                return new EmbeddingResult(index, vector, vector.Count);
+            }).ToList();
+
+            return Task.FromResult(new EmbeddingResponse(results));
         }
     }
 

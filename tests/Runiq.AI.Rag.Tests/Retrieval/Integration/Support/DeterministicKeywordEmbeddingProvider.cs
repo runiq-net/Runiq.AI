@@ -1,6 +1,5 @@
 using System.Text;
-using Runiq.AI.Rag.Abstractions.Embeddings;
-using Runiq.AI.Rag.Models.Embeddings;
+using Runiq.AI.Core.AI.Embeddings;
 
 namespace Runiq.AI.Rag.Tests.Retrieval.Integration.Support;
 
@@ -12,7 +11,7 @@ namespace Runiq.AI.Rag.Tests.Retrieval.Integration.Support;
 /// similarity ranks a record by how much its content overlaps the query, which makes similarity ordering
 /// provable in tests. It is intentionally small and transparent rather than a general-purpose embedding.
 /// </summary>
-public sealed class DeterministicKeywordEmbeddingProvider : IRagEmbeddingProvider
+public sealed class DeterministicKeywordEmbeddingProvider : IEmbeddingClient
 {
     /// <summary>
     /// The ordered keyword vocabulary. Each entry maps to one embedding dimension, and the tests craft their
@@ -43,19 +42,20 @@ public sealed class DeterministicKeywordEmbeddingProvider : IRagEmbeddingProvide
     public int Dimensions => Vocabulary.Length;
 
     /// <summary>
-    /// Generates a deterministic embedding for the supplied text through the keyword vocabulary, honoring
-    /// cancellation but never performing any external call.
+    /// Generates ordered deterministic embeddings through the keyword vocabulary, honoring cancellation but
+    /// never performing any external call.
     /// </summary>
-    /// <param name="text">The query text or chunk content to embed.</param>
+    /// <param name="request">The Core request carrying query text or chunk content.</param>
     /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
-    /// <returns>The deterministic embedding for the text.</returns>
-    public Task<RagEmbedding> GenerateAsync(
-        string text,
+    /// <returns>The deterministic results in the same order as the request inputs.</returns>
+    public Task<EmbeddingResponse> EmbedAsync(
+        EmbeddingRequest request,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(request);
+        request.Validate();
         cancellationToken.ThrowIfCancellationRequested();
-
-        return Task.FromResult(new RagEmbedding(Embed(text)));
+        return Task.FromResult(new EmbeddingResponse(request.Inputs.Select((text, index) => new EmbeddingResult(index, Embed(text), Dimensions)).ToList()));
     }
 
     /// <summary>

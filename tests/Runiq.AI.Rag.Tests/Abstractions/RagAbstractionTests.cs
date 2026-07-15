@@ -1,3 +1,5 @@
+using Runiq.AI.Core.AI.Embeddings;
+using Runiq.AI.Core.Models;
 using Runiq.AI.Rag.Abstractions.Embeddings;
 using Runiq.AI.Rag.Abstractions.Retrieval;
 using Runiq.AI.Rag.Abstractions.Services;
@@ -9,6 +11,7 @@ using Runiq.AI.Rag.Models.Metadata;
 using Runiq.AI.Rag.Models.Queries;
 using Runiq.AI.Rag.Models.Search;
 using Runiq.AI.Rag.Models.VectorStores;
+using Runiq.AI.Rag.Tests.TestDoubles;
 
 namespace Runiq.AI.Rag.Tests.Abstractions;
 
@@ -32,13 +35,28 @@ public sealed class RagAbstractionTests
     }
 
     [Fact]
-    public async Task IRagEmbeddingProvider_ShouldAllowTestImplementation()
+    public async Task IEmbeddingClient_ShouldPreserveOrderedCoreResultsForRagConsumers()
     {
-        IRagEmbeddingProvider provider = new TestEmbeddingProvider();
+        IEmbeddingClient embeddingClient = new RecordingEmbeddingClient(dimensions: 2);
+        var request = new EmbeddingRequest(
+            ModelReference.Parse("openai/rag-abstraction-test"),
+            ["first input", "second input"]);
 
-        var embedding = await provider.GenerateAsync("query");
+        var response = await embeddingClient.EmbedAsync(request);
 
-        Assert.Equal(2, embedding.Dimensions);
+        Assert.Same(request, Assert.Single(((RecordingEmbeddingClient)embeddingClient).Requests));
+        Assert.Collection(
+            response.Results,
+            result =>
+            {
+                Assert.Equal(0, result.Index);
+                Assert.Equal(2, result.Dimensions);
+            },
+            result =>
+            {
+                Assert.Equal(1, result.Index);
+                Assert.Equal(2, result.Dimensions);
+            });
     }
 
     [Fact]
@@ -195,16 +213,6 @@ public sealed class RagAbstractionTests
         var context = await service.GetContextAsync(new RagQuery { Text = "query" });
 
         Assert.Equal("query", context.Query.Text);
-    }
-
-    private sealed class TestEmbeddingProvider : IRagEmbeddingProvider
-    {
-        public Task<RagEmbedding> GenerateAsync(
-            string text,
-            CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult(new RagEmbedding([1.0f, 2.0f]));
-        }
     }
 
     private sealed class TestVectorStore : IRagVectorStore

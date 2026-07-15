@@ -1,9 +1,12 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using Runiq.AI.Core.AI.Embeddings;
 using Runiq.AI.Rag.Abstractions.Embeddings;
 using Runiq.AI.Rag.Abstractions.Retrieval;
 using Runiq.AI.Rag.Abstractions.Telemetry;
 using Runiq.AI.Rag.Abstractions.VectorStores;
 using Runiq.AI.Rag.DependencyInjection;
+using Runiq.AI.Rag.Configuration;
 using Runiq.AI.Rag.Models.Documents;
 using Runiq.AI.Rag.Models.Embeddings;
 using Runiq.AI.Rag.Models.Ingestion;
@@ -14,6 +17,7 @@ using Runiq.AI.Rag.Models.Search;
 using Runiq.AI.Rag.Models.VectorStores;
 using Runiq.AI.Rag.Retrieval;
 using Runiq.AI.Rag.Telemetry;
+using Runiq.AI.Rag.Tests.TestDoubles;
 using Runiq.AI.Rag.VectorStores;
 
 namespace Runiq.AI.Rag.Tests.Telemetry;
@@ -30,7 +34,7 @@ public sealed class RagPipelineTelemetryRecordingTests
         var timeProvider = new FakeTimeProvider(RecordingTime, stepPerTimestampCall: TimeSpan.FromSeconds(5));
         var recorder = new DefaultRagOperationTelemetryRecorder(timeProvider);
         var pipeline = new DefaultRagRetrievalPipeline(
-            new StubEmbeddingProvider(),
+            new RecordingEmbeddingClient(dimensions: 2),
             new QueryVectorStore(CreateQueryResult("chunk-1", "chunk-2")),
             recorder,
             timeProvider);
@@ -57,7 +61,7 @@ public sealed class RagPipelineTelemetryRecordingTests
         var timeProvider = new FakeTimeProvider(RecordingTime, stepPerTimestampCall: TimeSpan.FromSeconds(1));
         var recorder = new DefaultRagOperationTelemetryRecorder(timeProvider);
         var pipeline = new DefaultRagRetrievalPipeline(
-            new StubEmbeddingProvider(),
+            new RecordingEmbeddingClient(dimensions: 2),
             new ThrowingQueryVectorStore(),
             recorder,
             timeProvider);
@@ -82,7 +86,7 @@ public sealed class RagPipelineTelemetryRecordingTests
         // result was produced for the telemetry snapshot.
         var recorder = new DefaultRagOperationTelemetryRecorder(new FakeTimeProvider(RecordingTime, TimeSpan.Zero));
         var pipeline = new DefaultRagRetrievalPipeline(
-            new StubEmbeddingProvider(),
+            new RecordingEmbeddingClient(dimensions: 2),
             new CancellingQueryVectorStore(),
             recorder,
             new FakeTimeProvider(RecordingTime, TimeSpan.Zero));
@@ -99,7 +103,7 @@ public sealed class RagPipelineTelemetryRecordingTests
         // Verifies the strictly observational guarantee: a recorder that throws never alters the
         // retrieval result or turns a successful retrieval into a failure.
         var pipeline = new DefaultRagRetrievalPipeline(
-            new StubEmbeddingProvider(),
+            new RecordingEmbeddingClient(dimensions: 2),
             new QueryVectorStore(CreateQueryResult("chunk-1")),
             new ThrowingTelemetryRecorder());
 
@@ -233,10 +237,14 @@ public sealed class RagPipelineTelemetryRecordingTests
     public async Task AddRuniqRag_ShouldWireRecorderIntoResolvedPipelines()
     {
         // Verifies end-to-end DI wiring: pipelines resolved from the container record into the reader
-        // without any additional host configuration. The default null embedding provider makes the
-        // retrieval fail deterministically, which is still a recordable outcome.
+        // without any additional host configuration. A controlled empty Core result makes retrieval
+        // fail deterministically, which is still a recordable outcome.
         var services = new ServiceCollection();
+        var embeddingClient = new RecordingEmbeddingClient(
+            dimensions: 1,
+            responseFactory: _ => new EmbeddingResponse([new EmbeddingResult(0, [], 0)]));
         services.AddRuniqRag();
+        services.AddRagEmbeddingClient(_ => embeddingClient);
 
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
@@ -358,16 +366,6 @@ public sealed class RagPipelineTelemetryRecordingTests
             currentTimestamp += stepTicks;
 
             return timestamp;
-        }
-    }
-
-    private sealed class StubEmbeddingProvider : IRagEmbeddingProvider
-    {
-        public Task<RagEmbedding> GenerateAsync(
-            string text,
-            CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult(new RagEmbedding([0.1f, 0.2f]));
         }
     }
 

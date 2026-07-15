@@ -1,4 +1,6 @@
 using Runiq.AI.Rag.UpsertPipelineSample;
+using Runiq.AI.Core.AI.Embeddings;
+using Runiq.AI.Core.Models;
 
 namespace Runiq.AI.Rag.Tests.Samples;
 
@@ -42,10 +44,10 @@ public sealed class RagUpsertPipelineSampleTests
     {
         var provider = new DeterministicSampleEmbeddingProvider();
 
-        var first = await provider.GenerateAsync("same chunk content");
-        var second = await provider.GenerateAsync("same chunk content");
+        var first = (await provider.EmbedAsync(new EmbeddingRequest(ModelReference.Parse("openai/sample"), ["same chunk content"]))).Results.Single();
+        var second = (await provider.EmbedAsync(new EmbeddingRequest(ModelReference.Parse("openai/sample"), ["same chunk content"]))).Results.Single();
 
-        Assert.Equal(first.Values, second.Values);
+        Assert.Equal(first.Vector, second.Vector);
     }
 
     // Verifies that the sample embedding provider produces vectors with the advertised dimension
@@ -56,10 +58,10 @@ public sealed class RagUpsertPipelineSampleTests
     {
         var provider = new DeterministicSampleEmbeddingProvider();
 
-        var embedding = await provider.GenerateAsync("any chunk content");
+        var embedding = (await provider.EmbedAsync(new EmbeddingRequest(ModelReference.Parse("openai/sample"), ["any chunk content"]))).Results.Single();
 
         Assert.Equal(DeterministicSampleEmbeddingProvider.Dimensions, embedding.Dimensions);
-        Assert.Equal(DeterministicSampleEmbeddingProvider.Dimensions, embedding.Values.Count);
+        Assert.Equal(DeterministicSampleEmbeddingProvider.Dimensions, embedding.Vector.Count);
     }
 
     // Verifies that the sample embedding provider is content-sensitive, so different chunks map
@@ -69,10 +71,10 @@ public sealed class RagUpsertPipelineSampleTests
     {
         var provider = new DeterministicSampleEmbeddingProvider();
 
-        var first = await provider.GenerateAsync("first chunk content");
-        var second = await provider.GenerateAsync("second chunk content");
+        var first = (await provider.EmbedAsync(new EmbeddingRequest(ModelReference.Parse("openai/sample"), ["first chunk content"]))).Results.Single();
+        var second = (await provider.EmbedAsync(new EmbeddingRequest(ModelReference.Parse("openai/sample"), ["second chunk content"]))).Results.Single();
 
-        Assert.NotEqual(first.Values, second.Values);
+        Assert.NotEqual(first.Vector, second.Vector);
     }
 
     /// <summary>

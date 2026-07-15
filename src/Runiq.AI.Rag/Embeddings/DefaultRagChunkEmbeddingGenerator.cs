@@ -1,4 +1,10 @@
+using Microsoft.Extensions.Options;
+using Runiq.AI.Core.AI.Embeddings;
+using Runiq.AI.Core.Configuration;
+using Runiq.AI.Core.Models;
 using Runiq.AI.Rag.Abstractions.Embeddings;
+using Runiq.AI.Rag.Configuration;
+using Runiq.AI.Rag.Embeddings;
 using Runiq.AI.Rag.Models.Documents;
 using Runiq.AI.Rag.Models.Embeddings;
 
@@ -9,20 +15,24 @@ namespace Runiq.AI.Rag.Embeddings;
 /// </summary>
 public sealed class DefaultRagChunkEmbeddingGenerator : IRagChunkEmbeddingGenerator
 {
-    private readonly IRagEmbeddingProvider embeddingProvider;
+    private readonly IEmbeddingClient embeddingClient;
     private readonly IRagEmbeddingInputPreparer inputPreparer;
+    private readonly RagOptions options;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DefaultRagChunkEmbeddingGenerator"/> class.
     /// </summary>
-    /// <param name="embeddingProvider">The text embedding provider used to generate each chunk embedding.</param>
+    /// <param name="embeddingClient">The Core embedding client used to generate each chunk embedding.</param>
     /// <param name="inputPreparer">The provider-neutral input preparer used before provider calls.</param>
+    /// <param name="options">The RAG options used to resolve the embedding model.</param>
     public DefaultRagChunkEmbeddingGenerator(
-        IRagEmbeddingProvider embeddingProvider,
-        IRagEmbeddingInputPreparer inputPreparer)
+        IEmbeddingClient embeddingClient,
+        IRagEmbeddingInputPreparer inputPreparer,
+        IOptions<RagOptions>? options = null)
     {
-        this.embeddingProvider = embeddingProvider ?? throw new ArgumentNullException(nameof(embeddingProvider));
+        this.embeddingClient = embeddingClient ?? throw new ArgumentNullException(nameof(embeddingClient));
         this.inputPreparer = inputPreparer ?? throw new ArgumentNullException(nameof(inputPreparer));
+        this.options = options?.Value ?? new RagOptions();
     }
 
     /// <summary>
@@ -43,42 +53,31 @@ public sealed class DefaultRagChunkEmbeddingGenerator : IRagChunkEmbeddingGenera
             return Array.Empty<RagChunkEmbeddingResult>();
         }
 
-        var results = new List<RagChunkEmbeddingResult>(chunks.Count);
+        var inputs = new List<RagEmbeddingInput>(chunks.Count);
 
         for (var index = 0; index < chunks.Count; index++)
         {
             var chunk = chunks[index] ?? throw new InvalidOperationException(
                 $"Chunk embedding generation failed at input index {index} because the chunk is null.");
 
-            try
-            {
-                var input = await inputPreparer.PrepareAsync(chunk, cancellationToken).ConfigureAwait(false)
-                    ?? throw new InvalidOperationException("The embedding input preparer returned null.");
-
-                var embedding = await embeddingProvider.GenerateAsync(input.Content, cancellationToken).ConfigureAwait(false)
-                    ?? throw new InvalidOperationException("The embedding provider returned null.");
-
-                results.Add(new RagChunkEmbeddingResult
-                {
-                    ChunkId = input.ChunkId,
-                    DocumentId = input.DocumentId,
-                    ChunkIndex = input.ChunkIndex,
-                    Embedding = embedding,
-                });
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception exception)
-            {
-                throw new InvalidOperationException(
-                    $"Chunk embedding generation failed for chunk '{chunk.Id}' in document '{chunk.DocumentId}' at input index {index}.",
-                    exception);
-            }
+            var input = await inputPreparer.PrepareAsync(chunk, cancellationToken).ConfigureAwait(false)
+                ?? throw new InvalidOperationException("The embedding input preparer returned null.");
+            inputs.Add(input);
         }
+        var response = await embeddingClient.EmbedAsync(new EmbeddingRequest(ResolveModel(), inputs.Select(input => input.Content).ToList(), Dimensions: ResolveModel().EmbeddingDimensions), cancellationToken).ConfigureAwait(false);
+        if (response.Results.Count != inputs.Count)
+            throw new InvalidOperationException("The embedding client returned a result count that does not match the input count.");
+        return response.Results.OrderBy(result => result.Index).Select((result, index) => new RagChunkEmbeddingResult
+        {
+            ChunkId = inputs[index].ChunkId, DocumentId = inputs[index].DocumentId, ChunkIndex = inputs[index].ChunkIndex,
+            Embedding = new RagEmbedding(result.Vector),
+        }).ToList();
+    }
 
-        return results;
+    private ModelReference ResolveModel()
+    {
+        if (string.IsNullOrWhiteSpace(options.EmbeddingModel)) return ModelReference.Parse("openai/rag-embedding");
+        return ProviderModelReferenceResolver.Resolve(ModelReference.Parse(options.EmbeddingModel), options.EmbeddingProvider);
     }
 }
 

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Runiq.AI.Rag.Abstractions.Chunking;
+using Runiq.AI.Core.AI.Embeddings;
 using Runiq.AI.Rag.Abstractions.Embeddings;
 using Runiq.AI.Rag.Abstractions.Retrieval;
 using Runiq.AI.Rag.Abstractions.Services;
@@ -34,7 +35,6 @@ public static class RuniqRagServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.TryAddSingleton<IRagEmbeddingProvider, NullEmbeddingProvider>();
         services.TryAddSingleton<IRagEmbeddingInputPreparer, DefaultRagEmbeddingInputPreparer>();
         services.TryAddScoped<IRagChunkEmbeddingGenerator, DefaultRagChunkEmbeddingGenerator>();
         services.TryAddScoped<IRagVectorRecordMapper, DefaultRagVectorRecordMapper>();
@@ -64,30 +64,30 @@ public static class RuniqRagServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers the specified RAG embedding provider implementation.
+    /// Registers the Core embedding client used by RAG document and query pipelines.
     /// </summary>
-    /// <typeparam name="TProvider">The provider-neutral embedding provider implementation type.</typeparam>
-    /// <param name="services">The service collection to add the embedding provider to.</param>
+    /// <typeparam name="TClient">The Core embedding client implementation type.</typeparam>
+    /// <param name="services">The service collection to add the embedding client to.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
-    public static IServiceCollection AddRagEmbeddingProvider<TProvider>(this IServiceCollection services)
-        where TProvider : class, IRagEmbeddingProvider
+    public static IServiceCollection AddRagEmbeddingClient<TClient>(this IServiceCollection services)
+        where TClient : class, IEmbeddingClient
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.Replace(ServiceDescriptor.Singleton<IRagEmbeddingProvider, TProvider>());
+        services.Replace(ServiceDescriptor.Singleton<IEmbeddingClient, TClient>());
 
         return services;
     }
 
     /// <summary>
-    /// Registers a RAG embedding provider using the specified factory.
+    /// Registers the Core embedding client used by RAG using the specified factory.
     /// </summary>
-    /// <param name="services">The service collection to add the embedding provider to.</param>
-    /// <param name="factory">The factory used to create the embedding provider.</param>
+    /// <param name="services">The service collection to add the embedding client to.</param>
+    /// <param name="factory">The factory used to create the embedding client.</param>
     /// <returns>The same service collection so calls can be chained.</returns>
-    public static IServiceCollection AddRagEmbeddingProvider(
+    public static IServiceCollection AddRagEmbeddingClient(
         this IServiceCollection services,
-        Func<IServiceProvider, IRagEmbeddingProvider> factory)
+        Func<IServiceProvider, IEmbeddingClient> factory)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(factory);
