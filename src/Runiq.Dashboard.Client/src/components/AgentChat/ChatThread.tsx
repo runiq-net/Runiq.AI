@@ -1,25 +1,11 @@
-﻿import { useEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
-import {
-  BookOpen,
-  Check,
-  CheckCircle2,
-  Copy,
-  FileSearch,
-  FileText,
-} from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Check, Copy } from 'lucide-react';
 
 import './ChatThread.css';
 
 import { ToolCallCard } from './tool/ToolCallCard';
 
-import type {
-  AgentChatMessage,
-  AgentContextSearchSummary,
-  AgentLoadedSkill,
-  AgentProvidedContext,
-  AgentSourceSearchResult,
-} from '../../types/agentChat';
+import type { AgentChatMessage } from '../../types/agentChat';
 
 type ChatThreadProps = {
   messages: AgentChatMessage[];
@@ -82,13 +68,9 @@ export function ChatThread({ messages, isWaiting }: ChatThreadProps) {
 function ChatMessageItem({ message }: { message: AgentChatMessage }) {
   const [copied, setCopied] = useState(false);
 
-  const hasContext = Boolean(message.context);
-  const hasLoadedSkills = Boolean(message.loadedSkills?.length);
   const hasToolCalls = Boolean(message.toolCalls?.length);
 
   const hasContent = Boolean(message.content.trim());
-  const hasContextSearch = Boolean(message.contextSearchSummary);
-  const hasSourceSearchResults = Boolean(message.sourceSearchResults?.length);
 
   const isAssistantStreaming =
     message.role === 'assistant' && message.isStreaming === true;
@@ -96,18 +78,8 @@ function ChatMessageItem({ message }: { message: AgentChatMessage }) {
   const showInitialThinking =
     message.role === 'assistant' &&
     isAssistantStreaming &&
-    !hasContext &&
-    !hasLoadedSkills &&
-    !hasContextSearch &&
-    !hasSourceSearchResults &&
     !hasToolCalls;
 
-  const showContextWaiting =
-    message.role === 'assistant' &&
-    isAssistantStreaming &&
-    (hasContext || hasLoadedSkills || hasContextSearch || hasSourceSearchResults) &&
-    !hasContent &&
-    !hasToolCalls;
 
   const showToolWaiting =
     message.role === 'assistant' &&
@@ -156,38 +128,6 @@ function ChatMessageItem({ message }: { message: AgentChatMessage }) {
 
   return (
     <article className="mr-auto w-full max-w-[min(760px,82%)] text-sm leading-6 text-zinc-900 dark:text-zinc-100">
-      {message.context && (
-        <div className="mb-4">
-          <ContextProvidedCard context={message.context} />
-
-          {showContextWaiting && !hasLoadedSkills && !hasContextSearch && !hasSourceSearchResults && (
-            <div className="mt-3">
-              <DotsOnlyIndicator />
-            </div>
-          )}
-        </div>
-      )}
-
-      {hasLoadedSkills && (
-        <div className="mb-3">
-          <SkillLoadedCard skills={message.loadedSkills ?? []} />
-        </div>
-      )}
-
-      {hasContextSearch && (
-        <div className="mb-4">
-          <ContextSearchedCard
-            results={message.sourceSearchResults ?? []}
-            summary={message.contextSearchSummary}
-          />
-
-          {showContextWaiting && (
-            <div className="mt-3">
-              <DotsOnlyIndicator />
-            </div>
-          )}
-        </div>
-      )}
 
       {hasToolCalls && (
         <div className="mb-4 flex flex-col gap-2">
@@ -246,290 +186,6 @@ function ChatMessageItem({ message }: { message: AgentChatMessage }) {
       )}
     </article>
   );
-}
-
-function SkillLoadedCard({ skills }: { skills: AgentLoadedSkill[] }) {
-  const skillCount = skills.length;
-  const firstSkill = skills[0];
-  const visibleSkills = skills.slice(0, 3);
-  const hiddenCount = Math.max(0, skillCount - visibleSkills.length);
-
-  const summary =
-    skillCount === 1
-      ? formatSkillName(firstSkill)
-      : `${skillCount} skills loaded`;
-
-  const detail =
-    skillCount === 1
-      ? 'Behavior instructions added to model context'
-      : skills.map(formatSkillName).join(' · ');
-
-  return (
-    <div className="w-full min-w-0 overflow-hidden rounded-lg border border-sky-200 bg-sky-50/70 text-xs shadow-sm dark:border-sky-900/50 dark:bg-sky-950/20 dark:shadow-none">
-      <div className="flex min-h-10 w-full items-center gap-2 px-2.5 py-2 text-left">
-        <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-400/10 dark:text-sky-300">
-          <BookOpen className="size-3" />
-        </span>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="truncate text-xs font-semibold text-zinc-950 dark:text-zinc-100">
-              Skill loaded
-            </div>
-
-            <span className="ml-auto inline-flex shrink-0 items-center justify-center rounded-full border border-sky-200 bg-white/80 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/50 dark:text-sky-300">
-              Ready
-            </span>
-          </div>
-
-          <div className="mt-0.5 truncate text-xs font-medium text-zinc-700 dark:text-zinc-300">
-            {summary}
-            {skillCount === 1 && firstSkill?.version ? ` · v${firstSkill.version}` : ''}
-          </div>
-
-          <div className="mt-0.5 truncate text-[11px] text-zinc-600 dark:text-zinc-400">
-            {detail}
-          </div>
-
-          {skillCount > 1 && (
-            <div className="mt-1 flex min-w-0 flex-wrap gap-1">
-              {visibleSkills.map((skill) => (
-                <span
-                  key={skill.skillId}
-                  className="min-w-0 max-w-full truncate rounded-full border border-sky-200 bg-white/80 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300"
-                  title={formatSkillName(skill)}
-                >
-                  {formatSkillName(skill)}
-                </span>
-              ))}
-
-              {hiddenCount > 0 && (
-                <span className="rounded-full border border-sky-200 bg-white/80 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300">
-                  +{hiddenCount}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ContextProvidedCard({ context }: { context: AgentProvidedContext }) {
-  const contextSpace = context.contextSpaces[0];
-  const hasMoreContextSpaces = context.contextSpaces.length > 1;
-
-  const skillCount = context.skills.length;
-  const sourceCount = context.sources.length;
-
-  return (
-    <div className="w-full min-w-0 overflow-hidden rounded-xl border border-sky-200 bg-sky-50/70 text-xs shadow-sm dark:border-sky-900/50 dark:bg-sky-950/20 dark:shadow-none">
-      <div className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2.5 text-left">
-        <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-400/10 dark:text-sky-300">
-          <BookOpen className="size-3.5" />
-        </span>
-
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold text-zinc-950 dark:text-zinc-100">
-            Context provided
-          </div>
-
-          <div className="mt-0.5 truncate text-xs text-zinc-600 dark:text-zinc-400">
-            {contextSpace?.name ?? 'Runtime context'}
-            {hasMoreContextSpaces
-              ? ` +${context.contextSpaces.length - 1} more`
-              : ''}
-          </div>
-        </div>
-
-        <span className="ml-auto inline-flex shrink-0 items-center justify-center rounded-full border border-sky-200 bg-white/80 px-2.5 py-0.5 text-[11px] font-medium text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/50 dark:text-sky-300">
-          {formatContextSummary(skillCount, sourceCount)}
-        </span>
-      </div>
-
-      <div className="grid gap-2 border-t border-sky-200/80 bg-white/60 px-3 py-3 dark:border-sky-900/50 dark:bg-zinc-950/30 sm:grid-cols-2">
-        <ContextProvidedSection
-          icon={<BookOpen className="size-3.5" />}
-          title="Skills provided"
-          emptyText="No skills provided."
-          items={context.skills.map((skill) => skill.name || skill.id)}
-        />
-
-        <ContextProvidedSection
-          icon={<FileText className="size-3.5" />}
-          title="Sources available"
-          emptyText="No sources available."
-          items={context.sources.map((source) => source.name || source.id)}
-        />
-      </div>
-    </div>
-  );
-}
-
-function ContextSearchedCard({
-  results,
-  summary,
-}: {
-  results: AgentSourceSearchResult[];
-  summary?: AgentContextSearchSummary;
-}) {
-  const visibleResults = results.slice(0, 4);
-  const hiddenCount = Math.max(0, results.length - visibleResults.length);
-  const selectedCount = summary?.selectedCount ?? results.length;
-  const searchedDocumentCount = summary?.searchedDocumentCount ?? results.length;
-  const status = selectedCount === 0 ? 'No match' : 'Selected';
-  const summaryText =
-    selectedCount === 0
-      ? `${formatSearchedDocumentCount(searchedDocumentCount)} · no relevant excerpt selected`
-      : `${formatSearchedDocumentCount(searchedDocumentCount)} · ${formatSelectedExcerptCount(selectedCount)}`;
-
-  return (
-    <div className="w-full min-w-0 overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/70 text-xs shadow-sm dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:shadow-none">
-      <div className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2.5 text-left">
-        <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300">
-          <FileSearch className="size-3.5" />
-        </span>
-
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold text-zinc-950 dark:text-zinc-100">
-            Context searched
-          </div>
-
-          <div className="mt-0.5 truncate text-xs text-zinc-600 dark:text-zinc-400">
-            {summaryText}
-          </div>
-        </div>
-
-        <span className="ml-auto inline-flex shrink-0 items-center justify-center rounded-full border border-emerald-200 bg-white/80 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/50 dark:text-emerald-300">
-          {status}
-        </span>
-      </div>
-
-      <div className="flex flex-col gap-2 border-t border-emerald-200/80 bg-white/60 px-3 py-3 dark:border-emerald-900/50 dark:bg-zinc-950/30">
-        {selectedCount === 0 && (
-          <div className="text-xs text-zinc-600 dark:text-zinc-400">
-            No source excerpt was sent to the model context.
-          </div>
-        )}
-
-        {visibleResults.map((result) => (
-          <div
-            key={`${result.sourceId}-${result.relativePath}-${result.snippet}`}
-            className="relative min-w-0 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 pr-10 dark:border-zinc-800 dark:bg-zinc-950/70"
-          >
-            <span
-              className="absolute right-3 top-3 inline-flex text-emerald-600 dark:text-emerald-300"
-              aria-label="Sent to model context"
-              title="Sent to model context"
-            >
-              <CheckCircle2 className="size-4" aria-hidden="true" />
-            </span>
-
-            <div className="mb-1.5 flex min-w-0 flex-wrap items-center gap-1.5 text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-              <FileText className="size-3.5 shrink-0 text-zinc-400 dark:text-zinc-500" />
-
-              <span className="min-w-0 max-w-full truncate">
-                {result.sourceName || result.sourceId}
-              </span>
-
-              <span className="min-w-0 max-w-full truncate text-zinc-500 dark:text-zinc-400">
-                {result.relativePath || result.fileName}
-              </span>
-
-              <span className="shrink-0 rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[11px] font-medium text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/70 dark:text-zinc-400">
-                Score {result.score.toFixed(2)}
-              </span>
-            </div>
-
-            <div className="max-h-16 overflow-hidden whitespace-pre-wrap break-words text-xs leading-5 text-zinc-600 dark:text-zinc-400">
-              {result.snippet}
-            </div>
-          </div>
-        ))}
-
-        {hiddenCount > 0 && (
-          <div className="text-xs text-zinc-500 dark:text-zinc-400">
-            +{hiddenCount} more selected excerpt
-            {hiddenCount === 1 ? '' : 's'}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function formatSearchedDocumentCount(value: number): string {
-  return `${value} document${value === 1 ? '' : 's'} searched`;
-}
-
-function formatSelectedExcerptCount(value: number): string {
-  return `${value} selected excerpt${value === 1 ? '' : 's'}`;
-}
-
-function formatSkillName(skill: AgentLoadedSkill | undefined): string {
-  return skill?.skillName || skill?.skillId || 'Skill';
-}
-
-function ContextProvidedSection({
-  icon,
-  title,
-  emptyText,
-  items,
-}: {
-  icon: ReactNode;
-  title: string;
-  emptyText: string;
-  items: string[];
-}) {
-  return (
-    <div className="min-w-0 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 dark:border-zinc-800 dark:bg-zinc-950/70">
-      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-        <span className="text-zinc-400 dark:text-zinc-500">
-          {icon}
-        </span>
-        {title}
-      </div>
-
-      {items.length === 0 ? (
-        <div className="text-xs text-zinc-500 dark:text-zinc-500">
-          {emptyText}
-        </div>
-      ) : (
-        <div className="flex min-w-0 flex-wrap gap-1.5">
-          {items.slice(0, 4).map((item) => (
-            <span
-              key={item}
-              className="min-w-0 max-w-full truncate rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[11px] font-medium text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900/70 dark:text-zinc-300"
-              title={item}
-            >
-              {item}
-            </span>
-          ))}
-
-          {items.length > 4 && (
-            <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[11px] font-medium text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/70 dark:text-zinc-400">
-              +{items.length - 4} more
-            </span>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function formatContextSummary(skillCount: number, sourceCount: number): string {
-  const parts: string[] = [];
-
-  if (skillCount > 0) {
-    parts.push(`${skillCount} skill${skillCount === 1 ? '' : 's'}`);
-  }
-
-  if (sourceCount > 0) {
-    parts.push(`${sourceCount} source${sourceCount === 1 ? '' : 's'}`);
-  }
-
-  return parts.length > 0 ? parts.join(' · ') : 'Context';
 }
 
 function DotsOnlyIndicator() {

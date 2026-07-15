@@ -1,7 +1,6 @@
 import type { ComponentType } from 'react';
 import { AgentsPage } from './pages/AgentsPage';
 import { ToolsPage } from './pages/ToolsPage';
-import { ContextSpacesPage } from './pages/ContextSpacesPage';
 import { WorkflowsPage } from './pages/WorkflowsPage';
 import { McpPage } from './pages/McpPage';
 import { RagPage } from './pages/RagPage';
@@ -10,7 +9,6 @@ export type DashboardPage =
   | 'agents'
   | 'tools'
   | 'workflows'
-  | 'context-spaces'
   | 'mcp'
   | 'rag';
 
@@ -21,8 +19,6 @@ export type DashboardRoute =
   | { page: 'workflow-detail'; workflowId: string }
   | { page: 'agent-chat'; agentId: string }
   | { page: 'tool-detail'; toolName: string }
-  | { page: 'context-spaces' }
-  | { page: 'context-space-detail'; contextSpaceId: string }
   | { page: 'mcp' }
   | { page: 'mcp-tool-detail'; toolName: string }
   | { page: 'rag' };
@@ -76,14 +72,6 @@ export const dashboardRoutes: DashboardRouteDefinition[] = [
     navLabel: 'Workflows',
     showInNavigation: true,
     component: WorkflowsPage,
-  },
-  {
-    page: 'context-spaces',
-    path: 'context-spaces',
-    title: 'Context Spaces',
-    navLabel: 'Context Spaces',
-    showInNavigation: true,
-    component: ContextSpacesPage,
   },
 ];
 
@@ -189,17 +177,6 @@ export function resolveDashboardRouteFromUrl(
     }
 
     return { page: 'workflows' };
-  }
-
-  if (firstSegment === 'context-spaces') {
-    if (segments[1]) {
-      return {
-        page: 'context-space-detail',
-        contextSpaceId: decodeURIComponent(segments[1]),
-      };
-    }
-
-    return { page: 'context-spaces' };
   }
 
   return { page: defaultDashboardPage };

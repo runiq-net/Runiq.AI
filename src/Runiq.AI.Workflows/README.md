@@ -174,7 +174,6 @@ Runiq AI is modular. `Runiq.AI.Workflows` can be used together with other Runiq 
 |---|---|
 | `Runiq.AI.Agents` | Provides the agent runtime primitives used by workflow steps |
 | `Runiq.AI.Core` | Hosts workflow runtime and dashboard endpoints |
-| `Runiq.AI.ContextSpaces` | Provides context spaces and source-reading primitives |
 | `Runiq.AI.Mcp` | Exposes ASP.NET Core applications through MCP-compatible tools |
 
 ## Documentation

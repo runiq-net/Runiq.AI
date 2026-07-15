@@ -157,7 +157,6 @@ Runiq AI is modular. `Runiq.AI.Core` is usually used together with other Runiq p
 | Package | Purpose |
 |---|---|
 | `Runiq.AI.Agents` | Defines agents, tools, provider integration, and streaming execution primitives |
-| `Runiq.AI.ContextSpaces` | Provides context spaces and source-reading primitives |
 | `Runiq.AI.Workflows` | Provides code-first workflow orchestration primitives |
 | `Runiq.AI.Mcp` | Exposes ASP.NET Core applications through MCP-compatible tools |
 

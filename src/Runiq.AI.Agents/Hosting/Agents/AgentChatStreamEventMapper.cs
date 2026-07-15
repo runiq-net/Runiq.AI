@@ -3,7 +3,7 @@ using Runiq.AI.Agents;
 namespace Runiq.AI.Core.Agents;
 
 /// <summary>
-/// Agent execution olaylarini Dashboard'un bekledigi stream DTO formatina çevirir.
+/// Agent execution olaylarini Dashboard'un bekledigi stream DTO formatina cevirir.
 /// </summary>
 internal static class AgentChatStreamEventMapper
 {
@@ -39,64 +39,6 @@ internal static class AgentChatStreamEventMapper
                 ErrorCode: executionEvent.ErrorCode,
                 ErrorMessage: executionEvent.ErrorMessage),
 
-            AgentExecutionEventKind.ContextProvided => new AgentChatStreamEvent(
-                Type: "context_provided",
-                Content: null,
-                ContextSpaces: executionEvent.ContextSpaces?
-                    .Select(contextSpace => new AgentChatContextSpaceStreamItem(
-                        Id: contextSpace.Id,
-                        Name: contextSpace.Name,
-                        Description: contextSpace.Description))
-                    .ToArray(),
-                Skills: executionEvent.Skills?
-                    .Select(skill => new AgentChatSkillStreamItem(
-                        Id: skill.Id,
-                        Name: skill.Name,
-                        Description: skill.Description,
-                        Version: skill.Version,
-                        Tags: skill.Tags,
-                        SourceId: skill.SourceId,
-                        RelativePath: skill.RelativePath))
-                    .ToArray(),
-                Sources: executionEvent.Sources?
-                    .Select(source => new AgentChatSourceStreamItem(
-                        Id: source.Id,
-                        Name: source.Name,
-                        Kind: source.Kind,
-                        Description: source.Description))
-                    .ToArray()),
-
-            AgentExecutionEventKind.SkillLoaded => new AgentChatStreamEvent(
-                Type: "skill_loaded",
-                Content: null,
-                LoadedSkills: executionEvent.LoadedSkills?
-                    .Select(skill => new AgentChatLoadedSkillStreamItem(
-                        SkillId: skill.SkillId,
-                        SkillName: skill.SkillName,
-                        Version: skill.Version,
-                        Description: skill.Description))
-                    .ToArray()),
-
-            AgentExecutionEventKind.ContextSearched => new AgentChatStreamEvent(
-                Type: "context_searched",
-                Content: null,
-                ContextSearchSummary: executionEvent.ContextSearchSummary is null
-                    ? null
-                    : new AgentChatContextSearchSummaryStreamItem(
-                        AttachedSourceCount: executionEvent.ContextSearchSummary.AttachedSourceCount,
-                        SearchedDocumentCount: executionEvent.ContextSearchSummary.SearchedDocumentCount,
-                        CandidateCount: executionEvent.ContextSearchSummary.CandidateCount,
-                        SelectedCount: executionEvent.ContextSearchSummary.SelectedCount),
-                SourceSearchResults: executionEvent.SourceSearchResults?
-                    .Select(result => new AgentChatSourceSearchResultStreamItem(
-                        SourceId: result.SourceId,
-                        SourceName: result.SourceName,
-                        RelativePath: result.RelativePath,
-                        FileName: result.FileName,
-                        Snippet: result.Snippet,
-                        Score: result.Score))
-                    .ToArray()),
-
             AgentExecutionEventKind.Completed => new AgentChatStreamEvent(
                 Type: "completed",
                 Content: null),
@@ -114,4 +56,3 @@ internal static class AgentChatStreamEventMapper
         };
     }
 }
-

@@ -5,8 +5,6 @@ using Runiq.AI.Core.Configuration;
 using Runiq.AI.Core.Metadata;
 using Runiq.AI.Core.Providers;
 using Runiq.AI.Agents.Tools;
-using Runiq.AI.ContextSpaces.Models.Sources;
-using Runiq.AI.ContextSpaces.Services;
 using Runiq.AI.Rag.Abstractions.Retrieval;
 using Runiq.AI.Rag.Abstractions.Tools;
 using Runiq.AI.Rag.Models.Documents;
@@ -23,16 +21,9 @@ namespace Runiq.AI.Agents.Runtime;
 /// </summary>
 public sealed class AgentExecutionRuntime
 {
-    private const double MinSelectedSourceScore = 8.0;
-    private const double RelativeTopSourceScoreRatio = 0.45;
-    private const int MaxSelectedSourceExcerptCount = 4;
-
     private readonly IEnumerable<Agent> agents;
     private readonly IChatClientResolver chatClientResolver;
     private readonly AgentToolInvoker toolInvoker;
-    private readonly IReadOnlyList<ContextSpace> contextSpaces;
-    private readonly IContextSpaceSkillDiscoveryService skillDiscoveryService;
-    private readonly IContextSpaceSourceSearchService sourceSearchService;
     private readonly IRagRetriever? ragRetriever;
     private readonly IVectorQueryTool? vectorQueryTool;
 
@@ -43,9 +34,6 @@ public sealed class AgentExecutionRuntime
     /// <param name="openAIResponsesClient">The client used for native OpenAI requests.</param>
     /// <param name="openAICompatibleClient">The client used for OpenAI-compatible and Ollama requests.</param>
     /// <param name="toolInvoker">The agent-owned tool invoker.</param>
-    /// <param name="contextSpaces">Optional context spaces.</param>
-    /// <param name="skillDiscoveryService">Optional skill discovery service.</param>
-    /// <param name="sourceSearchService">Optional context source search service.</param>
     /// <param name="ragRetriever">Optional RAG retriever.</param>
     /// <param name="vectorQueryTool">Optional vector query tool.</param>
     public AgentExecutionRuntime(
@@ -53,18 +41,12 @@ public sealed class AgentExecutionRuntime
         IChatClient openAIResponsesClient,
         IChatClient openAICompatibleClient,
         AgentToolInvoker toolInvoker,
-        IReadOnlyList<ContextSpace>? contextSpaces = null,
-        IContextSpaceSkillDiscoveryService? skillDiscoveryService = null,
-        IContextSpaceSourceSearchService? sourceSearchService = null,
         IRagRetriever? ragRetriever = null,
         IVectorQueryTool? vectorQueryTool = null)
         : this(
             agents,
             new FixedChatClientResolver(openAIResponsesClient, openAICompatibleClient),
             toolInvoker,
-            contextSpaces,
-            skillDiscoveryService,
-            sourceSearchService,
             ragRetriever,
             vectorQueryTool)
     {
@@ -77,28 +59,18 @@ public sealed class AgentExecutionRuntime
     /// <param name="agents">Runtime tarafindan çalistirilabilecek kayitli agent koleksiyonudur.</param>
     /// <param name="chatClientResolver">Resolves the shared chat client for each agent model.</param>
     /// <param name="toolInvoker">Agent tool çagrilarini çalistiran invoker örnegidir.</param>
-    /// <param name="contextSpaces">Agent çalismasinda kullanilabilecek context space tanimlaridir.</param>
-    /// <param name="skillDiscoveryService">Context space skill kesif servisidir.</param>
-    /// <param name="sourceSearchService">Context source arama servisidir.</param>
     /// <param name="ragRetriever">Agent RAG sorgularini çalistiracak opsiyonel retriever servisidir.</param>
     /// <param name="vectorQueryTool">Agent'a bagli Vector Query Tool sorgularini çalistiracak opsiyonel tool örnegidir.</param>
     public AgentExecutionRuntime(
         IEnumerable<Agent> agents,
         IChatClientResolver chatClientResolver,
         AgentToolInvoker toolInvoker,
-        IReadOnlyList<ContextSpace>? contextSpaces = null,
-        IContextSpaceSkillDiscoveryService? skillDiscoveryService = null,
-        IContextSpaceSourceSearchService? sourceSearchService = null,
         IRagRetriever? ragRetriever = null,
         IVectorQueryTool? vectorQueryTool = null)
     {
         this.agents = agents ?? throw new ArgumentNullException(nameof(agents));
         this.chatClientResolver = chatClientResolver ?? throw new ArgumentNullException(nameof(chatClientResolver));
         this.toolInvoker = toolInvoker ?? throw new ArgumentNullException(nameof(toolInvoker));
-        this.contextSpaces = contextSpaces ?? [];
-        this.skillDiscoveryService = skillDiscoveryService ?? new ContextSpaceSkillDiscoveryService();
-        this.sourceSearchService = sourceSearchService
-                ?? new ContextSpaceSourceSearchService(new ContextSpaceFileSystemSourceReader());
         this.ragRetriever = ragRetriever;
         this.vectorQueryTool = vectorQueryTool;
     }
@@ -332,19 +304,7 @@ public sealed class AgentExecutionRuntime
             yield break;
         }
 
-        var runtimeContext = CreateRuntimeContext(agent);
-
-        var skillLoadedEvent = CreateSkillLoadedEvent(runtimeContext);
-
-        if (skillLoadedEvent is not null)
-        {
-            yield return skillLoadedEvent;
-        }
-
-        runtimeContext = await SearchRuntimeContextSourcesAsync(
-            runtimeContext,
-            query.Message,
-            cancellationToken);
+        var runtimeContext = new AgentRuntimeContext();
 
         AgentExecutionEvent? ragFailureEvent = null;
 
@@ -371,14 +331,6 @@ public sealed class AgentExecutionRuntime
 
         var instructions = AgentInstructionsBuilder.Build(agent, runtimeContext);
 
-        var contextProvidedEvent = CreateContextProvidedEvent(runtimeContext);
-
-        var contextSearchedEvent = CreateContextSearchedEvent(runtimeContext);
-
-        if (contextSearchedEvent is not null)
-        {
-            yield return contextSearchedEvent;
-        }
 
         var validationFailure = ValidateProviderRuntime(agent);
 
@@ -540,83 +492,6 @@ public sealed class AgentExecutionRuntime
     }
 
     /// <summary>
-    /// Agent'a bagli context space, skill ve source search bilgilerini runtime için çözümler.
-    /// </summary>
-    private AgentRuntimeContext CreateRuntimeContext(Agent agent)
-    {
-        if (agent.ContextSpaceIds.Count == 0 || contextSpaces.Count == 0)
-        {
-            return new AgentRuntimeContext([], []);
-        }
-
-        var attachedContextSpaces = contextSpaces
-            .Where(contextSpace => agent.ContextSpaceIds.Any(contextSpaceId =>
-                string.Equals(contextSpaceId, contextSpace.Id, StringComparison.OrdinalIgnoreCase)))
-            .ToArray();
-
-        if (attachedContextSpaces.Length == 0)
-        {
-            return new AgentRuntimeContext([], []);
-        }
-
-        var skills = attachedContextSpaces
-            .SelectMany(contextSpace => skillDiscoveryService.Discover(contextSpace))
-            .ToArray();
-
-        return new AgentRuntimeContext(
-            ContextSpaces: attachedContextSpaces,
-            Skills: skills,
-            AttachedSourceCount: attachedContextSpaces.Sum(contextSpace => contextSpace.Sources.Count));
-    }
-
-    /// <summary>
-    /// Runtime context içindeki bagli source'lari arar ve seçilen excerpt bilgileriyle context'i döner.
-    /// </summary>
-    private async Task<AgentRuntimeContext> SearchRuntimeContextSourcesAsync(
-        AgentRuntimeContext runtimeContext,
-        string input,
-        CancellationToken cancellationToken)
-    {
-        if (runtimeContext.ContextSpaces.Count == 0 || runtimeContext.AttachedSourceCount == 0)
-        {
-            return runtimeContext;
-        }
-
-        var sourceSearchResults = new List<ContextSpaceSourceSearchResult>();
-        var searchedDocumentCount = 0;
-
-        foreach (var contextSpace in runtimeContext.ContextSpaces)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var response = await sourceSearchService.SearchWithSummaryAsync(
-                contextSpace,
-                input,
-                maxResults: int.MaxValue,
-                cancellationToken);
-
-            searchedDocumentCount += response.SearchedDocumentCount;
-            sourceSearchResults.AddRange(response.Results);
-        }
-
-        var candidates = sourceSearchResults
-            .OrderByDescending(result => result.Score)
-            .ThenBy(result => result.RelativePath, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        var selectedResults = SelectSourceContext(candidates);
-
-        return new AgentRuntimeContext(
-            ContextSpaces: runtimeContext.ContextSpaces,
-            Skills: runtimeContext.Skills,
-            AttachedSourceCount: runtimeContext.AttachedSourceCount,
-            SearchedDocumentCount: searchedDocumentCount,
-            CandidateCount: candidates.Length,
-            SourceSearchResults: selectedResults,
-            RagSearchResults: runtimeContext.RetrievedRagContext);
-    }
-
-    /// <summary>
     /// Agent RAG yapilandirmasi varsa RAG retrieval çalistirir ve sonuçlari runtime context'e ekler.
     /// </summary>
     private async Task<AgentRuntimeContext> SearchRagContextAsync(
@@ -657,12 +532,6 @@ public sealed class AgentExecutionRuntime
             cancellationToken).ConfigureAwait(false);
 
         return new AgentRuntimeContext(
-            ContextSpaces: runtimeContext.ContextSpaces,
-            Skills: runtimeContext.Skills,
-            AttachedSourceCount: runtimeContext.AttachedSourceCount,
-            SearchedDocumentCount: runtimeContext.SearchedDocumentCount,
-            CandidateCount: runtimeContext.CandidateCount,
-            SourceSearchResults: runtimeContext.RetrievedSourceContext,
             RagSearchResults: results);
     }
 
@@ -700,12 +569,6 @@ public sealed class AgentExecutionRuntime
         }
 
         return new AgentRuntimeContext(
-            ContextSpaces: runtimeContext.ContextSpaces,
-            Skills: runtimeContext.Skills,
-            AttachedSourceCount: runtimeContext.AttachedSourceCount,
-            SearchedDocumentCount: runtimeContext.SearchedDocumentCount,
-            CandidateCount: runtimeContext.CandidateCount,
-            SourceSearchResults: runtimeContext.RetrievedSourceContext,
             RagSearchResults: MapVectorQueryMatches(result.Matches));
     }
 
@@ -756,124 +619,4 @@ public sealed class AgentExecutionRuntime
         return results;
     }
 
-    /// <summary>
-    /// Ranked source candidates içinden model context'ine gönderilecek yüksek güvenli excerpt'leri seçer.
-    /// </summary>
-    private static IReadOnlyList<ContextSpaceSourceSearchResult> SelectSourceContext(
-        IReadOnlyList<ContextSpaceSourceSearchResult> candidates)
-    {
-        if (candidates.Count == 0)
-        {
-            return [];
-        }
-
-        var topScore = candidates[0].Score;
-        var minimumScore = Math.Max(
-            MinSelectedSourceScore,
-            topScore * RelativeTopSourceScoreRatio);
-
-        return candidates
-            .Where(candidate => candidate.Score >= minimumScore)
-            .Take(MaxSelectedSourceExcerptCount)
-            .ToArray();
-    }
-
-    /// <summary>
-    /// Runtime context bilgisinden chat ekranina gönderilecek context saglandi olayini üretir.
-    /// </summary>
-    private static AgentExecutionEvent? CreateContextProvidedEvent(
-        AgentRuntimeContext runtimeContext)
-    {
-        if (!runtimeContext.HasContext)
-        {
-            return null;
-        }
-
-        var contextSpaces = runtimeContext.ContextSpaces
-            .Select(contextSpace => new AgentExecutionContextSpaceInfo(
-                Id: contextSpace.Id,
-                Name: contextSpace.Name,
-                Description: contextSpace.Description))
-            .ToArray();
-
-        var skills = runtimeContext.Skills
-            .Select(skill => new AgentExecutionSkillInfo(
-                Id: skill.Id,
-                Name: skill.Name,
-                Description: skill.Description,
-                Version: skill.Version,
-                Tags: skill.Tags,
-                SourceId: skill.SourceId,
-                RelativePath: skill.RelativePath))
-            .ToArray();
-
-        var sources = runtimeContext.ContextSpaces
-            .SelectMany(contextSpace => contextSpace.Sources)
-            .Select(source => new AgentExecutionSourceInfo(
-                Id: source.Id,
-                Name: source.Name,
-                Kind: source.Kind.ToString(),
-                Description: source.Description))
-            .ToArray();
-
-        return AgentExecutionEvent.ContextProvided(
-            contextSpaces,
-            skills,
-            sources);
-    }
-
-    /// <summary>
-    /// Runtime context içindeki yüklenen skill bilgilerinden chat ekranina gönderilecek skill loaded olayini üretir.
-    /// </summary>
-    private static AgentExecutionEvent? CreateSkillLoadedEvent(
-        AgentRuntimeContext runtimeContext)
-    {
-        if (runtimeContext.Skills.Count == 0)
-        {
-            return null;
-        }
-
-        var loadedSkills = runtimeContext.Skills
-            .Select(skill => new AgentExecutionLoadedSkillInfo(
-                SkillId: skill.Id,
-                SkillName: skill.Name,
-                Version: skill.Version,
-                Description: skill.Description))
-            .ToArray();
-
-        return AgentExecutionEvent.SkillLoaded(loadedSkills);
-    }
-
-    /// <summary>
-    /// Runtime context içindeki source arama sonuçlarindan chat ekranina gönderilecek context arandi olayini üretir.
-    /// </summary>
-    private static AgentExecutionEvent? CreateContextSearchedEvent(
-        AgentRuntimeContext runtimeContext)
-    {
-        if (runtimeContext.AttachedSourceCount == 0)
-        {
-            return null;
-        }
-
-        var sourceSearchResults = runtimeContext.RetrievedSourceContext
-            .Select(result => new AgentExecutionSourceSearchResultInfo(
-                SourceId: result.SourceId,
-                SourceName: result.SourceName,
-                RelativePath: result.RelativePath,
-                FileName: result.FileName,
-                Snippet: result.Snippet,
-                Score: result.Score))
-            .ToArray();
-
-        var summary = new AgentExecutionContextSearchSummaryInfo(
-            AttachedSourceCount: runtimeContext.AttachedSourceCount,
-            SearchedDocumentCount: runtimeContext.SearchedDocumentCount,
-            CandidateCount: runtimeContext.CandidateCount,
-            SelectedCount: runtimeContext.SelectedCount);
-
-        return AgentExecutionEvent.ContextSearched(summary, sourceSearchResults);
-    }
-
-
 }
-

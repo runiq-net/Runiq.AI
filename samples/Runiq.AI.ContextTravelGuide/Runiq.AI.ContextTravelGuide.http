@@ -1,6 +1,0 @@
-@Runiq_AI_ContextTravelGuide_HostAddress = http://localhost:6185
-
-GET {{Runiq_AI_ContextTravelGuide_HostAddress}}/dashboard
-Accept: application/json
-
-###

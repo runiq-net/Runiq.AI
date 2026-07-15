@@ -1,7 +1,6 @@
 <Solution>
   <Folder Name="/samples/">
     <Project Path="samples/Runiq.AI.ExpenseDesk/Runiq.AI.ExpenseDesk.csproj" />
-    <Project Path="samples/Runiq.AI.ContextTravelGuide/Runiq.AI.ContextTravelGuide.csproj" />
     <Project Path="samples/Runiq.AI.DashboardSecurityRole/Runiq.AI.DashboardSecurityRole.csproj" />
     <Project Path="samples/Runiq.AI.DashboardSecurityUser/Runiq.AI.DashboardSecurityUser.csproj" />
     <Project Path="samples/Runiq.AI.Rag.CorporateDocumentAssistant/Runiq.AI.Rag.CorporateDocumentAssistant.csproj" />
@@ -12,7 +11,6 @@
   <Folder Name="/src/">
     <Project Path="src/Runiq.AI.Agents/Runiq.AI.Agents.csproj" />
     <Project Path="src/Runiq.AI.Cli/Runiq.AI.Cli.csproj" />
-    <Project Path="src/Runiq.AI.ContextSpaces/Runiq.AI.ContextSpaces.csproj" />
     <Project Path="src/Runiq.AI.Core/Runiq.AI.Core.csproj" />
     <Project Path="src/Runiq.AI.Mcp/Runiq.AI.Mcp.csproj" />
     <Project Path="src/Runiq.AI.Rag/Runiq.AI.Rag.csproj" />
@@ -21,7 +19,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/Runiq.AI.Agents.Tests/Runiq.AI.Agents.Tests.csproj" />
     <Project Path="tests/Runiq.AI.Cli.Tests/Runiq.AI.Cli.Tests.csproj" />
-    <Project Path="tests/Runiq.AI.ContextSpaces.Tests/Runiq.AI.ContextSpaces.Tests.csproj" />
     <Project Path="tests/Runiq.AI.Core.Tests/Runiq.AI.Core.Tests.csproj" />
     <Project Path="tests/Runiq.AI.Rag.Tests/Runiq.AI.Rag.Tests.csproj" />
     <Project Path="tests/Runiq.AI.Workflows.Tests/Runiq.AI.Workflows.Tests.csproj" />

@@ -8,7 +8,7 @@
 
 Runiq AI is a code-first agent runtime for .NET applications.
 
-It gives ASP.NET Core teams a native way to define AI agents in C#, attach strongly typed tools, stream model responses, connect reusable context sources, orchestrate workflows, and inspect runtime activity through an embedded dashboard.
+It gives ASP.NET Core teams a native way to define AI agents in C#, attach strongly typed tools, stream model responses, use RAG retrieval, orchestrate workflows, and inspect runtime activity through an embedded dashboard.
 
 > Preview package: APIs may evolve before the first stable release.
 
@@ -17,8 +17,8 @@ It gives ASP.NET Core teams a native way to define AI agents in C#, attach stron
 | Package | Purpose |
 | --- | --- |
 | `Runiq.AI.Agents` | Agent definitions, tool execution, provider integration, streaming events, and execution results. |
-| `Runiq.AI.ContextSpaces` | Context spaces, source readers, skill discovery, and document preview primitives. |
 | `Runiq.AI.Core` | ASP.NET Core hosting extensions, runtime endpoints, and the embedded dashboard. |
+| `Runiq.AI.Rag` | Document chunking, embeddings, vector storage, and retrieval for document-based knowledge. |
 | `Runiq.AI.Workflows` | Code-first workflow orchestration primitives for agent runtime and dashboard scenarios. |
 
 ## Installation
@@ -28,7 +28,6 @@ Install the packages you need:
 ```powershell
 dotnet add package Runiq.AI.Core --prerelease
 dotnet add package Runiq.AI.Agents --prerelease
-dotnet add package Runiq.AI.ContextSpaces --prerelease
 dotnet add package Runiq.AI.Workflows --prerelease
 ```
 

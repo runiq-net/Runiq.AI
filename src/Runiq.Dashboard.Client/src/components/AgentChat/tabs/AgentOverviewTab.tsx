@@ -1,12 +1,7 @@
 import type { ReactNode } from 'react';
-import { Database, Wrench } from 'lucide-react';
+import { Wrench } from 'lucide-react';
 
-import type {
-  AgentContextSpaceMetadata,
-  AgentMetadata,
-  AgentToolMetadata,
-} from '../../../api/agentMetadataApi';
-import { getDashboardBasePath } from '../../../dashboardConfig';
+import type { AgentMetadata, AgentToolMetadata } from '../../../api/agentMetadataApi';
 import { parseModelReference } from '../../../utils/modelReference';
 import { getToolDisplayName } from './agentToolDisplay';
 
@@ -23,7 +18,6 @@ export function AgentOverviewTab({
 }: AgentOverviewTabProps) {
   const modelReference = parseModelReference(agent.model);
   const tools = agent.tools ?? [];
-  const contextSpaces = agent.contextSpaces ?? [];
 
   return (
     <div className="flex min-h-0 flex-col gap-2">
@@ -38,10 +32,6 @@ export function AgentOverviewTab({
           onOpenTools={onOpenTools}
           onOpenTool={onOpenTool}
         />
-      </InspectorCard>
-
-      <InspectorCard title="Context Space">
-        <ContextSpaceSummary contextSpaces={contextSpaces} />
       </InspectorCard>
 
       <InspectorCard title="Memory">
@@ -101,64 +91,6 @@ function ToolList({
   );
 }
 
-function ContextSpaceSummary({
-  contextSpaces,
-}: {
-  contextSpaces: AgentContextSpaceMetadata[];
-}) {
-  if (contextSpaces.length === 0) {
-    return (
-      <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-        No context space attached
-      </span>
-    );
-  }
-
-  const visibleContextSpace = contextSpaces[0];
-  const hiddenContextSpaceCount = contextSpaces.length - 1;
-
-  return (
-    <div className="space-y-1.5">
-      <button
-        type="button"
-        title={
-          visibleContextSpace.description ||
-          visibleContextSpace.name ||
-          visibleContextSpace.id
-        }
-        onClick={() => navigateToContextSpace(visibleContextSpace.id)}
-        className="group -mx-1.5 flex w-[calc(100%+0.75rem)] cursor-pointer flex-col rounded-md border border-transparent px-1.5 py-1 text-left transition hover:border-zinc-200 hover:bg-white focus-visible:border-zinc-400 focus-visible:bg-white focus-visible:outline-none dark:hover:border-zinc-700 dark:hover:bg-zinc-900 dark:focus-visible:border-zinc-600 dark:focus-visible:bg-zinc-900"
-      >
-        <span className="flex w-full min-w-0 items-center gap-2 text-sm font-semibold text-zinc-900 transition group-hover:text-zinc-950 dark:text-zinc-100 dark:group-hover:text-white">
-          <Database className="size-3.5 shrink-0 text-zinc-500 transition group-hover:text-zinc-700 dark:text-zinc-500 dark:group-hover:text-zinc-300" />
-          <span className="truncate">
-            {visibleContextSpace.name || visibleContextSpace.id}
-          </span>
-        </span>
-
-        <span className="mt-1 truncate text-xs text-zinc-500 dark:text-zinc-500">
-          {formatContextSpaceCounts(visibleContextSpace)}
-          {hiddenContextSpaceCount > 0
-            ? ` · +${hiddenContextSpaceCount} more`
-            : ''}
-        </span>
-      </button>
-    </div>
-  );
-}
-
-function navigateToContextSpace(contextSpaceId: string) {
-  const basePath = getDashboardBasePath().replace(/\/+$/g, '');
-
-  window.history.pushState(
-    {},
-    '',
-    `${basePath}/context-spaces/${encodeURIComponent(contextSpaceId)}`,
-  );
-
-  window.dispatchEvent(new PopStateEvent('popstate'));
-}
-
 function formatToolTitle(tool: AgentToolMetadata): string {
   const parts = [
     tool.description?.trim() || 'No description provided.',
@@ -203,25 +135,6 @@ function KeyValueRow({ label, value }: { label: string; value: string }) {
       </span>
     </div>
   );
-}
-
-function formatContextSpaceCounts(
-  contextSpace: AgentContextSpaceMetadata,
-): string {
-  const counts = [
-    formatCount(contextSpace.skillCount, 'Skill'),
-    formatCount(contextSpace.documentCount, 'Document'),
-  ].filter(Boolean);
-
-  return counts.length > 0 ? counts.join(' · ') : 'Document summary unavailable';
-}
-
-function formatCount(value: number | undefined, label: string): string | null {
-  if (typeof value !== 'number') {
-    return null;
-  }
-
-  return `${value} ${label}${value === 1 ? '' : 's'}`;
 }
 
 function formatProvider(provider: string): string {

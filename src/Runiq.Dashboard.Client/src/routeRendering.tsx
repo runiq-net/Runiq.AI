@@ -1,6 +1,5 @@
 import type { DashboardBreadcrumb } from './layouts/DashboardLayout';
 import { AgentChatPage } from './pages/AgentChatPage';
-import { ContextSpaceDetailPage } from './pages/ContextSpaceDetailPage';
 import { ToolDetailPage } from './pages/ToolDetailPage';
 import { WorkflowDetailPage } from './pages/WorkflowDetailPage';
 import { McpPage } from './pages/McpPage';
@@ -34,10 +33,6 @@ export function renderDashboardRoute(route: DashboardRoute) {
     return <RagPage />;
   }
 
-  if (route.page === 'context-space-detail') {
-    return <ContextSpaceDetailPage contextSpaceId={route.contextSpaceId} />;
-  }
-
   if (route.page === 'workflow-detail') {
     return <WorkflowDetailPage workflowId={route.workflowId} />;
   }
@@ -62,10 +57,6 @@ export function getActivePage(route: DashboardRoute): DashboardPage {
 
   if (route.page === 'rag') {
     return 'rag';
-  }
-
-  if (route.page === 'context-space-detail') {
-    return 'context-spaces';
   }
 
   if (route.page === 'workflow-detail') {
@@ -94,10 +85,6 @@ export function getRouteTitle(route: DashboardRoute): string {
 
   if (route.page === 'rag') {
     return 'RAG';
-  }
-
-  if (route.page === 'context-space-detail') {
-    return 'Context Space';
   }
 
   if (route.page === 'workflow-detail') {
@@ -155,18 +142,6 @@ export function getRouteBreadcrumbs(
       },
       {
         label: formatRouteDisplayName(route.toolName),
-      },
-    ];
-  }
-
-  if (route.page === 'context-space-detail') {
-    return [
-      {
-        label: 'Context Spaces',
-        onClick: () => navigateTo('context-spaces'),
-      },
-      {
-        label: formatRouteDisplayName(route.contextSpaceId),
       },
     ];
   }

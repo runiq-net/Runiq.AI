@@ -28,10 +28,6 @@ public static class MetadataEndpointExtensions
             return Results.Ok(metadataService.GetTools());
         });
 
-        group.MapGet("/context-spaces", (IRuntimeMetadataService metadataService) =>
-        {
-            return Results.Ok(metadataService.GetContextSpaces());
-        });
 
         return endpoints;
     }
