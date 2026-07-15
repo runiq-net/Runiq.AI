@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
+    <PackageId>Runiq.AI.Workflows</PackageId>
+    <Version>0.1.0-preview.7</Version>
+    <Title>Runiq Workflows</Title>
+    <Authors>Runiq</Authors>
+    <Company>Runiq</Company>
+    <Description>Workflow orchestration primitives for Runiq AI runtime and dashboard scenarios.</Description>
+    <PackageTags>ai;agents;workflows;orchestration;dotnet;runiq</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryType>git</RepositoryType>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <AssemblyName>Runiq.AI.Workflows</AssemblyName>
+    <RootNamespace>Runiq.AI.Workflows</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Update="README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\assets\nuget\runiq-icon.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Runiq.AI.Agents\Runiq.AI.Agents.csproj" />
+  </ItemGroup>
+</Project>

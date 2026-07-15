@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.8" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\samples\Runiq.AI.Rag.IngestionSample\Runiq.AI.Rag.IngestionSample.csproj" />
+    <ProjectReference Include="..\..\samples\Runiq.AI.Rag.CorporateDocumentAssistant\Runiq.AI.Rag.CorporateDocumentAssistant.csproj" />
+    <ProjectReference Include="..\..\samples\Runiq.AI.Rag.UpsertPipelineSample\Runiq.AI.Rag.UpsertPipelineSample.csproj" />
+    <ProjectReference Include="..\..\src\Runiq.AI.Rag\Runiq.AI.Rag.csproj" />
+  </ItemGroup>
+
+</Project>
+

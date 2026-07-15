@@ -1,6 +1,6 @@
-# Contributing to Runiq.Net
+# Contributing to Runiq AI
 
-Thank you for your interest in contributing to Runiq.Net! This guide will help you get started.
+Thank you for your interest in contributing to Runiq AI! This guide will help you get started.
 
 ## Prerequisites
 
@@ -13,8 +13,8 @@ Thank you for your interest in contributing to Runiq.Net! This guide will help y
 2. **Clone** your fork locally:
 
    ```bash
-   git clone https://github.com/<your-username>/Runiq.net.git
-   cd Runiq.net
+   git clone https://github.com/<your-username>/Runiq.AI.git
+   cd Runiq.AI
    ```
 
 3. **Restore** dependencies:
@@ -90,7 +90,7 @@ fix: resolve duplicate tool registration validation
 
 ## Reporting Issues
 
-Found a bug or have a feature request? [Open an issue](https://github.com/runiq-net/Runiq.net/issues) with:
+Found a bug or have a feature request? [Open an issue](https://github.com/runiq-net/Runiq.AI/issues) with:
 
 - A clear title and description.
 - Steps to reproduce (for bugs).
@@ -98,4 +98,4 @@ Found a bug or have a feature request? [Open an issue](https://github.com/runiq-
 
 ## License
 
-By contributing to Runiq.Net, you agree that your contributions will be licensed under the [MIT License](LICENSE).
+By contributing to Runiq AI, you agree that your contributions will be licensed under the [MIT License](LICENSE).

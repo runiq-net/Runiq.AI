@@ -1,0 +1,1519 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using Runiq.AI.Rag.Abstractions.Chunking;
+using Runiq.AI.Rag.Abstractions.Embeddings;
+using Runiq.AI.Rag.Abstractions.Retrieval;
+using Runiq.AI.Rag.Abstractions.Services;
+using Runiq.AI.Rag.Abstractions.Tools;
+using Runiq.AI.Rag.Abstractions.VectorStores;
+using Runiq.AI.Rag.Chunking;
+using Runiq.AI.Rag.Configuration;
+using Runiq.AI.Rag.DependencyInjection;
+using Runiq.AI.Rag.Embeddings;
+using Runiq.AI.Rag.Models.Documents;
+using Runiq.AI.Rag.Models.Embeddings;
+using Runiq.AI.Rag.Models.Ingestion;
+using Runiq.AI.Rag.Models.Queries;
+using Runiq.AI.Rag.Models.Retrieval;
+using Runiq.AI.Rag.Models.Search;
+using Runiq.AI.Rag.Models.Tools;
+using Runiq.AI.Rag.Models.VectorStores;
+using Runiq.AI.Rag.Retrieval;
+using Runiq.AI.Rag.Services;
+using Runiq.AI.Rag.Tools;
+using Runiq.AI.Rag.VectorStores;
+using Runiq.AI.Rag.VectorStores.InMemory;
+
+namespace Runiq.AI.Rag.Tests.DependencyInjection;
+
+public sealed class RuniqRagServiceCollectionExtensionsTests
+{
+    [Fact]
+    public void AddRuniqRag_ShouldThrow_WhenServicesIsNull()
+    {
+        IServiceCollection services = null!;
+
+        var exception = Assert.Throws<ArgumentNullException>(() => services.AddRuniqRag());
+
+        Assert.Equal("services", exception.ParamName);
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterRagService()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagService));
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterRagDocumentIngestionService()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagDocumentIngestionService));
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterRagRetriever()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagRetriever));
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterRagEmbeddingProvider()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagEmbeddingProvider));
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterRagEmbeddingInputPreparer()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagEmbeddingInputPreparer));
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterRagChunkEmbeddingGenerator()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagChunkEmbeddingGenerator));
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterRagVectorStore()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagVectorStore));
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterRagVectorRecordMapper()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagVectorRecordMapper));
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterRagUpsertVectorRequestMapper()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagUpsertVectorRequestMapper));
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterRagVectorRecordDimensionValidator()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagVectorRecordDimensionValidator));
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterRagVectorStoreUpsertPipeline()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagVectorStoreUpsertPipeline));
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterRagRetrievalPipeline()
+    {
+        // Verifies that the default RAG registration includes the retrieval pipeline contract.
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagRetrievalPipeline));
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveDefaultRagRetrievalPipeline()
+    {
+        // Verifies that the default RAG registration exposes the retrieval pipeline through DI.
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<DefaultRagRetrievalPipeline>(
+            serviceProvider.GetRequiredService<IRagRetrievalPipeline>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterRetrievalPipelineWithScopedLifetime()
+    {
+        // Verifies that the retrieval pipeline registration follows the existing RAG pipeline lifetime pattern.
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Equal(
+            ServiceLifetime.Scoped,
+            services.Single(descriptor => descriptor.ServiceType == typeof(IRagRetrievalPipeline)).Lifetime);
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldNotOverwriteUserRegisteredRetrievalPipeline()
+    {
+        // Verifies that a retrieval pipeline registered before AddRuniqRag is preserved as a custom override.
+        var services = new ServiceCollection();
+        services.AddScoped<IRagRetrievalPipeline, TestRetrievalPipeline>();
+
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<TestRetrievalPipeline>(serviceProvider.GetRequiredService<IRagRetrievalPipeline>());
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigure_ShouldAllowCustomRetrievalPipeline()
+    {
+        // Verifies that the fluent builder can replace the default retrieval pipeline implementation.
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(rag => rag.UseRetrievalPipeline<TestRetrievalPipeline>());
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<TestRetrievalPipeline>(serviceProvider.GetRequiredService<IRagRetrievalPipeline>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterVectorQueryTool()
+    {
+        // Verifies that the default RAG registration exposes the Vector Query Tool contract.
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IVectorQueryTool));
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveDefaultVectorQueryTool()
+    {
+        // Verifies that the default RAG registration resolves the Vector Query Tool without manual wiring, reusing the retrieval pipeline it depends on.
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+        using var scope = serviceProvider.CreateScope();
+
+        Assert.IsType<DefaultVectorQueryTool>(
+            scope.ServiceProvider.GetRequiredService<IVectorQueryTool>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterVectorQueryToolWithScopedLifetime()
+    {
+        // Verifies that the Vector Query Tool registration follows the scoped lifetime of the retrieval pipeline it delegates to.
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Equal(
+            ServiceLifetime.Scoped,
+            services.Single(descriptor => descriptor.ServiceType == typeof(IVectorQueryTool)).Lifetime);
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldNotOverwriteUserRegisteredVectorQueryTool()
+    {
+        // Verifies that a Vector Query Tool registered before AddRuniqRag is preserved as a custom override.
+        var services = new ServiceCollection();
+        services.AddScoped<IVectorQueryTool, TestVectorQueryTool>();
+
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+        using var scope = serviceProvider.CreateScope();
+
+        Assert.IsType<TestVectorQueryTool>(scope.ServiceProvider.GetRequiredService<IVectorQueryTool>());
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigure_ShouldAllowCustomVectorQueryTool()
+    {
+        // Verifies that the fluent builder can replace the default Vector Query Tool implementation.
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(rag => rag.UseVectorQueryTool<TestVectorQueryTool>());
+
+        using var serviceProvider = services.BuildServiceProvider();
+        using var scope = serviceProvider.CreateScope();
+
+        Assert.IsType<TestVectorQueryTool>(scope.ServiceProvider.GetRequiredService<IVectorQueryTool>());
+    }
+
+    [Fact]
+    public async Task AddRagVectorStore_ShouldRouteRetrievalPipelineQueriesToCustomVectorStore_WhenRegisteredAfterAddRuniqRag()
+    {
+        // Verifies that the retrieval pipeline resolved from the service provider forwards its query to a custom vector store registered after AddRuniqRag.
+        var services = new ServiceCollection();
+        var vectorStore = new QueryRecordingVectorStore();
+        services.AddRuniqRag();
+        services.AddRagVectorStore(_ => vectorStore);
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var pipeline = serviceProvider.GetRequiredService<IRagRetrievalPipeline>();
+
+        var result = await pipeline.RetrieveAsync(new RetrievalRequest
+        {
+            IndexName = "documents",
+            QueryVector = [0.1f, 0.2f],
+        });
+
+        Assert.True(result.Succeeded);
+        Assert.True(vectorStore.QueryWasCalled);
+        Assert.Equal("documents", vectorStore.LastQueryRequest?.IndexName);
+        Assert.Equal([0.1f, 0.2f], vectorStore.LastQueryRequest?.Values);
+    }
+
+    [Fact]
+    public async Task AddRagEmbeddingProvider_ShouldMakeRetrievalPipelineEmbedThroughCustomEmbeddingProvider_WhenRegisteredAfterAddRuniqRag()
+    {
+        // Verifies that the retrieval pipeline resolved from the service provider embeds the query text with a custom embedding provider and forwards the resulting vector to the vector store.
+        var services = new ServiceCollection();
+        var embeddingProvider = new RecordingEmbeddingProvider();
+        var vectorStore = new QueryRecordingVectorStore();
+        services.AddRuniqRag();
+        services.AddRagEmbeddingProvider(_ => embeddingProvider);
+        services.AddRagVectorStore(_ => vectorStore);
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var pipeline = serviceProvider.GetRequiredService<IRagRetrievalPipeline>();
+
+        var result = await pipeline.RetrieveAsync(new RetrievalRequest
+        {
+            IndexName = "documents",
+            QueryText = "how does retrieval resolve dependencies?",
+        });
+
+        Assert.True(result.Succeeded);
+        Assert.True(embeddingProvider.WasCalled);
+        Assert.Equal("how does retrieval resolve dependencies?", embeddingProvider.LastText);
+        Assert.Equal([0.5f, 0.6f], vectorStore.LastQueryRequest?.Values);
+    }
+
+    [Fact]
+    public async Task AddRuniqRag_ShouldResolveRetrievalPipelineDependenciesWithoutManualWiring()
+    {
+        // Verifies that the retrieval pipeline and its embedding and vector store dependencies resolve from the default registration without any manual service wiring.
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var pipeline = serviceProvider.GetRequiredService<IRagRetrievalPipeline>();
+
+        var result = await pipeline.RetrieveAsync(new RetrievalRequest
+        {
+            IndexName = "documents",
+            QueryText = "query text",
+        });
+
+        // The default null embedding provider returns an empty embedding, so the pipeline reports a managed embedding failure rather than throwing, which proves the whole dependency graph resolved and executed end to end.
+        Assert.False(result.Succeeded);
+        Assert.Equal(RetrievalErrorCode.EmbeddingFailed, result.ErrorCode);
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveDefaultRagVectorStoreUpsertPipeline()
+    {
+        // Verifies that the default RAG registration exposes the upsert pipeline through DI.
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<DefaultRagVectorStoreUpsertPipeline>(
+            serviceProvider.GetRequiredService<IRagVectorStoreUpsertPipeline>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveDefaultRagUpsertVectorRequestMapper()
+    {
+        // Verifies that the default RAG registration exposes the upsert request mapper through DI.
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<DefaultRagUpsertVectorRequestMapper>(
+            serviceProvider.GetRequiredService<IRagUpsertVectorRequestMapper>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterUpsertPipelineServicesWithExpectedLifetimes()
+    {
+        // Verifies that upsert pipeline registrations follow the existing RAG service lifetime pattern.
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Equal(
+            ServiceLifetime.Scoped,
+            services.Single(descriptor => descriptor.ServiceType == typeof(IRagVectorStoreUpsertPipeline)).Lifetime);
+        Assert.Equal(
+            ServiceLifetime.Scoped,
+            services.Single(descriptor => descriptor.ServiceType == typeof(IRagUpsertVectorRequestMapper)).Lifetime);
+        Assert.Equal(
+            ServiceLifetime.Singleton,
+            services.Single(descriptor => descriptor.ServiceType == typeof(IRagVectorRecordDimensionValidator)).Lifetime);
+        Assert.Equal(
+            ServiceLifetime.Singleton,
+            services.Single(descriptor => descriptor.ServiceType == typeof(IRagVectorStore)).Lifetime);
+    }
+
+    [Fact]
+    public async Task AddRagVectorStore_ShouldRouteUpsertPipelineWritesToCustomVectorStore_WhenRegisteredAfterAddRuniqRag()
+    {
+        // Verifies that a custom vector store override receives upsert pipeline writes instead of the default store.
+        var services = new ServiceCollection();
+        var vectorStore = new TrackingVectorStore();
+        services.AddRuniqRag();
+        services.AddRagVectorStore(_ => vectorStore);
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var pipeline = serviceProvider.GetRequiredService<IRagVectorStoreUpsertPipeline>();
+        var ingestionResult = CreateSingleChunkIngestionResult([0.1f, 0.2f]);
+
+        var result = await pipeline.UpsertAsync(ingestionResult, "documents", expectedDimensions: 2);
+
+        Assert.True(result.Succeeded);
+        Assert.True(vectorStore.UpsertWasCalled);
+        Assert.Equal(1, result.ProcessedCount);
+    }
+
+    [Fact]
+    public async Task AddRuniqRag_ShouldUpsertThroughDiResolvedPipelineAndValidatingVectorStoreChain()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag(rag => rag.UseInMemoryVectorStore());
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var vectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
+        await vectorStore.CreateIndexAsync(new CreateVectorIndexRequest
+        {
+            IndexName = "documents",
+            Dimensions = 2,
+        });
+
+        var pipeline = serviceProvider.GetRequiredService<IRagVectorStoreUpsertPipeline>();
+        var ingestionResult = CreateSingleChunkIngestionResult([0.1f, 0.2f]);
+
+        var result = await pipeline.UpsertAsync(ingestionResult, "documents", expectedDimensions: 2);
+
+        Assert.IsType<ValidatingRagVectorStore>(vectorStore);
+        Assert.True(result.Succeeded);
+        Assert.Equal(1, result.ProcessedCount);
+    }
+
+    [Fact]
+    public async Task AddRuniqRag_ShouldFailFastThroughValidatingVectorStore_WhenPipelineCallOmitsExpectedDimensions()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag(rag => rag.UseInMemoryVectorStore());
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var pipeline = serviceProvider.GetRequiredService<IRagVectorStoreUpsertPipeline>();
+        var ingestionResult = CreateSingleChunkIngestionResult([0.1f, 0.2f]);
+
+        var result = await pipeline.UpsertAsync(ingestionResult, "documents");
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(VectorStoreUpsertErrorCode.StoreFailed, result.ErrorCode);
+        Assert.NotEqual("Vector expected dimensions are required for upsert validation.", result.Reason);
+    }
+
+    private static RagDocumentIngestionResult CreateSingleChunkIngestionResult(IReadOnlyList<float> vectorValues)
+    {
+        var chunk = new RagChunk
+        {
+            Id = "document-1:chunk:0",
+            DocumentId = "document-1",
+            Content = "Chunk content.",
+            Index = 0,
+        };
+
+        return new RagDocumentIngestionResult
+        {
+            DocumentId = chunk.DocumentId,
+            Chunks = [chunk],
+            Items =
+            [
+                new RagDocumentIngestionItem
+                {
+                    Chunk = chunk,
+                    EmbeddingResult = new RagChunkEmbeddingResult
+                    {
+                        ChunkId = chunk.Id,
+                        DocumentId = chunk.DocumentId,
+                        ChunkIndex = chunk.Index,
+                        Embedding = new RagEmbedding(vectorValues),
+                    },
+                },
+            ],
+        };
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldRegisterRagChunker()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IRagChunker));
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveRagService()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagService>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveRagDocumentIngestionService()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagDocumentIngestionService>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveRagRetriever()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagRetriever>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveRagChunker()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<DefaultRagChunker>(serviceProvider.GetRequiredService<IRagChunker>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveNullEmbeddingProviderByDefault()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<NullEmbeddingProvider>(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveDefaultEmbeddingInputPreparer()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<DefaultRagEmbeddingInputPreparer>(
+            serviceProvider.GetRequiredService<IRagEmbeddingInputPreparer>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveDefaultRagChunkEmbeddingGenerator()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<DefaultRagChunkEmbeddingGenerator>(
+            serviceProvider.GetRequiredService<IRagChunkEmbeddingGenerator>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveDefaultRagVectorRecordMapper()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<DefaultRagVectorRecordMapper>(
+            serviceProvider.GetRequiredService<IRagVectorRecordMapper>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveDefaultRagVectorRecordDimensionValidator()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<DefaultRagVectorRecordDimensionValidator>(
+            serviceProvider.GetRequiredService<IRagVectorRecordDimensionValidator>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveIngestionDependenciesForConsumerScenario()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<DefaultRagChunker>(serviceProvider.GetRequiredService<IRagChunker>());
+        Assert.IsType<DefaultRagEmbeddingInputPreparer>(
+            serviceProvider.GetRequiredService<IRagEmbeddingInputPreparer>());
+        Assert.IsType<DefaultRagChunkEmbeddingGenerator>(
+            serviceProvider.GetRequiredService<IRagChunkEmbeddingGenerator>());
+        Assert.IsType<DefaultRagDocumentIngestionService>(
+            serviceProvider.GetRequiredService<IRagDocumentIngestionService>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldNotRegisterProviderSpecificIngestionServices()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+
+        var providerSpecificNames = new[]
+        {
+            "OpenAI",
+            "Azure",
+            "Ollama",
+            "Pinecone",
+            "Qdrant",
+            "Weaviate",
+        };
+
+        var registeredRagTypes = services
+            .SelectMany(descriptor => new[]
+            {
+                descriptor.ServiceType,
+                descriptor.ImplementationType,
+                descriptor.ImplementationInstance?.GetType(),
+            })
+            .Where(type => type is not null && type.Namespace?.StartsWith("Runiq.AI.Rag", StringComparison.Ordinal) == true)
+            .Select(type => type!.FullName ?? type.Name);
+
+        Assert.DoesNotContain(
+            registeredRagTypes,
+            registeredType => providerSpecificNames.Any(
+                providerName => registeredType.Contains(providerName, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldNotOverwriteUserRegisteredEmbeddingInputPreparer()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IRagEmbeddingInputPreparer, TestEmbeddingInputPreparer>();
+
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<TestEmbeddingInputPreparer>(serviceProvider.GetRequiredService<IRagEmbeddingInputPreparer>());
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldResolveNullVectorStoreByDefault()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<ValidatingRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+    }
+
+    [Fact]
+    public async Task AddRuniqRag_ShouldValidateDefaultVectorStoreBeforeUpsert()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var vectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
+
+        await vectorStore.CreateIndexAsync(new CreateVectorIndexRequest
+        {
+            IndexName = "documents",
+            Dimensions = 3,
+        });
+        var result = await vectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            Records =
+            [
+                new VectorRecord
+                {
+                    Id = "vector-1",
+                    Values = [0.1f, 0.2f],
+                },
+            ],
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("documents", result.IndexName);
+        Assert.Equal("vector-1", result.RecordId);
+        Assert.Equal(3, result.ExpectedDimensions);
+        Assert.Equal(2, result.ActualDimensions);
+    }
+
+    [Fact]
+    public void AddRuniqRag_ShouldNotOverwriteUserRegisteredEmbeddingProvider()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IRagEmbeddingProvider, TestEmbeddingProvider>();
+
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<TestEmbeddingProvider>(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+    }
+
+    [Fact]
+    public async Task AddRuniqRag_ShouldWrapUserRegisteredVectorStore()
+    {
+        var services = new ServiceCollection();
+        var vectorStore = new TrackingVectorStore();
+        services.AddSingleton<IRagVectorStore>(vectorStore);
+
+        services.AddRuniqRag();
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var resolvedVectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
+        var result = await resolvedVectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            ExpectedDimensions = 3,
+            Records =
+            [
+                new VectorRecord
+                {
+                    Id = "vector-1",
+                    Values = [0.1f, 0.2f],
+                },
+            ],
+        });
+
+        Assert.IsType<ValidatingRagVectorStore>(resolvedVectorStore);
+        Assert.False(result.Succeeded);
+        Assert.False(vectorStore.UpsertWasCalled);
+        Assert.Equal("documents", result.IndexName);
+        Assert.Equal("vector-1", result.RecordId);
+    }
+
+    [Fact]
+    public void AddRagEmbeddingProvider_ShouldRegisterCustomEmbeddingProvider()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRagEmbeddingProvider<TestEmbeddingProvider>();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<TestEmbeddingProvider>(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+    }
+
+    [Fact]
+    public void AddRagEmbeddingProvider_ShouldOverrideDefaultEmbeddingProvider_WhenRegisteredAfterAddRuniqRag()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+        services.AddRagEmbeddingProvider<TestEmbeddingProvider>();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<TestEmbeddingProvider>(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+    }
+
+    [Fact]
+    public void AddRagEmbeddingProviderWithFactory_ShouldRegisterCustomEmbeddingProviderInstance()
+    {
+        var services = new ServiceCollection();
+        var provider = new TestEmbeddingProvider();
+
+        services.AddRagEmbeddingProvider(_ => provider);
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.Same(provider, serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+    }
+
+    [Fact]
+    public void AddRagChunker_ShouldRegisterCustomChunker()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRagChunker<TestChunker>();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<TestChunker>(serviceProvider.GetRequiredService<IRagChunker>());
+    }
+
+    [Fact]
+    public void AddRagChunker_ShouldOverrideDefaultChunker_WhenRegisteredAfterAddRuniqRag()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+        services.AddRagChunker<TestChunker>();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<TestChunker>(serviceProvider.GetRequiredService<IRagChunker>());
+    }
+
+    [Fact]
+    public void AddRagChunkerWithFactory_ShouldRegisterCustomChunkerInstance()
+    {
+        var services = new ServiceCollection();
+        var chunker = new TestChunker();
+
+        services.AddRagChunker(_ => chunker);
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.Same(chunker, serviceProvider.GetRequiredService<IRagChunker>());
+    }
+
+    [Fact]
+    public void AddInMemoryRagVectorStore_ShouldRegisterInMemoryVectorStore()
+    {
+        var services = new ServiceCollection();
+
+        services.AddInMemoryRagVectorStore();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<ValidatingRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+    }
+
+    [Fact]
+    public void AddInMemoryRagVectorStore_ShouldOverrideDefaultVectorStore_WhenRegisteredAfterAddRuniqRag()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag();
+        services.AddInMemoryRagVectorStore();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<ValidatingRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+    }
+
+    [Fact]
+    public void AddInMemoryRagVectorStore_ShouldNotRequireProviderConfiguration()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(rag => rag.UseInMemoryVectorStore());
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<ValidatingRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagService>());
+    }
+
+    [Fact]
+    public async Task AddInMemoryRagVectorStore_ShouldValidateThroughDecoratorBeforeProviderUpsert()
+    {
+        var services = new ServiceCollection();
+        services.AddInMemoryRagVectorStore();
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var vectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
+
+        await vectorStore.CreateIndexAsync(new CreateVectorIndexRequest
+        {
+            IndexName = "documents",
+            Dimensions = 3,
+        });
+        var result = await vectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            Records =
+            [
+                new VectorRecord
+                {
+                    Id = "vector-1",
+                    Values = [0.1f, 0.2f],
+                },
+            ],
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("vector-1", result.RecordId);
+    }
+
+    [Fact]
+    public async Task AddInMemoryRagVectorStore_ShouldFailFast_WhenExpectedDimensionsAreMissing()
+    {
+        var services = new ServiceCollection();
+        services.AddInMemoryRagVectorStore();
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var vectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
+
+        var result = await vectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            Records =
+            [
+                new VectorRecord
+                {
+                    Id = "vector-1",
+                    Values = [0.1f, 0.2f],
+                },
+            ],
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("Vector expected dimensions are required for upsert validation.", result.Reason);
+        Assert.Equal("documents", result.IndexName);
+        Assert.Equal("vector-1", result.RecordId);
+    }
+
+    [Fact]
+    public void AddRagVectorStore_ShouldRegisterCustomVectorStore()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRagVectorStore<TestVectorStore>();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<ValidatingRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+    }
+
+    [Fact]
+    public async Task AddRagVectorStoreWithFactory_ShouldWrapCustomVectorStoreInstance()
+    {
+        var services = new ServiceCollection();
+        var vectorStore = new TrackingVectorStore();
+
+        services.AddRagVectorStore(_ => vectorStore);
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var resolvedVectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
+        var result = await resolvedVectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            ExpectedDimensions = 3,
+            Records =
+            [
+                new VectorRecord
+                {
+                    Id = "vector-1",
+                    Values = [0.1f, 0.2f],
+                },
+            ],
+        });
+
+        Assert.IsType<ValidatingRagVectorStore>(resolvedVectorStore);
+        Assert.False(result.Succeeded);
+        Assert.False(vectorStore.UpsertWasCalled);
+        Assert.Equal("documents", result.IndexName);
+        Assert.Equal("vector-1", result.RecordId);
+    }
+
+    [Fact]
+    public void AddRagVectorStore_ShouldAllowTestVectorStoreToBeChanged()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRagVectorStore<TestVectorStore>();
+        services.AddInMemoryRagVectorStore();
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<ValidatingRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigure_ShouldThrow_WhenServicesIsNull()
+    {
+        IServiceCollection services = null!;
+
+        var exception = Assert.Throws<ArgumentNullException>(() => services.AddRuniqRag(_ => { }));
+
+        Assert.Equal("services", exception.ParamName);
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigure_ShouldThrow_WhenConfigureIsNull()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ArgumentNullException>(() =>
+            services.AddRuniqRag((Action<RagBuilder>)null!));
+
+        Assert.Equal("configure", exception.ParamName);
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigure_ShouldRegisterDefaultServices_WhenNoOverrideIsUsed()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(_ => { });
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<NullEmbeddingProvider>(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+        Assert.IsType<ValidatingRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagRetriever>());
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagService>());
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagChunker>());
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagEmbeddingInputPreparer>());
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagChunkEmbeddingGenerator>());
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagDocumentIngestionService>());
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigure_ShouldAllowCustomEmbeddingProvider()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(rag => rag.UseEmbedding<TestEmbeddingProvider>());
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<TestEmbeddingProvider>(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigure_ShouldAllowCustomVectorStore()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(rag => rag.UseVectorStore<TestVectorStore>());
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<ValidatingRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigure_ShouldAllowInMemoryVectorStore()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(rag => rag.UseInMemoryVectorStore());
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<ValidatingRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+    }
+
+    [Fact]
+    public async Task AddRuniqRagWithConfigure_ShouldWrapCustomVectorStoreFactory()
+    {
+        var services = new ServiceCollection();
+        var vectorStore = new TrackingVectorStore();
+
+        services.AddRuniqRag(rag => rag.UseVectorStore(_ => vectorStore));
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var resolvedVectorStore = serviceProvider.GetRequiredService<IRagVectorStore>();
+        var result = await resolvedVectorStore.UpsertAsync(new UpsertVectorRequest
+        {
+            IndexName = "documents",
+            ExpectedDimensions = 3,
+            Records =
+            [
+                new VectorRecord
+                {
+                    Id = "vector-1",
+                    Values = [0.1f, 0.2f],
+                },
+            ],
+        });
+
+        Assert.IsType<ValidatingRagVectorStore>(resolvedVectorStore);
+        Assert.False(result.Succeeded);
+        Assert.False(vectorStore.UpsertWasCalled);
+        Assert.Equal("documents", result.IndexName);
+        Assert.Equal("vector-1", result.RecordId);
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigure_ShouldAllowCustomRetriever()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(rag => rag.UseRetriever<TestRetriever>());
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<TestRetriever>(serviceProvider.GetRequiredService<IRagRetriever>());
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigure_ShouldAllowCustomChunker()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(rag => rag.UseChunker<TestChunker>());
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<TestChunker>(serviceProvider.GetRequiredService<IRagChunker>());
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigure_ShouldResolveRagService_WhenCustomProvidersAreConfigured()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(rag =>
+        {
+            rag.UseEmbedding<TestEmbeddingProvider>();
+            rag.UseVectorStore<TestVectorStore>();
+            rag.UseRetriever<TestRetriever>();
+            rag.UseChunker<TestChunker>();
+        });
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagService>());
+        Assert.IsType<TestChunker>(serviceProvider.GetRequiredService<IRagChunker>());
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfiguration_ShouldThrow_WhenServicesIsNull()
+    {
+        IServiceCollection services = null!;
+        var configuration = CreateConfiguration();
+
+        var exception = Assert.Throws<ArgumentNullException>(() => services.AddRuniqRag(configuration));
+
+        Assert.Equal("services", exception.ParamName);
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfiguration_ShouldThrow_WhenConfigurationIsNull()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ArgumentNullException>(() => services.AddRuniqRag((IConfiguration)null!));
+
+        Assert.Equal("configuration", exception.ParamName);
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigurationAndConfigure_ShouldThrow_WhenServicesIsNull()
+    {
+        IServiceCollection services = null!;
+        var configuration = CreateConfiguration();
+
+        var exception = Assert.Throws<ArgumentNullException>(() => services.AddRuniqRag(configuration, _ => { }));
+
+        Assert.Equal("services", exception.ParamName);
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigurationAndConfigure_ShouldThrow_WhenConfigurationIsNull()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ArgumentNullException>(() =>
+            services.AddRuniqRag(null!, _ => { }));
+
+        Assert.Equal("configuration", exception.ParamName);
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigurationAndConfigure_ShouldThrow_WhenConfigureIsNull()
+    {
+        var services = new ServiceCollection();
+        var configuration = CreateConfiguration();
+
+        var exception = Assert.Throws<ArgumentNullException>(() =>
+            services.AddRuniqRag(configuration, null!));
+
+        Assert.Equal("configure", exception.ParamName);
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfiguration_ShouldBindRagOptions()
+    {
+        var services = new ServiceCollection();
+        var configuration = CreateConfiguration(new Dictionary<string, string?>
+        {
+            ["Runiq:Rag:DefaultTopK"] = "8",
+            ["Runiq:Rag:ContextSeparator"] = "\n---\n",
+            ["Runiq:Rag:EnableEmptyContext"] = "false",
+            ["Runiq:Rag:Chunking:MaxChunkLength"] = "12",
+            ["Runiq:Rag:Chunking:ChunkOverlap"] = "3",
+        });
+
+        services.AddRuniqRag(configuration);
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var options = serviceProvider.GetRequiredService<IOptions<RagOptions>>().Value;
+
+        Assert.Equal(8, options.DefaultTopK);
+        Assert.Equal("\n---\n", options.ContextSeparator);
+        Assert.False(options.EnableEmptyContext);
+        Assert.Equal(12, options.Chunking.MaxChunkLength);
+        Assert.Equal(3, options.Chunking.ChunkOverlap);
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfiguration_ShouldRegisterRagService()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(CreateConfiguration());
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagService>());
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfiguration_ShouldRegisterRagRetriever()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(CreateConfiguration());
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagRetriever>());
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfiguration_ShouldRegisterRagEmbeddingProvider()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(CreateConfiguration());
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfiguration_ShouldRegisterRagVectorStore()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(CreateConfiguration());
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagVectorStore>());
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfiguration_ShouldRegisterRagChunker()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRuniqRag(CreateConfiguration());
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagChunker>());
+    }
+
+    [Fact]
+    public void AddRuniqRagWithConfigurationAndConfigure_ShouldBindOptionsAndApplyProviderOverrides()
+    {
+        var services = new ServiceCollection();
+        var configuration = CreateConfiguration(new Dictionary<string, string?>
+        {
+            ["Runiq:Rag:DefaultTopK"] = "9",
+        });
+
+        services.AddRuniqRag(configuration, rag =>
+        {
+            rag.UseEmbedding<TestEmbeddingProvider>();
+            rag.UseVectorStore<TestVectorStore>();
+            rag.UseRetriever<TestRetriever>();
+            rag.UseChunker<TestChunker>();
+        });
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.Equal(9, serviceProvider.GetRequiredService<IOptions<RagOptions>>().Value.DefaultTopK);
+        Assert.IsType<TestEmbeddingProvider>(serviceProvider.GetRequiredService<IRagEmbeddingProvider>());
+        Assert.IsType<ValidatingRagVectorStore>(serviceProvider.GetRequiredService<IRagVectorStore>());
+        Assert.IsType<TestRetriever>(serviceProvider.GetRequiredService<IRagRetriever>());
+        Assert.IsType<TestChunker>(serviceProvider.GetRequiredService<IRagChunker>());
+    }
+
+    private sealed class TestEmbeddingProvider : IRagEmbeddingProvider
+    {
+        public Task<RagEmbedding> GenerateAsync(
+            string text,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new RagEmbedding());
+        }
+    }
+
+    private sealed class TestEmbeddingInputPreparer : IRagEmbeddingInputPreparer
+    {
+        public Task<RagEmbeddingInput> PrepareAsync(
+            RagChunk chunk,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new RagEmbeddingInput
+            {
+                Id = chunk.Id,
+                ChunkId = chunk.Id,
+                DocumentId = chunk.DocumentId,
+                Content = chunk.Content,
+                ChunkIndex = chunk.Index,
+                Metadata = chunk.Metadata,
+            });
+        }
+    }
+
+    private sealed class TestVectorStore : IRagVectorStore
+    {
+        public Task<CreateVectorIndexResult> CreateIndexAsync(
+            CreateVectorIndexRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new CreateVectorIndexResult
+            {
+                IndexName = request.IndexName,
+                Succeeded = true,
+            });
+        }
+
+        public Task<UpsertVectorResult> UpsertAsync(
+            UpsertVectorRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new UpsertVectorResult
+            {
+                Succeeded = true,
+                UpsertedCount = request.Records?.Count ?? 0,
+            });
+        }
+
+        public Task<IReadOnlyList<RagSearchResult>> SearchAsync(
+            RagQuery query,
+            RagEmbedding embedding,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<RagSearchResult>>(Array.Empty<RagSearchResult>());
+        }
+    }
+
+    private sealed class TrackingVectorStore : IRagVectorStore
+    {
+        public bool UpsertWasCalled { get; private set; }
+
+        public Task<CreateVectorIndexResult> CreateIndexAsync(
+            CreateVectorIndexRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new CreateVectorIndexResult
+            {
+                IndexName = request.IndexName,
+                Succeeded = true,
+            });
+        }
+
+        public Task<UpsertVectorResult> UpsertAsync(
+            UpsertVectorRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            UpsertWasCalled = true;
+
+            return Task.FromResult(new UpsertVectorResult
+            {
+                Succeeded = true,
+                UpsertedCount = request.Records?.Count ?? 0,
+            });
+        }
+
+        public Task<IReadOnlyList<RagSearchResult>> SearchAsync(
+            RagQuery query,
+            RagEmbedding embedding,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<RagSearchResult>>(Array.Empty<RagSearchResult>());
+        }
+    }
+
+    private sealed class TestRetriever : IRagRetriever
+    {
+        public Task<IReadOnlyList<RagSearchResult>> RetrieveAsync(
+            RagQuery query,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<RagSearchResult>>(Array.Empty<RagSearchResult>());
+        }
+    }
+
+    private sealed class TestRetrievalPipeline : IRagRetrievalPipeline
+    {
+        public Task<RetrievalResult> RetrieveAsync(
+            RetrievalRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(RetrievalResult.Success());
+        }
+    }
+
+    private sealed class TestVectorQueryTool : IVectorQueryTool
+    {
+        public Task<VectorQueryToolResult> ExecuteAsync(
+            VectorQueryToolRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(VectorQueryToolResult.Success());
+        }
+    }
+
+    private sealed class RecordingEmbeddingProvider : IRagEmbeddingProvider
+    {
+        public bool WasCalled { get; private set; }
+
+        public string? LastText { get; private set; }
+
+        public Task<RagEmbedding> GenerateAsync(
+            string text,
+            CancellationToken cancellationToken = default)
+        {
+            WasCalled = true;
+            LastText = text;
+
+            return Task.FromResult(new RagEmbedding([0.5f, 0.6f]));
+        }
+    }
+
+    private sealed class QueryRecordingVectorStore : IRagVectorStore
+    {
+        public bool QueryWasCalled { get; private set; }
+
+        public QueryVectorRequest? LastQueryRequest { get; private set; }
+
+        public Task<CreateVectorIndexResult> CreateIndexAsync(
+            CreateVectorIndexRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new CreateVectorIndexResult
+            {
+                IndexName = request.IndexName,
+                Succeeded = true,
+            });
+        }
+
+        public Task<UpsertVectorResult> UpsertAsync(
+            UpsertVectorRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new UpsertVectorResult
+            {
+                Succeeded = true,
+                UpsertedCount = request.Records?.Count ?? 0,
+            });
+        }
+
+        public Task<QueryVectorResult> QueryAsync(
+            QueryVectorRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            QueryWasCalled = true;
+            LastQueryRequest = request;
+
+            return Task.FromResult(new QueryVectorResult
+            {
+                Succeeded = true,
+                Records = [],
+            });
+        }
+
+        public Task<IReadOnlyList<RagSearchResult>> SearchAsync(
+            RagQuery query,
+            RagEmbedding embedding,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<RagSearchResult>>(Array.Empty<RagSearchResult>());
+        }
+    }
+
+    private sealed class TestChunker : IRagChunker
+    {
+        public Task<IReadOnlyList<RagChunk>> ChunkAsync(
+            RagDocument document,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<RagChunk>>(Array.Empty<RagChunk>());
+        }
+    }
+
+    private static IConfiguration CreateConfiguration(
+        IDictionary<string, string?>? values = null)
+    {
+        return new ConfigurationBuilder()
+            .AddInMemoryCollection(values ?? new Dictionary<string, string?>())
+            .Build();
+    }
+}
+

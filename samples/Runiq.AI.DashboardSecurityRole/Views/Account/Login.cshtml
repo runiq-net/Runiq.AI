@@ -1,0 +1,47 @@
+@model Runiq.AI.DashboardSecurityRole.Models.LoginViewModel
+
+@{
+    ViewData["Title"] = "Runiq Dashboard Login";
+}
+
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>@ViewData["Title"]</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 440px; margin: 64px auto; padding: 0 16px; }
+        label { display: block; margin-top: 12px; }
+        input { box-sizing: border-box; width: 100%; padding: 8px; margin-top: 4px; }
+        button { margin-top: 16px; padding: 8px 14px; }
+        .validation { color: #b42318; margin-top: 12px; }
+        .users { margin-top: 20px; padding-top: 12px; border-top: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+    <h1>Login</h1>
+    <p>Use a sample test user to open the role-protected dashboard.</p>
+
+    <form asp-controller="Account" asp-action="Login" method="post">
+        <input asp-for="ReturnUrl" type="hidden">
+
+        <label asp-for="Email"></label>
+        <input asp-for="Email" autocomplete="username">
+        <span asp-validation-for="Email" class="validation"></span>
+
+        <label asp-for="Password"></label>
+        <input asp-for="Password" autocomplete="current-password">
+        <span asp-validation-for="Password" class="validation"></span>
+
+        <div asp-validation-summary="ModelOnly" class="validation"></div>
+
+        <button type="submit">Sign in</button>
+    </form>
+
+    <div class="users">
+        <p><strong>Test users and password</strong></p>
+        <p>admin@runiq.dev / Password123! -> Admin role</p>
+        <p>user@runiq.dev / Password123! -> No Admin role</p>
+    </div>
+</body>
+</html>
