@@ -1,9 +1,9 @@
-namespace Runiq.AI.Agents.Providers
+namespace Runiq.AI.Core.Providers
 {
     /// <summary>
     /// Model saglayicilarinin Runiq tarafindan bilinen varsayilan baglanti ve protokol bilgilerini tutar.
     /// </summary>
-    internal static class ProviderDefaults
+    public static class ProviderDefaults
     {
         private static readonly IReadOnlyDictionary<string, ProviderDefault> Defaults =
             new Dictionary<string, ProviderDefault>(StringComparer.OrdinalIgnoreCase)
@@ -83,7 +83,7 @@ namespace Runiq.AI.Agents.Providers
         }
 
         /// <summary>
-        /// Provider adina karsilik gelen varsayilan saglayici bilgisini döndürür.
+        /// Provider adina karsilik gelen varsayilan saglayici bilgisini dÃ¶ndÃ¼rÃ¼r.
         /// </summary>
         public static ProviderDefault Get(string providerName)
         {
@@ -98,28 +98,28 @@ namespace Runiq.AI.Agents.Providers
         }
 
         /// <summary>
-        /// Provider için kullanilacak endpoint adresini çözer.
-        /// Agent üzerinde özel URL verilmisse onu, aksi halde provider varsayilan URL degerini kullanir.
+        /// Provider iÃ§in kullanilacak endpoint adresini Ã§Ã¶zer.
+        /// Agent Ã¼zerinde Ã¶zel URL verilmisse onu, aksi halde provider varsayilan URL degerini kullanir.
         /// </summary>
-        public static Uri ResolveUrl(Agent agent)
+        public static Uri ResolveUrl(
+            string providerName,
+            string registrationId,
+            string? configuredUrl)
         {
-            ArgumentNullException.ThrowIfNull(agent);
-
-            var providerDefault = Get(agent.ProviderName);
-            var configuredUrl = agent.Provider?.Url;
+            var providerDefault = Get(providerName);
 
             if (!string.IsNullOrWhiteSpace(configuredUrl))
             {
-                return CreateUri(configuredUrl, agent.Id);
+                return CreateUri(configuredUrl, registrationId);
             }
 
             if (string.IsNullOrWhiteSpace(providerDefault.DefaultUrl))
             {
                 throw new InvalidOperationException(
-                    $"Runiq agent registration failed. Agent '{agent.Id}' uses provider '{agent.ProviderName}' but Provider.Url is missing.");
+                    $"Runiq provider registration failed. Registration '{registrationId}' uses provider '{providerName}' but Provider.Url is missing.");
             }
 
-            return CreateUri(providerDefault.DefaultUrl, agent.Id);
+            return CreateUri(providerDefault.DefaultUrl, registrationId);
         }
 
         private static string NormalizeProviderName(string providerName)
@@ -154,18 +154,25 @@ namespace Runiq.AI.Agents.Providers
     }
 
     /// <summary>
-    /// Runiq'in saglayiciyla hangi HTTP protokolü üzerinden konusacagini belirtir.
+    /// Runiq'in saglayiciyla hangi HTTP protokolÃ¼ Ã¼zerinden konusacagini belirtir.
     /// </summary>
-    internal enum ProviderProtocol
+    public enum ProviderProtocol
     {
+        /// <summary>
+        /// OpenAI-compatible chat completions protocol.
+        /// </summary>
         OpenAICompatible,
+
+        /// <summary>
+        /// Ollama local HTTP protocol.
+        /// </summary>
         Ollama
     }
 
     /// <summary>
     /// Bir model saglayicisinin varsayilan protokol ve baglanti bilgilerini temsil eder.
     /// </summary>
-    internal sealed record ProviderDefault(
+    public sealed record ProviderDefault(
         string ProviderName,
         ProviderProtocol Protocol,
         string? DefaultUrl,

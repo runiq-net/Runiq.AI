@@ -1,6 +1,6 @@
-using Runiq.AI.Agents.Providers;
+using Runiq.AI.Core.Providers;
 
-namespace Runiq.AI.Agents.Models
+namespace Runiq.AI.Core.Models
 {
     /// <summary>
     /// Agent model bilgisini provider/model formatindan ayristirilmis sekilde temsil eder.
@@ -14,12 +14,12 @@ namespace Runiq.AI.Agents.Models
         }
 
         /// <summary>
-        /// Model saglayici adidir. Örnek: openai, ollama, groq.
+        /// Model saglayici adidir. Ã–rnek: openai, ollama, groq.
         /// </summary>
         public string ProviderName { get; }
 
         /// <summary>
-        /// Saglayici üzerinde çagrilacak model adidir. Örnek: gpt-5, llama3.2.
+        /// Saglayici Ã¼zerinde Ã§agrilacak model adidir. Ã–rnek: gpt-5, llama3.2.
         /// </summary>
         public string ModelName { get; }
 

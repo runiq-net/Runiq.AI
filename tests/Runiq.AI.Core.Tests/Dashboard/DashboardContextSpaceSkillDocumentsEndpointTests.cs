@@ -115,16 +115,17 @@ public sealed class DashboardContextSpaceSkillDocumentsEndpointTests
                     {
                         services.AddRouting();
 
-                        services.AddRuniqServer(options =>
-                        {
-                            options.AddContextSpace(new ContextSpace(
+                        services.AddRuniqServer();
+                        services.AddSingleton<IReadOnlyList<ContextSpace>>(
+                        [
+                            new ContextSpace(
                                     id: "travel-planning",
                                     name: "Travel Planning")
                                 .AddSkills(skills => skills.FromFileSystem(
                                     id: "travel-skills",
                                     name: "Travel Skills",
-                                    path: skillSourcePath)));
-                        });
+                                    path: skillSourcePath)),
+                        ]);
                     })
                     .Configure(app =>
                     {

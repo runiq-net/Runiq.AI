@@ -17,7 +17,7 @@ public sealed class RuniqDashboardAuthorizationTests
 {
     [Theory]
     [InlineData("/dashboard/agents")]
-    [InlineData("/dashboard/metadata/agents")]
+    [InlineData("/dashboard/api/mcp")]
     public async Task Dashboard_ShouldReturnUnauthorized_WhenAuthenticatedUserIsRequiredAndUserIsAnonymous(
         string path)
     {
@@ -48,7 +48,7 @@ public sealed class RuniqDashboardAuthorizationTests
 
     [Theory]
     [InlineData("/dashboard/agents")]
-    [InlineData("/dashboard/metadata/agents")]
+    [InlineData("/dashboard/api/mcp")]
     public async Task Dashboard_ShouldAllowAccess_WhenAuthenticatedUserIsRequiredAndUserIsAuthenticated(
         string path)
     {
@@ -64,7 +64,7 @@ public sealed class RuniqDashboardAuthorizationTests
 
     [Theory]
     [InlineData("/dashboard/agents")]
-    [InlineData("/dashboard/metadata/agents")]
+    [InlineData("/dashboard/api/mcp")]
     public async Task Dashboard_ShouldReturnForbidden_WhenRequiredRoleIsMissing(
         string path)
     {
@@ -81,7 +81,7 @@ public sealed class RuniqDashboardAuthorizationTests
 
     [Theory]
     [InlineData("/dashboard/agents")]
-    [InlineData("/dashboard/metadata/agents")]
+    [InlineData("/dashboard/api/mcp")]
     public async Task Dashboard_ShouldAllowAccess_WhenAnyRequiredRoleMatches(
         string path)
     {

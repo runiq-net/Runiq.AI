@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using Runiq.AI.Agents.Configuration;
-using Runiq.AI.Agents.Models;
+using Runiq.AI.Core.Configuration;
+using Runiq.AI.Core.Models;
 using Runiq.AI.Agents.Tools;
 
 namespace Runiq.AI.Agents;

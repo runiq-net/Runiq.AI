@@ -1,5 +1,5 @@
 using System.Runtime.CompilerServices;
-using Runiq.AI.Agents.Providers;
+using Runiq.AI.Core.Providers;
 using Runiq.AI.Agents.Providers.OpenAI;
 using Runiq.AI.Agents.Tools;
 using Runiq.AI.ContextSpaces.Models.Sources;
@@ -488,7 +488,10 @@ public sealed class AgentExecutionRuntime
             yield break;
         }
 
-        var endpoint = ProviderDefaults.ResolveUrl(agent);
+        var endpoint = ProviderDefaults.ResolveUrl(
+            agent.ProviderName,
+            agent.Id,
+            agent.Provider?.Url);
         var providerDefault = ProviderDefaults.Get(agent.ProviderName);
 
         switch (providerDefault.Protocol)

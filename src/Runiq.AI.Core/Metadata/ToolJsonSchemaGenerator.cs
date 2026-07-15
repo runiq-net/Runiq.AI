@@ -1,12 +1,11 @@
 using System.Reflection;
-using Runiq.AI.Agents.Tools;
 
 namespace Runiq.AI.Core.Metadata;
 
 /// <summary>
 /// Tool input ve output CLR tiplerinden Dashboard tarafindan kullanilacak basit JSON schema üretir.
 /// </summary>
-internal static class ToolJsonSchemaGenerator
+public static class ToolJsonSchemaGenerator
 {
     private const int MaxDepth = 4;
 
@@ -27,7 +26,7 @@ internal static class ToolJsonSchemaGenerator
     {
         ArgumentNullException.ThrowIfNull(type);
 
-        if (type == typeof(EmptyToolInput))
+        if (IsEmptyToolInput(type))
         {
             return false;
         }
@@ -62,7 +61,7 @@ internal static class ToolJsonSchemaGenerator
     {
         var effectiveType = Nullable.GetUnderlyingType(type) ?? type;
 
-        if (effectiveType == typeof(EmptyToolInput))
+        if (IsEmptyToolInput(effectiveType))
         {
             return new Dictionary<string, object?>
             {
@@ -308,5 +307,12 @@ internal static class ToolJsonSchemaGenerator
         }
 
         return new string(characters.ToArray());
+    }
+    private static bool IsEmptyToolInput(Type type)
+    {
+        return string.Equals(
+            type.Name,
+            "EmptyToolInput",
+            StringComparison.Ordinal);
     }
 }

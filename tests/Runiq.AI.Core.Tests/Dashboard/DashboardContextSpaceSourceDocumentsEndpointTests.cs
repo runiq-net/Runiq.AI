@@ -167,17 +167,18 @@ public sealed class DashboardContextSpaceSourceDocumentsEndpointTests
                     {
                         services.AddRouting();
 
-                        services.AddRuniqServer(options =>
-                        {
-                            options.AddContextSpace(new ContextSpace(
+                        services.AddRuniqServer();
+                        services.AddSingleton<IReadOnlyList<ContextSpace>>(
+                        [
+                            new ContextSpace(
                                     id: "travel-planning",
                                     name: "Travel Planning",
                                     description: "Shared read-only travel context.")
                                 .AddSources(sources => sources.FromFileSystem(
                                     id: "travel-documents",
                                     name: "Travel Documents",
-                                    path: sourcePath)));
-                        });
+                                    path: sourcePath)),
+                        ]);
                     })
                     .Configure(app =>
                     {

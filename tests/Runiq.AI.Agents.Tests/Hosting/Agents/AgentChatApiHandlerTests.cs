@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Runiq.AI.Agents;
 using Runiq.AI.Agents.Configuration;
+using Runiq.AI.Core.Configuration;
 using Runiq.AI.Agents.Providers.OpenAI;
 using Runiq.AI.Agents.Runtime;
 using Runiq.AI.Agents.Tools;

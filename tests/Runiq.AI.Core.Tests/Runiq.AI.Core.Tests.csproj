@@ -21,7 +21,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Runiq.AI.Core\Runiq.AI.Core.csproj" />
-    <ProjectReference Include="..\..\src\Runiq.AI.Workflows\Runiq.AI.Workflows.csproj" />
   </ItemGroup>
 
 </Project>
