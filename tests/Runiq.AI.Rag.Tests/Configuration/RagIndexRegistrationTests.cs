@@ -9,6 +9,122 @@ namespace Runiq.AI.Rag.Tests.Configuration;
 
 public sealed class RagIndexRegistrationTests
 {
+    // Verifies that indexes without an explicit strategy use safe manual ingestion semantics.
+    [Fact]
+    public void AddIndex_ShouldDefaultToManualIngestion()
+    {
+        var registration = Register(CompleteIndex);
+
+        Assert.Equal(RagIngestionStrategyKind.Manual, registration.IngestionStrategy.Kind);
+        Assert.Null(registration.IngestionStrategy.ScheduleExpression);
+    }
+
+    // Verifies that every explicit non-scheduled lifecycle strategy is retained without schedule metadata.
+    [Theory]
+    [InlineData(RagIngestionStrategyKind.Manual)]
+    [InlineData(RagIngestionStrategyKind.OnStartup)]
+    [InlineData(RagIngestionStrategyKind.BackgroundOnStartup)]
+    public void ConfigureIngestion_ShouldRetainExplicitLifecycleStrategy(RagIngestionStrategyKind kind)
+    {
+        var registration = Register(index =>
+        {
+            CompleteIndex(index);
+            index.ConfigureIngestion(ingestion =>
+            {
+                if (kind == RagIngestionStrategyKind.Manual) ingestion.Manual();
+                else if (kind == RagIngestionStrategyKind.OnStartup) ingestion.OnStartup();
+                else ingestion.BackgroundOnStartup();
+            });
+        });
+
+        Assert.Equal(kind, registration.IngestionStrategy.Kind);
+        Assert.Null(registration.IngestionStrategy.ScheduleExpression);
+    }
+
+    // Verifies that a valid scheduled strategy is normalized and projected as immutable configuration.
+    [Fact]
+    public void ConfigureIngestion_ShouldRetainScheduledExpression()
+    {
+        var registration = Register(index =>
+        {
+            CompleteIndex(index);
+            index.ConfigureIngestion(ingestion => ingestion.Scheduled(" 0  2 * * * "));
+        });
+
+        Assert.Equal(RagIngestionStrategyKind.Scheduled, registration.IngestionStrategy.Kind);
+        Assert.Equal("0 2 * * *", registration.IngestionStrategy.ScheduleExpression);
+    }
+
+    // Verifies that undefined strategy kinds fail before an index can be registered.
+    [Fact]
+    public void IngestionStrategy_ShouldRejectUndefinedKind() =>
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RagIngestionStartStrategy((RagIngestionStrategyKind)99));
+
+    // Verifies that scheduled ingestion cannot be created with an empty or clearly invalid expression.
+    [Theory]
+    [InlineData("")]
+    [InlineData("not a schedule")]
+    [InlineData("* * *")]
+    public void ScheduledStrategy_ShouldRejectInvalidExpression(string expression) =>
+        Assert.Throws<ArgumentException>(() => new RagIngestionStartStrategy(RagIngestionStrategyKind.Scheduled, expression));
+
+    // Verifies that non-scheduled strategies reject schedule state.
+    [Theory]
+    [InlineData(RagIngestionStrategyKind.Manual)]
+    [InlineData(RagIngestionStrategyKind.OnStartup)]
+    [InlineData(RagIngestionStrategyKind.BackgroundOnStartup)]
+    public void NonScheduledStrategy_ShouldRejectSchedule(RagIngestionStrategyKind kind) =>
+        Assert.Throws<ArgumentException>(() => new RagIngestionStartStrategy(kind, "0 2 * * *"));
+
+    // Verifies that repeated strategy selections fail instead of silently applying last-call-wins behavior.
+    [Fact]
+    public void ConfigureIngestion_ShouldRejectMultipleSelections() =>
+        Assert.Throws<InvalidOperationException>(() => Register(index =>
+        {
+            CompleteIndex(index);
+            index.ConfigureIngestion(ingestion => ingestion.Manual().OnStartup());
+        }));
+
+    // Verifies that an exception in the strategy callback does not leave a partially configured index.
+    [Fact]
+    public void ConfigureIngestion_ShouldLeaveCleanStateAfterCallbackException()
+    {
+        var builder = new RagIndexBuilderAccessor();
+
+        Assert.Throws<InvalidOperationException>(() => builder.Index.ConfigureIngestion(_ => throw new InvalidOperationException("failure")));
+        builder.Index.ConfigureIngestion(ingestion => ingestion.OnStartup());
+
+        Assert.Equal(RagIngestionStrategyKind.OnStartup, builder.Register().IngestionStrategy.Kind);
+    }
+
+    // Verifies that typed and string embedding selections share one fail-fast source of truth.
+    [Fact]
+    public void UseEmbeddingModel_ShouldRejectMixedSelections() =>
+        Assert.Throws<InvalidOperationException>(() => Register(index => index.UseDirectory("documents").UseVectorStore("store").UseEmbeddingModel("custom").UseEmbeddingModel(new RagEmbeddingModelReference("openai", "model", "Model"))));
+
+    // Verifies that in-memory convenience selection uses the existing effective-reference path and safe metadata.
+    [Fact]
+    public void UseInMemoryVectorStore_ShouldProjectTypedMetadata()
+    {
+        var registration = Register(index => index.UseDirectory("documents").UseInMemoryVectorStore().UseEmbeddingModel("model"));
+
+        Assert.Equal("in-memory", registration.VectorStoreReference);
+        Assert.Equal("InMemory", registration.VectorStoreType);
+    }
+
+    // Verifies that multiple vector-store selections fail instead of silently replacing one another.
+    [Fact]
+    public void UseVectorStore_ShouldRejectMultipleSelections() =>
+        Assert.Throws<InvalidOperationException>(() => Register(index => index.UseDirectory("documents").UseVectorStore("one").UseVectorStore("two").UseEmbeddingModel("model")));
+
+    // Verifies that undefined typed provider references are rejected at composition time.
+    [Fact]
+    public void TypedReferences_ShouldRejectUndefinedValues()
+    {
+        Assert.Throws<ArgumentException>(() => Register(index => index.UseDirectory("documents").UseVectorStore("store").UseEmbeddingModel(default(RagEmbeddingModelReference))));
+        Assert.Throws<ArgumentException>(() => Register(index => index.UseDirectory("documents").UseVectorStore(default(RagVectorStoreReference)).UseEmbeddingModel("model")));
+    }
+
     // Verifies that a complete directory-backed index is available through the provider-independent registry.
     [Fact]
     public void AddIndex_ShouldRegisterDirectoryIndex()
@@ -144,6 +260,11 @@ public sealed class RagIndexRegistrationTests
 
         Assert.Equal("postgres", metadata.VectorStoreReference);
         Assert.Equal("provider/model", metadata.EmbeddingReference);
+        Assert.Equal("provider/model", metadata.EmbeddingDisplayName);
+        Assert.Equal("Custom", metadata.VectorStoreType);
+        Assert.Equal("postgres", metadata.VectorStoreDisplayName);
+        Assert.Equal(RagIngestionStrategyKind.Manual, metadata.IngestionStrategyKind);
+        Assert.Null(metadata.ScheduleExpression);
         Assert.Equal("max:500;overlap:50", metadata.ChunkingSummary);
         Assert.True(metadata.IsValid);
         Assert.Equal("documents", Assert.Single(metadata.Sources).DisplayValue);
@@ -173,6 +294,30 @@ public sealed class RagIndexRegistrationTests
     }
 
     private static void CompleteIndex(RagIndexBuilder index) => index.UseDirectory("documents").UseVectorStore("default").UseEmbeddingModel("model");
+
+    private static RagIndexRegistration Register(Action<RagIndexBuilder> configure)
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag(rag => rag.AddIndex("documents", configure));
+        using var provider = services.BuildServiceProvider();
+        return Assert.Single(provider.GetRequiredService<IRagIndexRegistry>().Registrations);
+    }
+
+    private sealed class RagIndexBuilderAccessor
+    {
+        private readonly RagBuilder builder = new(new ServiceCollection());
+        public RagIndexBuilderAccessor()
+        {
+            Index = (RagIndexBuilder)Activator.CreateInstance(typeof(RagIndexBuilder), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, ["documents"], null)!;
+            Index.UseDirectory("documents").UseVectorStore("store").UseEmbeddingModel("model");
+        }
+        public RagIndexBuilder Index { get; }
+        public RagIndexRegistration Register()
+        {
+            var method = typeof(RagIndexBuilder).GetMethod("Build", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            return (RagIndexRegistration)method.Invoke(Index, null)!;
+        }
+    }
 
     private sealed class TestSource(string identity) : IRagDocumentSource
     {

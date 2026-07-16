@@ -6,13 +6,18 @@ namespace Runiq.AI.Rag.Configuration;
 /// <summary>Describes a validated, provider-independent RAG index registration.</summary>
 public sealed class RagIndexRegistration
 {
-    internal RagIndexRegistration(string name, IReadOnlyList<IRagDocumentSource> sources, string vectorStoreReference, string embeddingReference, RagChunkingOptions chunking)
+    internal RagIndexRegistration(string name, IReadOnlyList<IRagDocumentSource> sources, string vectorStoreReference, string embeddingReference, RagChunkingOptions chunking, RagIngestionStartStrategy ingestionStrategy, string embeddingDisplayName, string vectorStoreType, string vectorStoreDisplayName, string? namedVectorStoreReference)
     {
         Name = name;
         Sources = sources;
         VectorStoreReference = vectorStoreReference;
         EmbeddingReference = embeddingReference;
         Chunking = chunking;
+        IngestionStrategy = ingestionStrategy;
+        EmbeddingDisplayName = embeddingDisplayName;
+        VectorStoreType = vectorStoreType;
+        VectorStoreDisplayName = vectorStoreDisplayName;
+        NamedVectorStoreReference = namedVectorStoreReference;
     }
 
     /// <summary>Gets the deterministic logical index name.</summary>
@@ -29,6 +34,16 @@ public sealed class RagIndexRegistration
 
     /// <summary>Gets the effective chunking configuration.</summary>
     public RagChunkingOptions Chunking { get; }
+    /// <summary>Gets the immutable ingestion start strategy; the default is manual.</summary>
+    public RagIngestionStartStrategy IngestionStrategy { get; }
+    /// <summary>Gets the safe embedding display name.</summary>
+    public string EmbeddingDisplayName { get; }
+    /// <summary>Gets the provider-independent vector-store type.</summary>
+    public string VectorStoreType { get; }
+    /// <summary>Gets the safe vector-store display name.</summary>
+    public string VectorStoreDisplayName { get; }
+    /// <summary>Gets the named vector-store reference, when one was selected.</summary>
+    public string? NamedVectorStoreReference { get; }
 }
 
 /// <summary>Builds one named RAG index definition without executing ingestion or provider work.</summary>
@@ -38,6 +53,11 @@ public sealed class RagIndexBuilder
     private readonly List<IRagDocumentSource> sources = [];
     private string? vectorStoreReference;
     private string? embeddingReference;
+    private string? embeddingDisplayName;
+    private string? vectorStoreType;
+    private string? vectorStoreDisplayName;
+    private string? namedVectorStoreReference;
+    private RagIngestionStartStrategy? ingestionStrategy;
     private RagChunkingOptions chunking = new();
 
     internal RagIndexBuilder(string name) => this.name = name;
@@ -68,16 +88,65 @@ public sealed class RagIndexBuilder
     /// <returns>The same builder instance.</returns>
     public RagIndexBuilder UseVectorStore(string reference)
     {
+        EnsureVectorStoreNotSelected();
         vectorStoreReference = RequireReference(reference, nameof(reference));
+        vectorStoreType = "Custom";
+        vectorStoreDisplayName = vectorStoreReference;
         return this;
     }
+
+    /// <summary>Selects a validated typed vector-store reference.</summary>
+    /// <param name="reference">The typed store selection.</param>
+    /// <returns>The same builder instance.</returns>
+    public RagIndexBuilder UseVectorStore(RagVectorStoreReference reference)
+    {
+        if (!reference.IsDefined) throw new ArgumentException("A defined vector-store reference is required.", nameof(reference));
+        EnsureVectorStoreNotSelected();
+        vectorStoreReference = reference.Reference;
+        vectorStoreType = reference.StoreType;
+        vectorStoreDisplayName = reference.DisplayName;
+        namedVectorStoreReference = reference.NamedReference;
+        return this;
+    }
+
+    /// <summary>Selects the built-in in-memory vector store without creating it.</summary>
+    /// <returns>The same builder instance.</returns>
+    public RagIndexBuilder UseInMemoryVectorStore() =>
+        UseVectorStore(new RagVectorStoreReference("in-memory", "InMemory", "In-memory vector store"));
 
     /// <summary>Selects the embedding model or client registration used by the index.</summary>
     /// <param name="reference">The provider/model or named client reference.</param>
     /// <returns>The same builder instance.</returns>
     public RagIndexBuilder UseEmbeddingModel(string reference)
     {
+        EnsureEmbeddingNotSelected();
         embeddingReference = RequireReference(reference, nameof(reference));
+        embeddingDisplayName = embeddingReference;
+        return this;
+    }
+
+    /// <summary>Selects a validated typed embedding model through the existing effective-reference path.</summary>
+    /// <param name="reference">The typed embedding model.</param>
+    /// <returns>The same builder instance.</returns>
+    public RagIndexBuilder UseEmbeddingModel(RagEmbeddingModelReference reference)
+    {
+        if (!reference.IsDefined) throw new ArgumentException("A defined embedding model reference is required.", nameof(reference));
+        EnsureEmbeddingNotSelected();
+        embeddingReference = reference.Reference;
+        embeddingDisplayName = reference.DisplayName;
+        return this;
+    }
+
+    /// <summary>Configures when ingestion may start; manual is used when this method is not called.</summary>
+    /// <param name="configure">The strategy selection callback.</param>
+    /// <returns>The same builder instance.</returns>
+    public RagIndexBuilder ConfigureIngestion(Action<RagIngestionStrategyBuilder> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        if (ingestionStrategy is not null) throw new InvalidOperationException("An ingestion start strategy has already been configured for this index.");
+        var builder = new RagIngestionStrategyBuilder();
+        configure(builder);
+        ingestionStrategy = builder.Build();
         return this;
     }
 
@@ -98,7 +167,17 @@ public sealed class RagIndexBuilder
         if (sources.Count == 0) throw new InvalidOperationException($"RAG index '{name}' must define at least one document source.");
         if (string.IsNullOrWhiteSpace(vectorStoreReference)) throw new InvalidOperationException($"RAG index '{name}' must define a vector store reference.");
         if (string.IsNullOrWhiteSpace(embeddingReference)) throw new InvalidOperationException($"RAG index '{name}' must define an embedding reference.");
-        return new RagIndexRegistration(name, sources.AsReadOnly(), vectorStoreReference, embeddingReference, chunking);
+        return new RagIndexRegistration(name, sources.AsReadOnly(), vectorStoreReference, embeddingReference, chunking, ingestionStrategy ?? new(RagIngestionStrategyKind.Manual), embeddingDisplayName!, vectorStoreType!, vectorStoreDisplayName!, namedVectorStoreReference);
+    }
+
+    private void EnsureVectorStoreNotSelected()
+    {
+        if (vectorStoreReference is not null) throw new InvalidOperationException($"A vector store has already been selected for index '{name}'.");
+    }
+
+    private void EnsureEmbeddingNotSelected()
+    {
+        if (embeddingReference is not null) throw new InvalidOperationException($"An embedding model has already been selected for index '{name}'.");
     }
 
     private static string RequireReference(string value, string parameterName) =>

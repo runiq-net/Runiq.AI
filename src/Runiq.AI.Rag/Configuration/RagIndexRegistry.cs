@@ -21,6 +21,12 @@ public sealed class RagIndexMetadata
         VectorStoreReference = registration.VectorStoreReference;
         EmbeddingReference = registration.EmbeddingReference;
         ChunkingSummary = $"max:{registration.Chunking.MaxChunkLength};overlap:{registration.Chunking.ChunkOverlap}";
+        IngestionStrategyKind = registration.IngestionStrategy.Kind;
+        ScheduleExpression = registration.IngestionStrategy.ScheduleExpression;
+        EmbeddingDisplayName = registration.EmbeddingDisplayName;
+        VectorStoreType = registration.VectorStoreType;
+        VectorStoreDisplayName = registration.VectorStoreDisplayName;
+        NamedVectorStoreReference = registration.NamedVectorStoreReference;
     }
 
     /// <summary>Gets the logical index name.</summary>
@@ -35,6 +41,18 @@ public sealed class RagIndexMetadata
     public string EmbeddingReference { get; }
     /// <summary>Gets a compact chunking configuration summary.</summary>
     public string ChunkingSummary { get; }
+    /// <summary>Gets the configured ingestion lifecycle strategy; manual is the default.</summary>
+    public RagIngestionStrategyKind IngestionStrategyKind { get; }
+    /// <summary>Gets the scheduled expression for scheduled ingestion; otherwise, <see langword="null"/>.</summary>
+    public string? ScheduleExpression { get; }
+    /// <summary>Gets the safe embedding display name.</summary>
+    public string EmbeddingDisplayName { get; }
+    /// <summary>Gets the provider-independent vector-store type.</summary>
+    public string VectorStoreType { get; }
+    /// <summary>Gets the safe vector-store display name.</summary>
+    public string VectorStoreDisplayName { get; }
+    /// <summary>Gets the named vector-store reference, when present.</summary>
+    public string? NamedVectorStoreReference { get; }
     /// <summary>Gets a value indicating whether startup validation accepted this definition.</summary>
     public bool IsValid => true;
 }

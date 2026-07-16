@@ -29,6 +29,27 @@ in the [Agents package guide](../Runiq.AI.Agents/README.md#rag-execution-and-gro
 dotnet add package Runiq.AI.Rag --prerelease
 ```
 
+## Named index ingestion strategies
+
+Named indexes default to `Manual`, so registering a large corpus never unexpectedly blocks application startup.
+Select an explicit lifecycle contract with `ConfigureIngestion`: `Manual`, blocking `OnStartup`, non-blocking
+`BackgroundOnStartup`, or `Scheduled`. Registration stores immutable configuration only; it does not scan files,
+start ingestion, create background work, or run a scheduler.
+
+Use typed provider conveniences for built-in selections and retain string references only for custom registrations:
+
+```csharp
+services.AddRuniqRag(rag => rag.AddIndex("corporate-documents", index => index
+    .UseDirectory("./documents", "*.md", recursive: true)
+    .UseOpenAiEmbeddingModel(OpenAiEmbeddingModels.TextEmbedding3Small)
+    .UseInMemoryVectorStore()
+    .ConfigureIngestion(ingestion => ingestion.OnStartup())));
+```
+
+`OpenAiEmbeddingModels` and `UseOpenAiEmbeddingModel` are provided by `Runiq.AI.Agents.Providers.OpenAI`, keeping
+provider-specific identities outside the provider-neutral RAG package. Schedule expressions use five fields and the
+runtime's default time-zone policy; this package validates and stores them but does not execute them.
+
 ## Related Packages
 
 | Package | Purpose |
