@@ -13,6 +13,8 @@ internal static class AgentChatStreamEventMapper
 
         return executionEvent.Kind switch
         {
+            AgentExecutionEventKind.RagSearch => null!,
+
             AgentExecutionEventKind.AssistantDelta => new AgentChatStreamEvent(
                 Type: "assistant_delta",
                 Content: executionEvent.Content),
@@ -55,10 +57,8 @@ internal static class AgentChatStreamEventMapper
                 Rag = executionEvent.Rag,
             },
 
-            _ => new AgentChatStreamEvent(
-                Type: "failed",
-                Content: $"Unsupported agent execution event kind: {executionEvent.Kind}.",
-                ErrorMessage: $"Unsupported agent execution event kind: {executionEvent.Kind}.")
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(executionEvent), executionEvent.Kind, "The execution event kind is not supported.")
         };
     }
 }

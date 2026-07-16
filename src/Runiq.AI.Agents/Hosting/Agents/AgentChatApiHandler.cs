@@ -1,14 +1,13 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Runiq.AI.Agents;
-using Runiq.AI.Agents.Tools;
 using Runiq.AI.Agents.Runtime;
-
+using Runiq.AI.Agents.Tools;
 
 namespace Runiq.AI.Core.Agents;
 
 /// <summary>
-/// Dashboard agent chat API isteklerini isler.
+/// Handles Dashboard agent chat API requests.
 /// </summary>
 public sealed class AgentChatApiHandler
 {
@@ -17,7 +16,7 @@ public sealed class AgentChatApiHandler
     private readonly AgentExecutionRuntime agentRuntime;
 
     /// <summary>
-    /// Agent chat API handler örnegini olusturur.
+    /// Creates an Agent Chat API handler.
     /// </summary>
     public AgentChatApiHandler(AgentExecutionRuntime agentRuntime)
     {
@@ -25,7 +24,7 @@ public sealed class AgentChatApiHandler
     }
 
     /// <summary>
-    /// Agent chat istegini cevap moduna göre JSON sonuç veya SSE stream olarak isler.
+    /// Handles an Agent Chat request as either a JSON result or an SSE stream.
     /// </summary>
     public async Task<IResult> ChatAsync(
         string agentId,
@@ -112,12 +111,17 @@ public sealed class AgentChatApiHandler
         var toolInvoker = new AgentToolInvoker(httpContext.RequestServices);
 
         await foreach (var executionEvent in agentRuntime.ExecuteStreamAsync(
-                        agentId,
-                        query,
-                        toolInvoker,
-                        cancellationToken))
+                           agentId,
+                           query,
+                           toolInvoker,
+                           cancellationToken))
         {
             var streamEvent = AgentChatStreamEventMapper.FromExecutionEvent(executionEvent);
+            if (streamEvent is null)
+            {
+                continue;
+            }
+
             var payload = JsonSerializer.Serialize(streamEvent, StreamJsonOptions);
 
             await httpContext.Response.WriteAsync($"data: {payload}\n\n", cancellationToken);
@@ -136,4 +140,3 @@ public sealed class AgentChatApiHandler
         };
     }
 }
-
