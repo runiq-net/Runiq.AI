@@ -1,0 +1,19 @@
+services:
+  postgres-rag:
+    image: pgvector/pgvector:0.8.0-pg17
+    environment:
+      POSTGRES_DB: runiq_rag_dev
+      POSTGRES_USER: runiq_dev
+      POSTGRES_PASSWORD: runiq_dev_only
+    ports:
+      - "54329:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U runiq_dev -d runiq_rag_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    volumes:
+      - runiq-rag-postgresql-data:/var/lib/postgresql/data
+
+volumes:
+  runiq-rag-postgresql-data:
