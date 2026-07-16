@@ -63,6 +63,7 @@ public static class RuniqRagServiceCollectionExtensions
             provider => provider.GetRequiredService<DefaultRagOperationTelemetryRecorder>());
 
         services.Configure<RagOptions>(_ => { });
+        services.TryAddSingleton<IRagIndexRegistry>(new RagIndexRegistry(Array.Empty<RagIndexRegistration>()));
 
         return services;
     }
