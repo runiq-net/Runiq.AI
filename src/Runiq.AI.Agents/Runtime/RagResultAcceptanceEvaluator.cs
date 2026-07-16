@@ -19,6 +19,7 @@ internal static class RagResultAcceptanceEvaluator
         var accepted = new List<RagSearchResult>();
         var rejected = new List<RagRejectedResult>();
         var seenContent = new HashSet<string>(StringComparer.Ordinal);
+        var seenChunks = new HashSet<(string DocumentId, string ChunkId)>();
 
         foreach (var candidate in normalized)
         {
@@ -48,7 +49,8 @@ internal static class RagResultAcceptanceEvaluator
             }
 
             var normalizedContent = candidate.Chunk.Content.Trim();
-            if (seenContent.Contains(normalizedContent))
+            var chunkIdentity = (candidate.Chunk.DocumentId, candidate.Chunk.Id);
+            if (seenChunks.Contains(chunkIdentity) || seenContent.Contains(normalizedContent))
             {
                 rejected.Add(new RagRejectedResult(candidate, RagResultRejectionReason.DuplicateContent));
                 continue;
@@ -61,6 +63,7 @@ internal static class RagResultAcceptanceEvaluator
             }
 
             accepted.Add(candidate);
+            seenChunks.Add(chunkIdentity);
             seenContent.Add(normalizedContent);
         }
 

@@ -645,12 +645,11 @@ public sealed class AgentExecutionRuntime
         TimeSpan duration)
     {
         var topCandidate = runtimeContext.RetrievedRagCandidates.FirstOrDefault(candidate =>
-            candidate is not null && double.IsFinite(candidate.RawScore));
-        var normalizedRelevances = runtimeContext.RetrievedRagCandidates
-            .Where(candidate => candidate?.Relevance is double relevance &&
-                double.IsFinite(relevance) && relevance is >= 0 and <= 1)
-            .Select(candidate => candidate.Relevance!.Value)
-            .ToArray();
+            candidate is not null &&
+            double.IsFinite(candidate.RawScore) &&
+            !string.IsNullOrWhiteSpace(candidate.Metric) &&
+            (candidate.Relevance is null ||
+                double.IsFinite(candidate.Relevance.Value) && candidate.Relevance.Value is >= 0 and <= 1));
 
         return new RagSearchCompleted(
             correlationId,
@@ -677,7 +676,7 @@ public sealed class AgentExecutionRuntime
             options.Acceptance.MaximumAcceptedResults,
             duration,
             topCandidate?.RawScore,
-            normalizedRelevances.Length == 0 ? null : normalizedRelevances.Max(),
+            topCandidate?.Relevance,
             runtimeContext.NoContextReason);
     }
 
