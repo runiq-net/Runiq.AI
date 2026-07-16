@@ -10,7 +10,13 @@ public sealed record AgentChatResponse(
     string? Message,
     string? ErrorCode,
     string? ErrorMessage,
-    IReadOnlyList<AgentChatExecutionStepResponse> Steps);
+    IReadOnlyList<AgentChatExecutionStepResponse> Steps)
+{
+    /// <summary>
+    /// Gets or initializes the structured RAG policy outcome, or null when RAG was not configured.
+    /// </summary>
+    public AgentRagExecutionMetadata? Rag { get; init; }
+}
 
 /// <summary>
 /// Studio response içinde gösterilecek agent execution adimini temsil eder.

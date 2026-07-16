@@ -15,6 +15,7 @@ public sealed class AgentExecutionResultBuilder
     private bool finalAnswerAdded;
     private string? failureCode;
     private string? failureMessage;
+    private AgentRagExecutionMetadata? rag;
 
     /// <summary>
     /// Tek bir execution event'ini result state'ine uygular.
@@ -22,6 +23,7 @@ public sealed class AgentExecutionResultBuilder
     public void Apply(AgentExecutionEvent executionEvent)
     {
         ArgumentNullException.ThrowIfNull(executionEvent);
+        rag = executionEvent.Rag ?? rag;
 
         switch (executionEvent.Kind)
         {
@@ -59,11 +61,12 @@ public sealed class AgentExecutionResultBuilder
         AddFinalAnswerStep();
 
         return failureCode is null
-            ? AgentExecutionResult.Success(messageBuilder.ToString(), steps)
+            ? AgentExecutionResult.Success(messageBuilder.ToString(), steps, rag)
             : AgentExecutionResult.Failure(
                 failureCode,
                 failureMessage ?? "Agent execution failed.",
-                steps);
+                steps,
+                rag);
     }
 
     private void AppendAssistantDelta(AgentExecutionEvent executionEvent)

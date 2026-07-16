@@ -69,6 +69,33 @@ app.UseRuniqDashboard(options =>
 
 Run the application and open `/dashboard` to inspect registered agents, test conversations, and review runtime activity.
 
+## RAG Grounding Policies
+
+RAG-enabled agents can choose an explicit execution mode and no-context outcome:
+
+```csharp
+using Runiq.AI.Agents.Configuration;
+
+options.AddAgent(new Agent(
+        id: "policy-assistant",
+        name: "Policy Assistant",
+        instructions: "Answer employee policy questions.",
+        model: "openai/gpt-5",
+        apiKey: builder.Configuration["OpenAI:ApiKey"])
+    .UseRag(rag =>
+    {
+        rag.IndexName = "company-policies";
+        rag.Mode = RagExecutionMode.Grounded;
+        rag.NoContextBehavior = RagNoContextBehavior.ReturnNotFound;
+    }));
+```
+
+The default is `Open` with `AnswerNormally`, preserving normal model behavior when retrieval succeeds without
+accepted context. `Grounded` makes documents the primary source; `Required` allows answers only from accepted
+context and must use `ReturnNotFound` or `FailExecution`. Retrieval failures remain failures in every mode.
+See the [Agents package guide](src/Runiq.AI.Agents/README.md#rag-execution-and-grounding-policies) for the complete
+policy matrix, relevance acceptance, trust boundary, and structured runtime outcome.
+
 ## Tool Example
 
 Tools are plain C# types with strongly typed input and output:

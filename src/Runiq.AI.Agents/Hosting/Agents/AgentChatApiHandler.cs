@@ -33,16 +33,14 @@ public sealed class AgentChatApiHandler
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        
-
         if (string.IsNullOrWhiteSpace(request.Message))
         {
             return Results.BadRequest(new AgentChatResponse(
-             IsSuccess: false,
-             Message: null,
-             ErrorCode: "MessageRequired",
-             ErrorMessage: "Message is required.",
-             Steps: []));
+                IsSuccess: false,
+                Message: null,
+                ErrorCode: "MessageRequired",
+                ErrorMessage: "Message is required.",
+                Steps: []));
         }
 
         if (request.ResponseMode == AgentChatResponseMode.Stream)
@@ -95,10 +93,13 @@ public sealed class AgentChatApiHandler
             ErrorMessage: result.ErrorMessage,
             Steps: result.Steps
                 .Select(AgentChatExecutionStepResponse.FromExecutionStep)
-                .ToArray());
+                .ToArray())
+        {
+            Rag = result.Rag,
+        };
     }
 
-    private  async Task WriteStreamAsync(
+    private async Task WriteStreamAsync(
         HttpContext httpContext,
         string agentId,
         AgentQuery query,

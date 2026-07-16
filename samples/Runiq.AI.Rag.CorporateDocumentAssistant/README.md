@@ -6,6 +6,13 @@ The scenario models an internal IT support assistant that can work with corporat
 
 The sample is intended to stay provider-independent. Demo providers can be replaced later with real embedding providers, vector stores, and answer generation providers without moving demo-specific logic into `src/Runiq.AI.Rag`. Dashboard hosting is composed through `src/Runiq.AI.Core`; RAG ingestion remains composed through `src/Runiq.AI.Rag`.
 
+The dashboard agent uses the production `UseRag` path with `RagExecutionMode.Required`,
+`RagNoContextBehavior.ReturnNotFound`, and a minimum relevance score. If the index has not been seeded or no
+candidate passes acceptance, Agent Chat returns the controlled not-found outcome before model invocation. The
+framework supplies the grounding and untrusted-document instructions; the agent definition does not repeat them.
+The sample's separate `/query` endpoint remains a deterministic retrieval-inspection endpoint and does not invoke
+the Agent Chat model runtime.
+
 ## Run
 
 From the repository root:
