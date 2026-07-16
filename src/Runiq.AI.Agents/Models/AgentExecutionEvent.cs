@@ -3,20 +3,85 @@ namespace Runiq.AI.Agents;
 /// <summary>
 /// Agent çalismasi sirasinda üretilen stream olayini temsil eder.
 /// </summary>
-public sealed record AgentExecutionEvent(
-    AgentExecutionEventKind Kind,
-    string? Content,
-    string? ToolCallId = null,
-    string? ToolName = null,
-    string? ArgumentsJson = null,
-    string? OutputJson = null,
-    string? ErrorCode = null,
-    string? ErrorMessage = null)
+public sealed record AgentExecutionEvent
 {
+    private AgentExecutionEvent(
+        AgentExecutionEventKind Kind,
+        string? Content,
+        string? ToolCallId = null,
+        string? ToolName = null,
+        string? ArgumentsJson = null,
+        string? OutputJson = null,
+        string? ErrorCode = null,
+        string? ErrorMessage = null,
+        AgentRagExecutionMetadata? Rag = null,
+        RagSearchEvent? RagSearch = null)
+    {
+        if ((Kind == AgentExecutionEventKind.RagSearch) != (RagSearch is not null))
+        {
+            throw new ArgumentException("The RAG search event kind and payload must be supplied together.", nameof(RagSearch));
+        }
+
+        this.Kind = Kind;
+        this.Content = Content;
+        this.ToolCallId = ToolCallId;
+        this.ToolName = ToolName;
+        this.ArgumentsJson = ArgumentsJson;
+        this.OutputJson = OutputJson;
+        this.ErrorCode = ErrorCode;
+        this.ErrorMessage = ErrorMessage;
+        this.Rag = Rag;
+        this.RagSearch = RagSearch;
+    }
+
+    /// <summary>Gets the execution event kind.</summary>
+    public AgentExecutionEventKind Kind { get; }
+
+    /// <summary>Gets the event content, when applicable.</summary>
+    public string? Content { get; }
+
+    /// <summary>Gets the tool call identifier, when applicable.</summary>
+    public string? ToolCallId { get; }
+
+    /// <summary>Gets the tool name, when applicable.</summary>
+    public string? ToolName { get; }
+
+    /// <summary>Gets the serialized tool arguments, when applicable.</summary>
+    public string? ArgumentsJson { get; }
+
+    /// <summary>Gets the serialized tool output, when applicable.</summary>
+    public string? OutputJson { get; }
+
+    /// <summary>Gets the error code, when applicable.</summary>
+    public string? ErrorCode { get; }
+
+    /// <summary>Gets the error message, when applicable.</summary>
+    public string? ErrorMessage { get; }
+
     /// <summary>
-    /// Gets or initializes the structured RAG policy outcome carried by a terminal event.
+    /// Gets the structured RAG policy outcome carried by a terminal event.
     /// </summary>
-    public AgentRagExecutionMetadata? Rag { get; init; }
+    public AgentRagExecutionMetadata? Rag { get; }
+
+    /// <summary>
+    /// Gets the type-safe RAG search lifecycle payload carried by this execution event.
+    /// </summary>
+    public RagSearchEvent? RagSearch { get; }
+
+    /// <summary>
+    /// Creates an execution-stream event that carries a RAG search lifecycle payload.
+    /// </summary>
+    /// <param name="ragSearch">The RAG search lifecycle payload.</param>
+    /// <returns>The execution event that can be published through the existing runtime stream.</returns>
+    public static AgentExecutionEvent FromRagSearch(RagSearchEvent ragSearch)
+    {
+        ArgumentNullException.ThrowIfNull(ragSearch);
+
+        return new AgentExecutionEvent(
+            Kind: AgentExecutionEventKind.RagSearch,
+            Content: null,
+            RagSearch: ragSearch);
+    }
 
     /// <summary>
     /// Assistant yanitindan gelen parça metin olayini olusturur.
@@ -111,7 +176,10 @@ public sealed record AgentExecutionEvent(
     /// <returns>The completed stream event.</returns>
     public static AgentExecutionEvent Completed(AgentRagExecutionMetadata? rag)
     {
-        return Completed() with { Rag = rag };
+        return new AgentExecutionEvent(
+            Kind: AgentExecutionEventKind.Completed,
+            Content: null,
+            Rag: rag);
     }
 
     /// <summary>
@@ -143,7 +211,12 @@ public sealed record AgentExecutionEvent(
         string? errorCode,
         AgentRagExecutionMetadata? rag)
     {
-        return Failed(errorMessage, errorCode) with { Rag = rag };
+        return new AgentExecutionEvent(
+            Kind: AgentExecutionEventKind.Failed,
+            Content: errorMessage,
+            ErrorCode: errorCode,
+            ErrorMessage: errorMessage,
+            Rag: rag);
     }
 }
 
@@ -180,5 +253,10 @@ public enum AgentExecutionEventKind
     /// <summary>
     /// Agent çalismasinin hata ile sonlandigini belirtir.
     /// </summary>
-    Failed = 5
+    Failed = 5,
+
+    /// <summary>
+    /// A RAG search lifecycle event with a structured <see cref="AgentExecutionEvent.RagSearch"/> payload.
+    /// </summary>
+    RagSearch = 6
 }
