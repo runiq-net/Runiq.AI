@@ -38,6 +38,8 @@ public sealed class RagOptions
     /// Gets or sets provider-independent document chunking options.
     /// </summary>
     public RagChunkingOptions Chunking { get; set; } = new();
+    /// <summary>Gets or sets unified document ingestion options.</summary>
+    public Models.Ingestion.RagIngestionOptions Ingestion { get; set; } = new();
 
     /// <summary>Gets or sets the provider/model reference used for document and query embeddings.</summary>
     public string? EmbeddingModel { get; set; }
