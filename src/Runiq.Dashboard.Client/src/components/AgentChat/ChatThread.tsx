@@ -4,6 +4,7 @@ import { Check, Copy } from 'lucide-react';
 import './ChatThread.css';
 
 import { ToolCallCard } from './tool/ToolCallCard';
+import { RagSearchCard } from './rag/RagSearchCard';
 
 import type { AgentChatMessage } from '../../types/agentChat';
 
@@ -69,6 +70,8 @@ function ChatMessageItem({ message }: { message: AgentChatMessage }) {
   const [copied, setCopied] = useState(false);
 
   const hasToolCalls = Boolean(message.toolCalls?.length);
+  const hasRagSearches = Boolean(message.ragSearches?.length);
+  const hasRuntimeActivities = hasToolCalls || hasRagSearches;
 
   const hasContent = Boolean(message.content.trim());
 
@@ -78,7 +81,7 @@ function ChatMessageItem({ message }: { message: AgentChatMessage }) {
   const showInitialThinking =
     message.role === 'assistant' &&
     isAssistantStreaming &&
-    !hasToolCalls;
+    !hasRuntimeActivities;
 
 
   const showToolWaiting =
@@ -128,6 +131,17 @@ function ChatMessageItem({ message }: { message: AgentChatMessage }) {
 
   return (
     <article className="mr-auto w-full max-w-[min(760px,82%)] text-sm leading-6 text-zinc-900 dark:text-zinc-100">
+
+      {hasRagSearches && (
+        <div className="mb-4 flex min-w-0 flex-col gap-2">
+          {message.ragSearches?.map((lifecycle) => (
+            <RagSearchCard
+              key={lifecycle.payload.correlationId}
+              lifecycle={lifecycle}
+            />
+          ))}
+        </div>
+      )}
 
       {hasToolCalls && (
         <div className="mb-4 flex flex-col gap-2">

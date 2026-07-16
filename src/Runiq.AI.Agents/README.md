@@ -153,12 +153,14 @@ inside a separate `<untrusted-external-context>` user message. Document instruct
 data and cannot be promoted into system, developer, agent, or framework instruction authority. This boundary is
 a prompt-injection mitigation, not a guarantee that a model can never be manipulated.
 
-`AgentExecutionResult.Rag`, terminal `AgentExecutionEvent.Rag`, and Agent Chat result/SSE terminal events expose
+`AgentExecutionResult.Rag`, terminal `AgentExecutionEvent.Rag`, and Agent Chat result responses expose
 the applied mode, accepted-context status, applied no-context behavior and reason, whether model invocation was
 skipped, and whether the framework constrained the answer to accepted context. The metadata also exposes ordered
 candidate, accepted, and rejected collections and their counts; every item carries raw score, normalized relevance,
 metric, direction, and any rejection reason. Streaming and non-streaming executions share this same evaluation.
 `IsAnswerGrounded` reports the applied framework policy; it is not independent semantic verification of model output.
+Agent Chat SSE projects the content-free RAG search lifecycle through dedicated `rag_search_started`,
+`rag_search_completed`, and `rag_search_failed` events instead of serializing runtime result collections.
 
 ## Tool Design
 

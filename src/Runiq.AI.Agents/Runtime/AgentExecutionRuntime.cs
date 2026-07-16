@@ -1,4 +1,5 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Core.AI.Chat;
@@ -323,35 +324,66 @@ public sealed class AgentExecutionRuntime
             yield break;
         }
 
-        AgentExecutionEvent? ragFailureEvent = null;
+        if (agent.Rag is { Enabled: true } activeRag)
+        {
+            var indexName = !string.IsNullOrWhiteSpace(query.IndexName)
+                ? query.IndexName.Trim()
+                : activeRag.IndexName?.Trim();
+            if (string.IsNullOrWhiteSpace(indexName))
+            {
+                yield return AgentExecutionEvent.Failed(
+                    $"RAG is enabled for agent '{agent.Id}', but no index was configured; the model was not invoked.",
+                    "RagConfigurationInvalid",
+                    CreateRagMetadata(activeRag, runtimeContext, modelInvocationSkipped: true, noContextBehaviorApplied: false));
+                yield break;
+            }
 
-        try
-        {
-            runtimeContext = await SearchRagContextAsync(
-                agent,
-                runtimeContext,
-                query,
-                cancellationToken);
-        }
-        catch (AgentRagConfigurationException exception)
-        {
-            ragFailureEvent = AgentExecutionEvent.Failed(
-                exception.Message,
-                "RagConfigurationInvalid",
-                CreateRagMetadata(agent.Rag, runtimeContext, modelInvocationSkipped: true, noContextBehaviorApplied: false));
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            ragFailureEvent = AgentExecutionEvent.Failed(
-                $"RAG retrieval failed for agent '{agent.Id}'; the model was not invoked. {exception.Message}",
-                "RagRetrievalFailed",
-                CreateRagMetadata(agent.Rag, runtimeContext, modelInvocationSkipped: true, noContextBehaviorApplied: false));
-        }
+            var correlationId = Guid.NewGuid().ToString("N");
+            yield return AgentExecutionEvent.FromRagSearch(new RagSearchStarted(
+                correlationId, agent.Id, query.ConversationId, indexName, query.Message, effectiveQuery: null,
+                activeRag.Acceptance.CandidateCount));
 
-        if (ragFailureEvent is not null)
-        {
-            yield return ragFailureEvent;
-            yield break;
+            if (ragRetriever is null)
+            {
+                yield return AgentExecutionEvent.FromRagSearch(new RagSearchFailed(
+                    correlationId, agent.Id, query.ConversationId, indexName, query.Message, effectiveQuery: null,
+                    activeRag.Acceptance.CandidateCount, RetrievalErrorCode.InvalidRequest, TimeSpan.Zero));
+                yield return AgentExecutionEvent.Failed(
+                    $"RAG is enabled for agent '{agent.Id}', but the retrieval service is unavailable; the model was not invoked.",
+                    "RagConfigurationInvalid",
+                    CreateRagMetadata(activeRag, runtimeContext, modelInvocationSkipped: true, noContextBehaviorApplied: false));
+                yield break;
+            }
+
+            var retrievalStopwatch = Stopwatch.StartNew();
+            Exception? retrievalFailure = null;
+            try
+            {
+                runtimeContext = await SearchRagContextAsync(
+                    activeRag, indexName, query.Message, cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                retrievalFailure = exception;
+            }
+
+            retrievalStopwatch.Stop();
+            if (retrievalFailure is not null)
+            {
+                yield return AgentExecutionEvent.FromRagSearch(new RagSearchFailed(
+                    correlationId, agent.Id, query.ConversationId, indexName, query.Message, effectiveQuery: null,
+                    activeRag.Acceptance.CandidateCount, ClassifyRetrievalFailure(retrievalFailure),
+                    retrievalStopwatch.Elapsed));
+                yield return AgentExecutionEvent.Failed(
+                    $"RAG retrieval failed for agent '{agent.Id}'; the model was not invoked.",
+                    "RagRetrievalFailed",
+                    CreateRagMetadata(activeRag, runtimeContext, modelInvocationSkipped: true, noContextBehaviorApplied: false));
+                yield break;
+            }
+
+            yield return AgentExecutionEvent.FromRagSearch(CreateRagSearchCompleted(
+                correlationId, query.ConversationId, agent, activeRag, indexName, query.Message, runtimeContext,
+                retrievalStopwatch.Elapsed));
         }
 
         if (agent.Rag is { Enabled: true } policy && !runtimeContext.HasContext)
@@ -569,37 +601,17 @@ public sealed class AgentExecutionRuntime
     /// Agent RAG yapilandirmasi varsa RAG retrieval Ã§alistirir ve sonuÃ§lari runtime context'e ekler.
     /// </summary>
     private async Task<AgentRuntimeContext> SearchRagContextAsync(
-        Agent agent,
-        AgentRuntimeContext runtimeContext,
-        AgentQuery query,
+        AgentRagOptions ragOptions,
+        string indexName,
+        string query,
         CancellationToken cancellationToken)
     {
-        if (agent.Rag is null || !agent.Rag.Enabled)
-        {
-            return runtimeContext;
-        }
-
-        if (ragRetriever is null)
-        {
-            throw new AgentRagConfigurationException(
-                $"RAG is enabled for agent '{agent.Id}', but IRagRetriever is not registered; the model was not invoked.");
-        }
-
-        var indexName = !string.IsNullOrWhiteSpace(query.IndexName)
-            ? query.IndexName.Trim()
-            : agent.Rag.IndexName?.Trim();
-        if (string.IsNullOrWhiteSpace(indexName))
-        {
-            throw new AgentRagConfigurationException(
-                $"RAG is enabled for agent '{agent.Id}', but no index was configured; the model was not invoked.");
-        }
-
-        var candidates = await ragRetriever.RetrieveAsync(
+        var candidates = await ragRetriever!.RetrieveAsync(
             new RagQuery
             {
-                Text = query.Message,
+                Text = query,
                 IndexName = indexName,
-                TopK = agent.Rag.Acceptance.CandidateCount,
+                TopK = ragOptions.Acceptance.CandidateCount,
             },
             cancellationToken).ConfigureAwait(false);
 
@@ -608,7 +620,7 @@ public sealed class AgentExecutionRuntime
             throw new RagRetrievalExecutionException("The RAG retriever returned a null result collection.");
         }
 
-        var evaluation = RagResultAcceptanceEvaluator.Evaluate(candidates, agent.Rag.Acceptance);
+        var evaluation = RagResultAcceptanceEvaluator.Evaluate(candidates, ragOptions.Acceptance);
         RagNoContextReason? noContextReason = evaluation.AcceptedResults.Count > 0
             ? null
             : candidates.Count == 0
@@ -623,6 +635,57 @@ public sealed class AgentExecutionRuntime
             evaluation.Candidates,
             evaluation.RejectedResults,
             noContextReason);
+    }
+
+    private static RetrievalErrorCode ClassifyRetrievalFailure(Exception exception) =>
+        exception is RagRetrievalExecutionException retrievalException
+            ? retrievalException.ErrorCode
+            : RetrievalErrorCode.RetrievalFailed;
+
+    private static RagSearchCompleted CreateRagSearchCompleted(
+        string correlationId,
+        string conversationId,
+        Agent agent,
+        AgentRagOptions options,
+        string indexName,
+        string originalQuery,
+        AgentRuntimeContext runtimeContext,
+        TimeSpan duration)
+    {
+        var topCandidate = runtimeContext.RetrievedRagCandidates.FirstOrDefault(candidate =>
+            candidate is not null &&
+            double.IsFinite(candidate.RawScore) &&
+            !string.IsNullOrWhiteSpace(candidate.Metric) &&
+            (candidate.Relevance is null ||
+                double.IsFinite(candidate.Relevance.Value) && candidate.Relevance.Value is >= 0 and <= 1));
+
+        return new RagSearchCompleted(
+            correlationId,
+            agent.Id,
+            conversationId,
+            indexName,
+            originalQuery,
+            effectiveQuery: null,
+            options.Acceptance.CandidateCount,
+            runtimeContext.RetrievedRagCandidates.Count,
+            runtimeContext.RetrievedRagContext.Count,
+            runtimeContext.RejectedRagCandidates.Count,
+            runtimeContext.RetrievedRagContext
+                .Select(result => new RagSearchSelectedResult(result.Chunk.DocumentId, result.Chunk.Id))
+                .ToArray(),
+            runtimeContext.RejectedRagCandidates
+                .Select(result => new RagSearchRejectedResult(
+                    result.Result.Chunk.DocumentId,
+                    result.Result.Chunk.Id,
+                    result.Result.RawScore,
+                    result.Result.Relevance,
+                    result.Reason))
+                .ToArray(),
+            options.Acceptance.MaximumAcceptedResults,
+            duration,
+            topCandidate?.RawScore,
+            topCandidate?.Relevance,
+            runtimeContext.NoContextReason);
     }
 
     private static AgentRagExecutionMetadata? CreateRagMetadata(
@@ -649,18 +712,5 @@ public sealed class AgentExecutionRuntime
             runtimeContext.RetrievedRagContext,
             runtimeContext.RejectedRagCandidates);
     }
-
-    /// <summary>
-    /// Agent'a bagli Vector Query Tool yapilandirmasindan bir tool istegi olusturur, tool'u Ã§alistirir ve mevcut
-    /// RAG context formatina eslenmis sonuÃ§lari runtime context'e yerlestirir. Basarisiz bir tool sonucu, mevcut
-    /// RAG retriever hatasiyla ayni deterministik akisa uyacak biÃ§imde <see cref="InvalidOperationException"/>
-    /// olarak yÃ¼kseltilir.
-    /// </summary>
-    /// <summary>
-    /// Vector Query Tool sonucundaki eslesmeleri, mevcut RAG context assembly'sinin tÃ¼kettigi
-    /// <see cref="RagSearchResult"/> formatina dÃ¶nÃ¼stÃ¼rÃ¼r. IÃ§erik, skor ve metadata korunur; bos kayit kimlikleri
-    /// ve eksik document kimlikleri, required chunk alanlarinin ihlal edilmemesi iÃ§in gÃ¼venli degerlere dÃ¼ser.
-    /// </summary>
-    private sealed class AgentRagConfigurationException(string message) : InvalidOperationException(message);
 
 }

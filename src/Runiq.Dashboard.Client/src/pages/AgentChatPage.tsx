@@ -5,6 +5,7 @@ import { getAgents, type AgentMetadata } from '../api/agentMetadataApi';
 import { AgentInspectorPanel } from '../components/AgentChat/AgentInspectorPanel';
 import { ChatComposer } from '../components/AgentChat/ChatComposer';
 import { ChatThread } from '../components/AgentChat/ChatThread';
+import { applyRagStreamEvent } from '../components/AgentChat/rag/ragTimeline';
 import { getDashboardBasePath } from '../dashboardConfig';
 import type {
   AgentChatMessage,
@@ -33,6 +34,18 @@ function applyStreamEvent(
   message: AgentChatMessage,
   event: AgentChatStreamEvent,
 ): AgentChatMessage {
+  if (
+    event.type === 'rag_search_started' ||
+    event.type === 'rag_search_completed' ||
+    event.type === 'rag_search_failed'
+  ) {
+    return {
+      ...message,
+      isStreaming: true,
+      ragSearches: applyRagStreamEvent(message.ragSearches ?? [], event),
+    };
+  }
+
   if (event.type === 'assistant_delta') {
     return {
       ...message,
@@ -220,6 +233,7 @@ export function AgentChatPage({ agentId }: AgentChatPageProps) {
         ...createMessage('assistant', ''),
         isStreaming: true,
         toolCalls: [],
+        ragSearches: [],
       };
 
       setMessages((current) => [...current, assistantMessage]);

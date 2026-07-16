@@ -136,11 +136,27 @@ function parseServerSentEvent(event: string): AgentChatStreamEvent | null {
   return null;
 }
 
-function parseStreamEventPayload(data: string): AgentChatStreamEvent | null {
+export function parseStreamEventPayload(data: string): AgentChatStreamEvent | null {
   try {
     const parsed = JSON.parse(data) as Partial<AgentChatStreamEvent>;
 
     if (!parsed.type) {
+      return null;
+    }
+
+    const isKnownRagEvent =
+      parsed.type === 'rag_search_started' ||
+      parsed.type === 'rag_search_completed' ||
+      parsed.type === 'rag_search_failed';
+
+    if (parsed.type.startsWith('rag_search_') && !isKnownRagEvent) {
+      return null;
+    }
+
+    if (
+      isKnownRagEvent &&
+      !isValidRagPayload(parsed.type, parsed.ragSearch)
+    ) {
       return null;
     }
 
@@ -153,10 +169,58 @@ function parseStreamEventPayload(data: string): AgentChatStreamEvent | null {
       outputJson: parsed.outputJson ?? null,
       errorCode: parsed.errorCode ?? null,
       errorMessage: parsed.errorMessage ?? null,
+      ragSearch: parsed.ragSearch ?? null,
     } as AgentChatStreamEvent;
 
 
   } catch {
     return null;
   }
+}
+
+function isValidRagPayload(
+  type: AgentChatStreamEvent['type'],
+  payload: unknown,
+): boolean {
+  if (!isRecord(payload) ||
+    !hasString(payload, 'agentId') ||
+    !hasString(payload, 'conversationId') ||
+    !hasString(payload, 'correlationId') ||
+    !hasString(payload, 'indexName') ||
+    !hasString(payload, 'originalQuery') ||
+    !hasNumber(payload, 'requestedCandidateCount')) {
+    return false;
+  }
+
+  if (type === 'rag_search_started') {
+    return payload.effectiveQuery === undefined || typeof payload.effectiveQuery === 'string';
+  }
+
+  if (type === 'rag_search_failed') {
+    return hasString(payload, 'duration') && hasString(payload, 'failureClassification');
+  }
+
+  if (type === 'rag_search_completed') {
+    return hasNumber(payload, 'actualCandidateCount') &&
+      hasNumber(payload, 'acceptedCount') &&
+      hasNumber(payload, 'rejectedCount') &&
+      hasNumber(payload, 'maximumAcceptedResultCount') &&
+      hasString(payload, 'duration') &&
+      Array.isArray(payload.selectedResults) &&
+      Array.isArray(payload.rejectedResults);
+  }
+
+  return true;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function hasString(value: Record<string, unknown>, key: string): boolean {
+  return typeof value[key] === 'string';
+}
+
+function hasNumber(value: Record<string, unknown>, key: string): boolean {
+  return typeof value[key] === 'number' && Number.isFinite(value[key]);
 }
