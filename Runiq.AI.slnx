@@ -14,6 +14,7 @@
     <Project Path="src/Runiq.AI.Core/Runiq.AI.Core.csproj" />
     <Project Path="src/Runiq.AI.Mcp/Runiq.AI.Mcp.csproj" />
     <Project Path="src/Runiq.AI.Rag/Runiq.AI.Rag.csproj" />
+    <Project Path="src/Runiq.AI.Rag.PostgreSql/Runiq.AI.Rag.PostgreSql.csproj" />
     <Project Path="src/Runiq.AI.Workflows/Runiq.AI.Workflows.csproj" />
   </Folder>
   <Folder Name="/tests/">
@@ -21,6 +22,7 @@
     <Project Path="tests/Runiq.AI.Cli.Tests/Runiq.AI.Cli.Tests.csproj" />
     <Project Path="tests/Runiq.AI.Core.Tests/Runiq.AI.Core.Tests.csproj" />
     <Project Path="tests/Runiq.AI.Rag.Tests/Runiq.AI.Rag.Tests.csproj" />
+    <Project Path="tests/Runiq.AI.Rag.PostgreSql.Tests/Runiq.AI.Rag.PostgreSql.Tests.csproj" />
     <Project Path="tests/Runiq.AI.Workflows.Tests/Runiq.AI.Workflows.Tests.csproj" />
   </Folder>
 </Solution>

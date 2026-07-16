@@ -19,6 +19,7 @@ It gives ASP.NET Core teams a native way to define AI agents in C#, attach stron
 | `Runiq.AI.Agents` | Agent definitions, tool execution, provider integration, streaming events, and execution results. |
 | `Runiq.AI.Core` | ASP.NET Core hosting extensions, runtime endpoints, and the embedded dashboard. |
 | `Runiq.AI.Rag` | Document chunking, embeddings, vector storage, and retrieval for document-based knowledge. |
+| `Runiq.AI.Rag.PostgreSql` | Durable RAG persistence and database-side vector search with PostgreSQL and pgvector. |
 | `Runiq.AI.Workflows` | Code-first workflow orchestration primitives for agent runtime and dashboard scenarios. |
 
 ## Installation

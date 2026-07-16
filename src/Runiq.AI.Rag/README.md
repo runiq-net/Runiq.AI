@@ -4,6 +4,10 @@ Runiq.AI.Rag provides retrieval-augmented generation primitives for Runiq AI app
 
 It includes abstractions and default implementations for document chunking, embedding generation, vector storage, retrieval, and search result mapping.
 
+The built-in in-memory store is intended for development and tests. Durable logical index, document, chunk,
+embedding, metadata, and ingestion-state persistence with database-side vector search is available from the separate
+`Runiq.AI.Rag.PostgreSql` package; the core package has no Npgsql or pgvector dependency.
+
 ## Retrieval Score Semantics
 
 Retrieval results distinguish the provider's `RawScore` from nullable provider-independent `Relevance`.
