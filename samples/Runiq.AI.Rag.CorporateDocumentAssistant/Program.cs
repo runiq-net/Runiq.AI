@@ -15,7 +15,7 @@ builder.Services.AddRuniqServer(options =>
             id: "corporate-policy-assistant",
             name: "Corporate Policy Assistant",
             instructions: "Answer employee policy questions from the supplied reference material.",
-            model: "ollama/llama3")
+            model: "ollama/minimax-m3")
         .UseRag(rag =>
         {
             rag.IndexName = "corporate-document-assistant";

@@ -19,6 +19,7 @@ export type AgentChatMessage = {
   role: AgentChatMessageRole;
   content: string;
   toolCalls?: AgentToolCall[];
+  ragSearches?: AgentChatRagLifecycle[];
   isStreaming?: boolean;
 };
 
@@ -98,6 +99,20 @@ export type AgentChatRagSearchFailedEvent = AgentChatRagSearchEventBase & {
   duration: string;
   failureClassification: AgentChatRagFailureClassification;
 };
+
+export type AgentChatRagLifecycle =
+  | {
+    status: 'running';
+    payload: AgentChatRagSearchStartedEvent;
+  }
+  | {
+    status: 'completed';
+    payload: AgentChatRagSearchCompletedEvent;
+  }
+  | {
+    status: 'failed';
+    payload: AgentChatRagSearchFailedEvent;
+  };
 
 export type AgentChatStreamEventFields = {
   content?: string | null;
