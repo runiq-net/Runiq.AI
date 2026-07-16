@@ -21,7 +21,9 @@ builder.Services.AddRuniqServer(options =>
             rag.IndexName = "corporate-document-assistant";
             rag.Mode = RagExecutionMode.Required;
             rag.NoContextBehavior = RagNoContextBehavior.ReturnNotFound;
-            rag.MinimumRelevanceScore = 0.55;
+            rag.Acceptance.MinimumRelevance = 0.55;
+            rag.Acceptance.CandidateCount = 20;
+            rag.Acceptance.MaximumAcceptedResults = 5;
         }));
 });
 builder.Services.AddRuniqRag(ragBuilder => ragBuilder.UseInMemoryVectorStore());

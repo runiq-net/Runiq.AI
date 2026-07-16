@@ -599,6 +599,7 @@ public sealed class AgentExecutionRuntime
             {
                 Text = query.Message,
                 IndexName = indexName,
+                TopK = agent.Rag.Acceptance.CandidateCount,
             },
             cancellationToken).ConfigureAwait(false);
 
@@ -607,16 +608,21 @@ public sealed class AgentExecutionRuntime
             throw new RagRetrievalExecutionException("The RAG retriever returned a null result collection.");
         }
 
-        var acceptedContext = agent.Rag.MinimumRelevanceScore is double minimumScore
-            ? candidates.Where(result => result.Score >= minimumScore).ToArray()
-            : candidates.ToArray();
-        RagNoContextReason? noContextReason = acceptedContext.Length > 0
+        var evaluation = RagResultAcceptanceEvaluator.Evaluate(candidates, agent.Rag.Acceptance);
+        RagNoContextReason? noContextReason = evaluation.AcceptedResults.Count > 0
             ? null
             : candidates.Count == 0
                 ? RagNoContextReason.NoResults
-                : RagNoContextReason.BelowRelevanceThreshold;
+                : evaluation.RejectedResults.All(
+                    result => result.Reason == RagResultRejectionReason.BelowMinimumRelevance)
+                    ? RagNoContextReason.BelowRelevanceThreshold
+                    : RagNoContextReason.CandidatesRejected;
 
-        return new AgentRuntimeContext(acceptedContext, candidates, noContextReason);
+        return new AgentRuntimeContext(
+            evaluation.AcceptedResults,
+            evaluation.Candidates,
+            evaluation.RejectedResults,
+            noContextReason);
     }
 
     private static AgentRagExecutionMetadata? CreateRagMetadata(
@@ -636,10 +642,12 @@ public sealed class AgentExecutionRuntime
             noContextBehaviorApplied ? options.NoContextBehavior : null,
             runtimeContext.NoContextReason,
             modelInvocationSkipped,
-            isAnswerGrounded:
-                !modelInvocationSkipped &&
+            !modelInvocationSkipped &&
                 runtimeContext.HasContext &&
-                options.Mode is RagExecutionMode.Grounded or RagExecutionMode.Required);
+                options.Mode is RagExecutionMode.Grounded or RagExecutionMode.Required,
+            runtimeContext.RetrievedRagCandidates,
+            runtimeContext.RetrievedRagContext,
+            runtimeContext.RejectedRagCandidates);
     }
 
     /// <summary>

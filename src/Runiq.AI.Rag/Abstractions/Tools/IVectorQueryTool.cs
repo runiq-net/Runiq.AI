@@ -25,8 +25,8 @@ public interface IVectorQueryTool
     /// call chain.
     /// </param>
     /// <returns>
-    /// A successful result carrying the retrieved matches with their content, metadata, and similarity scores,
-    /// or a failed result with a provider-independent error category.
+    /// A successful result carrying the retrieved matches with their content, metadata, raw score semantics, and
+    /// nullable normalized relevance, or a failed result with a provider-independent error category.
     /// </returns>
     Task<VectorQueryToolResult> ExecuteAsync(
         VectorQueryToolRequest request,

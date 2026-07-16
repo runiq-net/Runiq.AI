@@ -57,7 +57,7 @@ public sealed class VectorQueryToolRuntimeInvocationTests
         var pipeline = new FakeRetrievalPipeline
         {
             Result = RetrievalResult.Success(
-                [new RetrievalResultItem { RecordId = "chunk-1", Content = "Bursa food stops", Score = 0.87 }],
+                [new RetrievalResultItem { RecordId = "chunk-1", Content = "Bursa food stops", RawScore = 0.87 }],
                 RagMetadata.Empty),
         };
         using var provider = BuildProvider(pipeline);

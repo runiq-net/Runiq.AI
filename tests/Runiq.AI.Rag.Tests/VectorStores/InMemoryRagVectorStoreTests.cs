@@ -4,6 +4,7 @@ using Runiq.AI.Rag.Models.Embeddings;
 using Runiq.AI.Rag.Models.Metadata;
 using Runiq.AI.Rag.Models.Queries;
 using Runiq.AI.Rag.Models.Retrieval;
+using Runiq.AI.Rag.Models.Search;
 using Runiq.AI.Rag.Models.VectorStores;
 using Runiq.AI.Rag.Retrieval;
 using Runiq.AI.Rag.VectorStores;
@@ -681,8 +682,8 @@ public sealed class InMemoryRagVectorStoreTests
             TopK = 3,
         });
 
-        Assert.True(result.Records[0].Score > result.Records[1].Score);
-        Assert.True(result.Records[1].Score > result.Records[2].Score);
+        Assert.True(result.Records[0].RawScore > result.Records[1].RawScore);
+        Assert.True(result.Records[1].RawScore > result.Records[2].RawScore);
     }
 
     // Verifies that a single equality criterion returns only the records whose metadata satisfies the filter.
@@ -778,7 +779,7 @@ public sealed class InMemoryRagVectorStoreTests
 
         Assert.Equal(2, result.Records.Count);
         Assert.Equal(["vector-a", "vector-c"], result.Records.Select(record => record.Id));
-        Assert.True(result.Records[0].Score > result.Records[1].Score);
+        Assert.True(result.Records[0].RawScore > result.Records[1].RawScore);
     }
 
     // Verifies that a record whose metadata does not contain the criterion key never matches the filter.
@@ -927,16 +928,87 @@ public sealed class InMemoryRagVectorStoreTests
         Assert.Equal("vector-1", result.Id);
     }
 
-    // Verifies that each query result carries the provider-independent similarity score for the match.
+    // Verifies that each query result carries the provider raw score without presenting it as confidence.
     [Fact]
-    public async Task QueryAsync_ShouldIncludeScore()
+    public async Task QueryAsync_ShouldIncludeRawScore()
     {
         var vectorStore = await CreateVectorStoreAsync();
         await UpsertRecordsAsync(vectorStore, CreateRecord("vector-1", [1.0f, 0.0f, 0.0f]));
 
         var result = await QuerySingleAsync(vectorStore);
 
-        Assert.Equal(1.0d, result.Score, precision: 6);
+        Assert.Equal(1.0d, result.RawScore, precision: 6);
+    }
+
+    [Fact]
+    // Verifies that the in-memory cosine adapter exposes raw metric semantics and the documented [0,1] normalization.
+    public async Task QueryAsync_ShouldExposeNormalizedCosineScoreSemantics()
+    {
+        var vectorStore = await CreateVectorStoreAsync();
+        await UpsertRecordsAsync(vectorStore, CreateRecord("vector-1", [0.0f, 1.0f, 0.0f]));
+
+        var result = await QuerySingleAsync(vectorStore);
+
+        Assert.Equal(RagScoreMetrics.CosineSimilarity, result.Metric);
+        Assert.True(result.HigherIsBetter);
+        Assert.Equal(0.0, result.RawScore, precision: 6);
+        Assert.Equal(0.5, result.Relevance!.Value, precision: 6);
+    }
+
+    [Fact]
+    // Verifies that Euclidean distance remains lower-is-better raw data while normalized relevance orders closer matches first.
+    public async Task QueryAsync_ShouldExposeLowerIsBetterEuclideanScoreSemantics()
+    {
+        var vectorStore = new InMemoryRagVectorStore();
+        await vectorStore.CreateIndexAsync(new CreateVectorIndexRequest
+        {
+            IndexName = "documents",
+            Dimensions = 2,
+            Metric = VectorDistanceMetric.Euclidean,
+        });
+        await UpsertRecordsAsync(
+            vectorStore,
+            CreateRecord("near", [0.5f, 0.0f]),
+            CreateRecord("far", [0.0f, 1.0f]));
+
+        var query = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [1.0f, 0.0f],
+            TopK = 2,
+        });
+
+        Assert.Equal(["near", "far"], query.Records.Select(item => item.Id));
+        Assert.All(query.Records, item => Assert.Equal(RagScoreMetrics.EuclideanDistance, item.Metric));
+        Assert.All(query.Records, item => Assert.False(item.HigherIsBetter));
+        Assert.True(query.Records[0].RawScore < query.Records[1].RawScore);
+        Assert.True(query.Records[0].Relevance > query.Records[1].Relevance);
+    }
+
+    [Fact]
+    // Verifies that unbounded dot-product scores are labeled explicitly and do not invent common relevance values.
+    public async Task QueryAsync_ShouldLeaveDotProductRelevanceUndefined()
+    {
+        var vectorStore = new InMemoryRagVectorStore();
+        await vectorStore.CreateIndexAsync(new CreateVectorIndexRequest
+        {
+            IndexName = "documents",
+            Dimensions = 2,
+            Metric = VectorDistanceMetric.DotProduct,
+        });
+        await UpsertRecordsAsync(vectorStore, CreateRecord("vector-1", [2.0f, 1.0f]));
+
+        var query = await vectorStore.QueryAsync(new QueryVectorRequest
+        {
+            IndexName = "documents",
+            Values = [1.0f, 0.0f],
+        });
+        var result = Assert.Single(query.Records);
+
+        Assert.Equal(RagScoreMetrics.DotProduct, result.Metric);
+        Assert.True(result.HigherIsBetter);
+        Assert.Equal(2.0, result.RawScore);
+        Assert.Null(result.Relevance);
     }
 
     // Verifies that vector values are preserved with the stored record and can be read back when requested.
@@ -1243,6 +1315,23 @@ public sealed class InMemoryRagVectorStoreTests
 
         Assert.False(result.Succeeded);
         Assert.Equal("Vector dimensions must be greater than zero.", result.Reason);
+    }
+
+    [Fact]
+    // Verifies that an undefined metric is rejected when the index is created instead of failing later during score interpretation.
+    public async Task CreateIndexAsync_ShouldRejectUndefinedDistanceMetric()
+    {
+        var vectorStore = new InMemoryRagVectorStore();
+
+        var result = await vectorStore.CreateIndexAsync(new CreateVectorIndexRequest
+        {
+            IndexName = "documents",
+            Dimensions = 3,
+            Metric = (VectorDistanceMetric)99,
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("Vector distance metric is not defined.", result.Reason);
     }
 
     // Verifies that a null upsert request is treated as a programming error and fails fast with an exception

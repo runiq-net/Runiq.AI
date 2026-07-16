@@ -69,7 +69,10 @@ internal static class AgentInstructionsBuilder
             {
                 source = result.Chunk.DocumentId,
                 chunk = result.Chunk.Id,
-                score = result.Score,
+                rawScore = result.RawScore,
+                relevance = result.Relevance,
+                metric = result.Metric,
+                higherIsBetter = result.HigherIsBetter,
                 content = result.Chunk.Content,
             }));
         }

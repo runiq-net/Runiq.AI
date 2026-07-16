@@ -25,7 +25,10 @@ internal static class RagSearchResultMapper
                         AdditionalMetadata = CopyMetadata(record.Metadata),
                     },
                 },
-                Score = record.Score,
+                RawScore = record.RawScore,
+                Relevance = record.Relevance,
+                Metric = record.Metric,
+                HigherIsBetter = record.HigherIsBetter,
                 Metadata = CopyMetadata(record.Metadata),
             })
             .ToList();

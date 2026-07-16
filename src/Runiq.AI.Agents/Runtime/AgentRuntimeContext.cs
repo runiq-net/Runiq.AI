@@ -9,12 +9,14 @@ public sealed record AgentRuntimeContext(
     IReadOnlyList<RagSearchResult>? RagSearchResults = null)
 {
     internal AgentRuntimeContext(
-        IReadOnlyList<RagSearchResult> ragSearchResults,
-        IReadOnlyList<RagSearchResult> ragCandidates,
+        IReadOnlyList<RagSearchResult> acceptedResults,
+        IReadOnlyList<RagSearchResult> candidates,
+        IReadOnlyList<RagRejectedResult> rejectedResults,
         Configuration.RagNoContextReason? noContextReason)
-        : this(ragSearchResults)
+        : this(acceptedResults)
     {
-        RetrievedRagCandidates = ragCandidates;
+        RetrievedRagCandidates = candidates;
+        RejectedRagCandidates = rejectedResults;
         NoContextReason = noContextReason;
     }
 
@@ -29,6 +31,8 @@ public sealed record AgentRuntimeContext(
     /// </summary>
     internal IReadOnlyList<RagSearchResult> RetrievedRagCandidates { get; } =
         RagSearchResults ?? [];
+
+    internal IReadOnlyList<RagRejectedResult> RejectedRagCandidates { get; } = [];
 
     internal Configuration.RagNoContextReason? NoContextReason { get; }
 

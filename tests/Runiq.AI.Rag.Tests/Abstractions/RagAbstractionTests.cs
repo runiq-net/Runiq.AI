@@ -94,7 +94,7 @@ public sealed class RagAbstractionTests
         Assert.Equal(1, upsertResult.UpsertedCount);
         var vectorResult = Assert.Single(queryResult.Records);
         Assert.Equal(record.Id, vectorResult.Id);
-        Assert.Equal(1.0, vectorResult.Score);
+        Assert.Equal(1.0, vectorResult.RawScore);
         var result = Assert.Single(results);
         Assert.Equal(record.Id, result.Chunk.Id);
     }
@@ -261,7 +261,7 @@ public sealed class RagAbstractionTests
                             Id = record.Id,
                             DocumentId = "document-1",
                         },
-                        Score = 1.0,
+                        RawScore = 1.0,
                     },
                 ];
 
@@ -279,7 +279,7 @@ public sealed class RagAbstractionTests
                     new VectorSearchResult
                     {
                         Id = record.Id,
-                        Score = 1.0,
+                        RawScore = 1.0,
                         Metadata = record.Metadata,
                     },
                 ];
@@ -348,7 +348,7 @@ public sealed class RagAbstractionTests
                         Id = "chunk-1",
                         DocumentId = "document-1",
                     },
-                    Score = 1.0,
+                    RawScore = 1.0,
                 },
             ];
 

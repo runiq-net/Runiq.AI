@@ -7,8 +7,8 @@ namespace Runiq.AI.Rag.Abstractions.Retrieval;
 /// through the embedding abstraction, runs a similarity query against the target vector index through the
 /// vector store abstraction, and returns the matches as a standard <see cref="RetrievalResult"/>. The pipeline
 /// is an orchestration layer only — implementations must not know any concrete embedding provider or vector
-/// store implementation, must not compute similarity scores of their own (scores come from the vector store
-/// query result), and must not perform reranking, prompt building, or context assembly.
+/// store implementation, must not reinterpret raw scores or compute normalization of their own (score semantics
+/// come from the vector store result), and must not perform reranking, prompt building, or context assembly.
 /// </summary>
 /// <remarks>
 /// Only an already-cancelled <see cref="CancellationToken"/> is surfaced as an exception, matching the
@@ -33,8 +33,8 @@ public interface IRagRetrievalPipeline
     /// the vector store query.
     /// </param>
     /// <returns>
-    /// A successful result carrying the retrieved chunk content, metadata, and similarity scores, or a failed
-    /// result with a provider-independent error category.
+    /// A successful result carrying the retrieved chunk content, metadata, raw score semantics, and nullable
+    /// normalized relevance, or a failed result with a provider-independent error category.
     /// </returns>
     Task<RetrievalResult> RetrieveAsync(
         RetrievalRequest request,

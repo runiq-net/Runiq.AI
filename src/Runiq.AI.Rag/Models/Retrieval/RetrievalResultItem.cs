@@ -4,7 +4,7 @@ namespace Runiq.AI.Rag.Models.Retrieval;
 
 /// <summary>
 /// Represents a single match produced by a query-time retrieval. Each item exposes the retrieved chunk content
-/// together with its provider-independent metadata and a similarity score, giving downstream steps (context
+/// together with its provider-independent metadata and explicit score semantics, giving downstream steps (context
 /// assembly, reranking) everything they need without binding to a vector store provider.
 /// </summary>
 public sealed class RetrievalResultItem
@@ -43,10 +43,24 @@ public sealed class RetrievalResultItem
     }
 
     /// <summary>
-    /// Gets or initializes the provider-independent similarity score for this match, where higher values
-    /// represent better matches. Providers that natively use distance metrics are expected to convert their
-    /// distances into a higher-is-better score before populating this value.
+    /// Gets or initializes the raw score returned by the vector store provider.
     /// </summary>
-    public double Score { get; init; }
+    public double RawScore { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the provider-independent relevance in the inclusive range from zero to one, or
+    /// <see langword="null"/> when no reliable normalization is available.
+    /// </summary>
+    public double? Relevance { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the metric identifier that defines the raw score semantics.
+    /// </summary>
+    public string? Metric { get; init; }
+
+    /// <summary>
+    /// Gets or initializes a value indicating whether larger raw scores represent better matches.
+    /// </summary>
+    public bool HigherIsBetter { get; init; }
 }
 

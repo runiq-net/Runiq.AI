@@ -296,7 +296,7 @@ public sealed class RagPipelineTelemetryRecordingTests
                 {
                     Id = recordId,
                     Content = "Chunk content.",
-                    Score = 0.9,
+                    RawScore = 0.9,
                 })
                 .ToList(),
         };

@@ -4,7 +4,7 @@ namespace Runiq.AI.Rag.Models.VectorStores;
 
 /// <summary>
 /// Represents a single vector record returned by a similarity query, carrying the data the retrieval pipeline needs
-/// to build context: the record id, its stored content, its metadata, and a provider-independent similarity score.
+/// to build context: the record id, its stored content, its metadata, and explicit raw-score semantics.
 /// </summary>
 public sealed class VectorSearchResult
 {
@@ -23,11 +23,25 @@ public sealed class VectorSearchResult
     public required string Id { get; init; }
 
     /// <summary>
-    /// Gets or initializes the provider-independent relevance or similarity score.
-    /// Higher values represent better matches. Providers that use distance metrics should convert distances
-    /// to a higher-is-better score instead of returning raw distance values here.
+    /// Gets or initializes the raw provider score. This value is not a provider-independent confidence value.
     /// </summary>
-    public double Score { get; init; }
+    public double RawScore { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the provider-independent relevance in the inclusive range from zero to one, or
+    /// <see langword="null"/> when no reliable normalization is available.
+    /// </summary>
+    public double? Relevance { get; init; }
+
+    /// <summary>
+    /// Gets or initializes the metric identifier that defines the raw score semantics.
+    /// </summary>
+    public string? Metric { get; init; }
+
+    /// <summary>
+    /// Gets or initializes a value indicating whether larger raw scores represent better matches.
+    /// </summary>
+    public bool HigherIsBetter { get; init; }
 
     /// <summary>
     /// Gets or initializes the content associated with the vector.

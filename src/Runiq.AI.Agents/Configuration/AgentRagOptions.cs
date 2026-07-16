@@ -5,6 +5,8 @@ namespace Runiq.AI.Agents.Configuration;
 /// </summary>
 public sealed class AgentRagOptions
 {
+    private RagResultAcceptanceOptions acceptance = new();
+
     /// <summary>
     /// Gets or sets a value indicating whether agent RAG retrieval is enabled.
     /// </summary>
@@ -28,9 +30,13 @@ public sealed class AgentRagOptions
     public RagNoContextBehavior NoContextBehavior { get; set; } = RagNoContextBehavior.AnswerNormally;
 
     /// <summary>
-    /// Gets or sets the optional minimum score a retrieved candidate must meet to become accepted context.
-    /// A null value accepts every retrieved candidate. Score semantics remain vector-store specific.
+    /// Gets or sets the result-acceptance policy that separates retrieval candidates from accepted Agent Chat
+    /// context. The default requests 20 candidates, accepts at most five, and applies no minimum relevance threshold.
     /// </summary>
-    public double? MinimumRelevanceScore { get; set; }
+    public RagResultAcceptanceOptions Acceptance
+    {
+        get => acceptance;
+        set => acceptance = value ?? throw new ArgumentNullException(nameof(value));
+    }
 }
 

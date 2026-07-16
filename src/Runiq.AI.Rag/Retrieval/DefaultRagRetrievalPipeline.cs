@@ -18,8 +18,8 @@ namespace Runiq.AI.Rag.Retrieval;
 /// <see cref="IRagVectorStore"/>. This is an orchestration layer only: it embeds the query text through the
 /// embedding abstraction, forwards the resulting query vector together with the request's index name, top-k
 /// value, and metadata filter to the vector store query operation, and maps the store's matches into the
-/// standard <see cref="RetrievalResult"/>. It contains no provider-specific logic and computes no similarity
-/// scores of its own — scores are taken from the vector store query result.
+/// standard <see cref="RetrievalResult"/>. It contains no provider-specific logic and computes no score
+/// normalization of its own; raw score semantics and relevance are taken from the vector store query result.
 /// </summary>
 /// <remarks>
 /// Error handling boundary: only an already-cancelled <see cref="CancellationToken"/> is surfaced as an
@@ -224,7 +224,7 @@ public sealed class DefaultRagRetrievalPipeline : IRagRetrievalPipeline
 
     /// <summary>
     /// Maps the vector store's matches into standard retrieval result items, carrying over the record id,
-    /// stored chunk content, metadata, and the similarity score reported by the store.
+    /// stored chunk content, metadata, raw score, metric direction, and normalized relevance reported by the store.
     /// </summary>
     private static IReadOnlyList<RetrievalResultItem> MapItems(QueryVectorResult queryResult)
     {
@@ -234,7 +234,10 @@ public sealed class DefaultRagRetrievalPipeline : IRagRetrievalPipeline
                 RecordId = record.Id,
                 Content = record.Content,
                 Metadata = record.Metadata,
-                Score = record.Score,
+                RawScore = record.RawScore,
+                Relevance = record.Relevance,
+                Metric = record.Metric,
+                HigherIsBetter = record.HigherIsBetter,
             })
             .ToList();
     }

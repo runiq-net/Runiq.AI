@@ -25,14 +25,14 @@ public sealed class AgentTests
             options.IndexName = " documents ";
             options.Mode = RagExecutionMode.Grounded;
             options.NoContextBehavior = RagNoContextBehavior.ReturnNotFound;
-            options.MinimumRelevanceScore = 0.75;
+            options.Acceptance.MinimumRelevance = 0.75;
         });
 
         Assert.True(agent.Rag!.Enabled);
         Assert.Equal("documents", agent.Rag.IndexName);
         Assert.Equal(RagExecutionMode.Grounded, agent.Rag.Mode);
         Assert.Equal(RagNoContextBehavior.ReturnNotFound, agent.Rag.NoContextBehavior);
-        Assert.Equal(0.75, agent.Rag.MinimumRelevanceScore);
+        Assert.Equal(0.75, agent.Rag.Acceptance.MinimumRelevance);
     }
 
     [Theory]
@@ -119,7 +119,37 @@ public sealed class AgentTests
             CreateAgent().UseRag(options =>
             {
                 options.IndexName = "documents";
-                options.MinimumRelevanceScore = double.NaN;
+                options.Acceptance.MinimumRelevance = double.NaN;
+            }));
+    }
+
+    [Theory]
+    [InlineData(-0.1)]
+    [InlineData(1.1)]
+    // Ensures relevance thresholds outside the documented [0,1] range fail before retrieval or model invocation.
+    public void UseRag_ShouldRejectOutOfRangeRelevanceThreshold(double minimumRelevance)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            CreateAgent().UseRag(options =>
+            {
+                options.IndexName = "documents";
+                options.Acceptance.MinimumRelevance = minimumRelevance;
+            }));
+    }
+
+    [Theory]
+    [InlineData(0, 1)]
+    [InlineData(5, 0)]
+    [InlineData(5, 6)]
+    // Ensures candidate and accepted-result limits reject non-positive or contradictory combinations during configuration.
+    public void UseRag_ShouldRejectInvalidAcceptanceLimits(int candidateCount, int maximumAcceptedResults)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            CreateAgent().UseRag(options =>
+            {
+                options.IndexName = "documents";
+                options.Acceptance.CandidateCount = candidateCount;
+                options.Acceptance.MaximumAcceptedResults = maximumAcceptedResults;
             }));
     }
 

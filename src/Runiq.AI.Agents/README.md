@@ -100,7 +100,9 @@ var agent = new Agent(
         rag.IndexName = "company-policies";
         rag.Mode = RagExecutionMode.Required;
         rag.NoContextBehavior = RagNoContextBehavior.ReturnNotFound;
-        rag.MinimumRelevanceScore = 0.75;
+        rag.Acceptance.MinimumRelevance = 0.75;
+        rag.Acceptance.CandidateCount = 20;
+        rag.Acceptance.MaximumAcceptedResults = 5;
     });
 ```
 
@@ -119,11 +121,32 @@ No-context behavior is selected independently for every valid combination:
 | `ReturnNotFound` | Returns a successful framework-owned not-found response and skips the model. |
 | `FailExecution` | Returns `RagContextUnavailable` as an execution failure and skips the model. |
 
-`MinimumRelevanceScore` is optional and vector-store specific. Candidates below the threshold are excluded from
-the accepted context. A successful empty retrieval reports `NoResults`; candidates rejected by the threshold
-report `BelowRelevanceThreshold`. The current retriever contract cannot distinguish an empty index from a valid
-query with zero matches, so it does not claim that distinction. Retrieval exceptions remain
-`RagRetrievalFailed` and are never converted into a no-context result or normal answer.
+`CandidateCount` (default 20) is the vector-search candidate budget, not an accepted-result guarantee.
+`MaximumAcceptedResults` (default 5) limits context after every candidate has been evaluated; otherwise acceptable
+results outside the limit remain visible as `ResultLimitExceeded` rejections. `MinimumRelevance` is an optional
+threshold in the inclusive provider-independent `[0,1]` range. The default null threshold does not manufacture
+relevance for an unsupported metric.
+
+The framework keeps raw provider score semantics separate from normalized relevance. Cosine similarity in
+`[-1,1]` is normalized with `(raw + 1) / 2`; non-negative Euclidean distance is normalized with `1 / (1 + raw)`.
+Cosine is higher-is-better and Euclidean distance is lower-is-better. Unbounded dot product has no universal
+normalization, so `Relevance` remains null. A provider-specific policy can explicitly accept such candidates:
+
+```csharp
+using Runiq.AI.Rag.Models.Search;
+
+rag.Acceptance.ProviderSpecificAcceptance = result =>
+    result.Metric == RagScoreMetrics.DotProduct && result.RawScore >= 2.5;
+```
+
+Missing metrics, inconsistent metric direction, NaN, infinity, and relevance outside `[0,1]` are retained as
+`InvalidScore` rejections. Duplicate content, threshold failures, and accepted-result overflow are retained as
+`DuplicateContent`, `BelowMinimumRelevance`, and `ResultLimitExceeded`. Equal relevance uses ordinal document ID
+and chunk ID ordering, so identical query/index/provider configuration produces stable context order.
+
+A successful empty retrieval reports `NoResults`; a successful retrieval whose candidates are all rejected reports
+`BelowRelevanceThreshold` when every rejection is threshold-based, otherwise `CandidatesRejected`. Retrieval
+exceptions remain `RagRetrievalFailed` and are never converted into a no-context result or normal answer.
 
 The runtime emits framework grounding rules as authoritative instructions and sends accepted document text only
 inside a separate `<untrusted-external-context>` user message. Document instructions are treated as untrusted
@@ -132,8 +155,10 @@ a prompt-injection mitigation, not a guarantee that a model can never be manipul
 
 `AgentExecutionResult.Rag`, terminal `AgentExecutionEvent.Rag`, and Agent Chat result/SSE terminal events expose
 the applied mode, accepted-context status, applied no-context behavior and reason, whether model invocation was
-skipped, and whether the framework constrained the answer to accepted context. `IsAnswerGrounded` reports the
-applied framework policy; it is not independent semantic verification of model output.
+skipped, and whether the framework constrained the answer to accepted context. The metadata also exposes ordered
+candidate, accepted, and rejected collections and their counts; every item carries raw score, normalized relevance,
+metric, direction, and any rejection reason. Streaming and non-streaming executions share this same evaluation.
+`IsAnswerGrounded` reports the applied framework policy; it is not independent semantic verification of model output.
 
 ## Tool Design
 

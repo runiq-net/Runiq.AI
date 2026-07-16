@@ -55,7 +55,7 @@ public sealed class DefaultRetrieverTests
             new RagSearchResult
             {
                 Chunk = new() { Id = "chunk-1", DocumentId = "document-1" },
-                Score = 0.9,
+                RawScore = 0.9,
             },
         ]);
         var retriever = new DefaultRetriever(embeddingProvider, vectorStore);
