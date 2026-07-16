@@ -48,7 +48,15 @@ services.AddRuniqRag(rag => rag.AddIndex("corporate-documents", index => index
 
 `OpenAiEmbeddingModels` and `UseOpenAiEmbeddingModel` are provided by `Runiq.AI.Agents.Providers.OpenAI`, keeping
 provider-specific identities outside the provider-neutral RAG package. Schedule expressions use five fields and the
-runtime's default time-zone policy; this package validates and stores them but does not execute them.
+runtime's default time-zone policy.
+
+## Managed ingestion runtime
+
+Resolve `IRagIngestionManager` to start, inspect, and cancel an index operation. Runtime state and the most recent
+operation are held in memory and reset when the process restarts; registry metadata remains static configuration.
+`OnStartup` blocks host startup, `BackgroundOnStartup` runs through managed background execution, and `Scheduled`
+uses a lightweight local in-process five-field scheduler. Scheduled execution is intentionally per process: it does
+not provide distributed locking, leader election, or multi-instance coordination.
 
 ## Related Packages
 

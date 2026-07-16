@@ -20,6 +20,7 @@ using Runiq.AI.Rag.VectorStores;
 using Runiq.AI.Rag.VectorStores.InMemory;
 using Runiq.AI.Rag.Ingestion;
 using Runiq.AI.Rag.Models.Ingestion;
+using Runiq.AI.Rag.Runtime;
 
 namespace Runiq.AI.Rag.DependencyInjection;
 
@@ -52,6 +53,8 @@ public static class RuniqRagServiceCollectionExtensions
         services.TryAddSingleton<RagIngestionState>();
         services.Configure<RagIngestionOptions>(_ => { });
         services.TryAddScoped<IRagDocumentIngestionService, DefaultRagDocumentIngestionService>();
+        services.TryAddSingleton<RagIngestionManager>();
+        services.TryAddSingleton<IRagIngestionManager>(provider => provider.GetRequiredService<RagIngestionManager>());
 
         // Last-operation telemetry: singleton so snapshots survive scoped pipeline instances, registered
         // through TryAdd so hosts can replace the recorder, the reader, or the time source.

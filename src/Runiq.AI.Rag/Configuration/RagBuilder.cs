@@ -6,6 +6,7 @@ using Runiq.AI.Rag.Abstractions.Retrieval;
 using Runiq.AI.Rag.Abstractions.Tools;
 using Runiq.AI.Rag.Abstractions.VectorStores;
 using Runiq.AI.Rag.DependencyInjection;
+using Runiq.AI.Rag.Runtime;
 
 namespace Runiq.AI.Rag.Configuration;
 
@@ -45,6 +46,7 @@ public sealed class RagBuilder
         indexes.Add(builder.Build());
         services.RemoveAll<IRagIndexRegistry>();
         services.AddSingleton<IRagIndexRegistry>(new RagIndexRegistry(indexes.AsReadOnly()));
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<Microsoft.Extensions.Hosting.IHostedService, RagIngestionHostedService>());
         return this;
     }
 
