@@ -1,16 +1,14 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
-using Runiq.AI.Rag.Abstractions.Embeddings;
 using Runiq.AI.Rag.Abstractions.Services;
 using Runiq.AI.Rag.Configuration;
 using Runiq.AI.Rag.DependencyInjection;
-using Runiq.AI.Rag.Models.Documents;
 using Runiq.AI.Rag.Models.Metadata;
+using Runiq.AI.Rag.Models.Ingestion;
 using Runiq.AI.Rag.IngestionSample;
 
 var services = new ServiceCollection();
 
-services.AddRuniqRag();
+services.AddRuniqRag(builder => builder.UseInMemoryVectorStore());
 services.AddRagEmbeddingClient<DeterministicSampleEmbeddingProvider>();
 
 services.Configure<RagOptions>(options =>
@@ -24,72 +22,24 @@ using var scope = serviceProvider.CreateScope();
 
 var documentContent = await SampleDocumentReader.ReadAsync().ConfigureAwait(false);
 var document = CreateDocument(documentContent);
-var ingestionService = scope.ServiceProvider.GetRequiredService<IRagDocumentIngestionService>();
-var ragOptions = scope.ServiceProvider.GetRequiredService<IOptions<RagOptions>>().Value;
-var result = await ingestionService.IngestAsync(document).ConfigureAwait(false);
+var rag = scope.ServiceProvider.GetRequiredService<IRagService>();
+var result = await rag.IngestAsync(document, "sample-documents").ConfigureAwait(false);
 
 Console.WriteLine("Runiq RAG Ingestion Sample");
 Console.WriteLine("==========================");
 Console.WriteLine($"Input File: {documentContent.Path}");
 Console.WriteLine($"Document Id: {document.Id}");
-Console.WriteLine($"Source Name: {document.Metadata.SourceName}");
-Console.WriteLine($"Chunking: MaxChunkLength={ragOptions.Chunking.MaxChunkLength}, ChunkOverlap={ragOptions.Chunking.ChunkOverlap}");
-Console.WriteLine($"Chunks Generated: {result.Chunks.Count}");
-Console.WriteLine();
+Console.WriteLine($"Created: {result.CreatedDocuments}; Updated: {result.UpdatedDocuments}; Skipped: {result.SkippedDocuments}; Chunks: {result.CreatedChunks}");
 
-foreach (var item in result.Items)
-{
-    var chunk = item.Chunk;
-    var embedding = item.EmbeddingResult;
-
-    Console.WriteLine($"Chunk Id: {chunk.Id}");
-    Console.WriteLine($"  Document Id: {chunk.DocumentId}");
-    Console.WriteLine($"  Chunk Index: {chunk.Index}");
-    Console.WriteLine($"  Preview: {CreatePreview(chunk.Content)}");
-    Console.WriteLine(
-        $"  Metadata: StartIndex={FormatNullable(chunk.Metadata.StartIndex)}, EndIndex={FormatNullable(chunk.Metadata.EndIndex)}, TokenCount={FormatNullable(chunk.Metadata.TokenCount)}");
-    Console.WriteLine($"  Embedding: ChunkId={embedding.ChunkId}, ChunkIndex={embedding.ChunkIndex}, Dimensions={embedding.Embedding.Dimensions}");
-    Console.WriteLine($"  Association: chunk '{chunk.Id}' -> embedding for chunk '{embedding.ChunkId}'");
-    Console.WriteLine();
-}
-
-static RagDocument CreateDocument(SampleDocumentContent documentContent)
+static RagSourceDocument CreateDocument(SampleDocumentContent documentContent)
 {
     // The sample intentionally reads its content from the checked-in txt file so the console output is reproducible.
-    return new RagDocument
+    return new RagSourceDocument
     {
         Id = "sample-document",
         Content = documentContent.Content,
-        Metadata = new RagDocumentMetadata
-        {
-            SourceId = "rag-ingestion-sample",
-            SourceName = Path.GetFileName(documentContent.Path),
-            SourceUri = documentContent.Path,
-            ContentType = "text/plain",
-            AdditionalMetadata = new RagMetadata(new Dictionary<string, string>
-            {
-                ["sample"] = "true",
-                ["purpose"] = "document-chunk-embedding-flow",
-            }),
-        },
+        Title = Path.GetFileName(documentContent.Path), Source = documentContent.Path, ContentType = "text/plain",
+        Metadata = new RagMetadata(new Dictionary<string, string> { ["sample"] = "true", ["tenant"] = "demo" }),
     };
-}
-
-static string CreatePreview(string content)
-{
-    const int maxLength = 120;
-
-    var preview = content
-        .ReplaceLineEndings(" ")
-        .Trim();
-
-    return preview.Length <= maxLength
-        ? preview
-        : string.Concat(preview.AsSpan(0, maxLength), "...");
-}
-
-static string FormatNullable(int? value)
-{
-    return value?.ToString() ?? "n/a";
 }
 

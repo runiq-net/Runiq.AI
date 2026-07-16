@@ -69,7 +69,7 @@ public sealed class DefaultRagChunker : IRagChunker
                     StartIndex = startIndex,
                     EndIndex = endIndex,
                     TokenCount = tokenCount,
-                    AdditionalMetadata = BuildChunkMetadata(document.Metadata, startIndex, endIndex, tokenCount),
+                    AdditionalMetadata = BuildChunkMetadata(document.Metadata, startIndex, endIndex, tokenCount, GetPdfPage(document.Content, startIndex)),
                 },
             });
 
@@ -101,7 +101,7 @@ public sealed class DefaultRagChunker : IRagChunker
         RagDocumentMetadata documentMetadata,
         int startIndex,
         int endIndex,
-        int tokenCount)
+        int tokenCount, int? page)
     {
         var values = new Dictionary<string, string>();
 
@@ -126,8 +126,14 @@ public sealed class DefaultRagChunker : IRagChunker
         values["startIndex"] = startIndex.ToString(CultureInfo.InvariantCulture);
         values["endIndex"] = endIndex.ToString(CultureInfo.InvariantCulture);
         values["tokenCount"] = tokenCount.ToString(CultureInfo.InvariantCulture);
+        if (page.HasValue) values["page"] = page.Value.ToString(CultureInfo.InvariantCulture);
 
         return new RagMetadata(values);
+    }
+
+    private static int? GetPdfPage(string content, int startIndex)
+    {
+        return content.IndexOf('\f') >= 0 ? content.Take(startIndex).Count(character => character == '\f') + 1 : null;
     }
 
     private static void AddIfPresent(Dictionary<string, string> values, string key, string? value)

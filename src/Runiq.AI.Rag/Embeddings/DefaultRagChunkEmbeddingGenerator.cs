@@ -64,16 +64,18 @@ public sealed class DefaultRagChunkEmbeddingGenerator : IRagChunkEmbeddingGenera
                 ?? throw new InvalidOperationException("The embedding input preparer returned null.");
             inputs.Add(input);
         }
-        var response = await embeddingClient.EmbedAsync(new EmbeddingRequest(ResolveModel(), inputs.Select(input => input.Content).ToList(), Dimensions: ResolveModel().EmbeddingDimensions), cancellationToken).ConfigureAwait(false);
-        if (response.Results.Count != inputs.Count)
-            throw new InvalidOperationException("The embedding client returned a result count that does not match the input count.");
-        return response.Results.OrderBy(result => result.Index).Select((result, index) => new RagChunkEmbeddingResult
+        var batchSize = options.Ingestion.EmbeddingBatchSize;
+        if (batchSize <= 0) throw new InvalidOperationException("RAG ingestion EmbeddingBatchSize must be greater than zero.");
+        var output = new List<RagChunkEmbeddingResult>(inputs.Count);
+        foreach (var batch in inputs.Chunk(batchSize))
         {
-            ChunkId = inputs[index].ChunkId,
-            DocumentId = inputs[index].DocumentId,
-            ChunkIndex = inputs[index].ChunkIndex,
-            Embedding = new RagEmbedding(result.Vector),
-        }).ToList();
+            cancellationToken.ThrowIfCancellationRequested();
+            var model = ResolveModel();
+            var response = await embeddingClient.EmbedAsync(new EmbeddingRequest(model, batch.Select(input => input.Content).ToList(), Dimensions: model.EmbeddingDimensions), cancellationToken).ConfigureAwait(false);
+            if (response.Results.Count != batch.Length) throw new InvalidOperationException("The embedding client returned a result count that does not match the input batch.");
+            output.AddRange(response.Results.OrderBy(result => result.Index).Select((result, index) => new RagChunkEmbeddingResult { ChunkId = batch[index].ChunkId, DocumentId = batch[index].DocumentId, ChunkIndex = batch[index].ChunkIndex, Embedding = new RagEmbedding(result.Vector) }));
+        }
+        return output;
     }
 
     private ModelReference ResolveModel()

@@ -18,6 +18,8 @@ using Runiq.AI.Rag.Telemetry;
 using Runiq.AI.Rag.Tools;
 using Runiq.AI.Rag.VectorStores;
 using Runiq.AI.Rag.VectorStores.InMemory;
+using Runiq.AI.Rag.Ingestion;
+using Runiq.AI.Rag.Models.Ingestion;
 
 namespace Runiq.AI.Rag.DependencyInjection;
 
@@ -47,6 +49,8 @@ public static class RuniqRagServiceCollectionExtensions
         services.TryAddScoped<IRagRetrievalPipeline, DefaultRagRetrievalPipeline>();
         services.TryAddScoped<IVectorQueryTool, DefaultVectorQueryTool>();
         services.TryAddScoped<IRagService, RagService>();
+        services.TryAddSingleton<RagIngestionState>();
+        services.Configure<RagIngestionOptions>(_ => { });
         services.TryAddScoped<IRagDocumentIngestionService, DefaultRagDocumentIngestionService>();
 
         // Last-operation telemetry: singleton so snapshots survive scoped pipeline instances, registered
