@@ -429,6 +429,25 @@ public sealed class AgentRagExecutionRuntimeTests
     }
 
     [Fact]
+    // Ensures missing retrieval infrastructure emits a classified lifecycle failure before terminal failure.
+    public async Task ExecuteStreamAsync_RagEnabledWithoutRetriever_PublishesConfigurationFailure()
+    {
+        var client = new ScriptedChatClient();
+        var agent = CreateAgent();
+
+        var events = await CreateRuntime(agent, client)
+            .ExecuteStreamAsync(agent.Id, "question").ToListAsync();
+
+        Assert.Collection(events,
+            item => Assert.IsType<RagSearchStarted>(item.RagSearch),
+            item => Assert.Equal(RetrievalErrorCode.InvalidRequest, Assert.IsType<RagSearchFailed>(item.RagSearch).FailureClassification),
+            item => Assert.Equal(AgentExecutionEventKind.Failed, item.Kind));
+        Assert.Equal(events[0].RagSearch!.CorrelationId, events[1].RagSearch!.CorrelationId);
+        Assert.DoesNotContain(events, item => item.RagSearch is RagSearchCompleted);
+        Assert.Empty(client.Requests);
+    }
+
+    [Fact]
     // Verifies the shared stream publishes a complete RAG lifecycle before model execution and assistant tokens.
     public async Task ExecuteStreamAsync_Success_PublishesRagLifecycleBeforeModelEvents()
     {
@@ -520,6 +539,27 @@ public sealed class AgentRagExecutionRuntimeTests
             item => Assert.Equal(RetrievalErrorCode.RetrievalFailed, Assert.IsType<RagSearchFailed>(item.RagSearch).FailureClassification),
             item => Assert.Equal(AgentExecutionEventKind.Failed, item.Kind));
         Assert.Equal(events[0].RagSearch!.CorrelationId, events[1].RagSearch!.CorrelationId);
+        Assert.DoesNotContain(events, item => item.RagSearch is RagSearchCompleted);
+        Assert.Empty(client.Requests);
+    }
+
+    [Theory]
+    [InlineData(RetrievalErrorCode.EmbeddingFailed)]
+    [InlineData(RetrievalErrorCode.VectorStoreQueryFailed)]
+    // Ensures structured retrieval categories survive the runtime boundary without leaking provider diagnostics.
+    public async Task ExecuteStreamAsync_StructuredRetrievalFailure_PreservesClassification(RetrievalErrorCode errorCode)
+    {
+        const string providerDiagnostic = "provider-secret-diagnostic";
+        var client = new ScriptedChatClient();
+        var agent = CreateAgent();
+        var failure = new RagRetrievalExecutionException(providerDiagnostic, errorCode);
+
+        var events = await CreateRuntime(agent, client, new ThrowingRetriever(failure))
+            .ExecuteStreamAsync(agent.Id, "question").ToListAsync();
+
+        var failed = Assert.IsType<RagSearchFailed>(events[1].RagSearch);
+        Assert.Equal(errorCode, failed.FailureClassification);
+        Assert.DoesNotContain(providerDiagnostic, events[2].ErrorMessage, StringComparison.Ordinal);
         Assert.DoesNotContain(events, item => item.RagSearch is RagSearchCompleted);
         Assert.Empty(client.Requests);
     }

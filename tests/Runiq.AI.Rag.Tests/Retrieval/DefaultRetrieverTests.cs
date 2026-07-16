@@ -1,11 +1,13 @@
 using Microsoft.Extensions.Options;
 using Runiq.AI.Core.AI.Embeddings;
 using Runiq.AI.Core.Models;
+using Runiq.AI.Rag.Abstractions.Retrieval;
 using Runiq.AI.Rag.Abstractions.VectorStores;
 using Runiq.AI.Rag.Configuration;
 using Runiq.AI.Rag.Models.Embeddings;
 using Runiq.AI.Rag.Models.Metadata;
 using Runiq.AI.Rag.Models.Queries;
+using Runiq.AI.Rag.Models.Retrieval;
 using Runiq.AI.Rag.Models.Search;
 using Runiq.AI.Rag.Models.VectorStores;
 using Runiq.AI.Rag.Retrieval;
@@ -16,6 +18,15 @@ namespace Runiq.AI.Rag.Tests.Retrieval;
 
 public sealed class DefaultRetrieverTests
 {
+    [Theory]
+    [InlineData(RetrievalErrorCode.None)]
+    [InlineData((RetrievalErrorCode)999)]
+    // Ensures retrieval execution exceptions cannot represent success or an undefined public classification.
+    public void RetrievalExecutionException_ShouldRejectInvalidFailureClassification(RetrievalErrorCode errorCode)
+    {
+        Assert.Throws<ArgumentException>(() => new RagRetrievalExecutionException("failure", errorCode));
+    }
+
     [Fact]
     public void Constructor_ShouldThrow_WhenEmbeddingProviderIsNull()
     {
@@ -165,17 +176,33 @@ public sealed class DefaultRetrieverTests
     }
 
     [Fact]
-    public async Task RetrieveAsync_ShouldPropagateVectorStoreQueryFailure()
+    // Ensures vector-store exceptions are converted to the existing provider-independent classification.
+    public async Task RetrieveAsync_ShouldClassifyVectorStoreQueryFailure()
     {
         var retriever = new DefaultRetriever(
             new TrackingEmbeddingClient([1.0f, 0.0f, 0.0f]),
             new InMemoryRagVectorStore());
 
-        var exception = await Assert.ThrowsAsync<RagVectorStoreQueryException>(() =>
+        var exception = await Assert.ThrowsAsync<RagRetrievalExecutionException>(() =>
             retriever.RetrieveAsync(new RagQuery { Text = "search text", IndexName = "missing-index" }));
 
-        Assert.Equal("Vector index has not been created.", exception.Reason);
-        Assert.Equal("missing-index", exception.IndexName);
+        Assert.Equal(RetrievalErrorCode.VectorStoreQueryFailed, exception.ErrorCode);
+        Assert.IsType<RagVectorStoreQueryException>(exception.InnerException);
+    }
+
+    [Fact]
+    // Ensures embedding-provider failures are converted to the existing provider-independent classification.
+    public async Task RetrieveAsync_ShouldClassifyEmbeddingFailure()
+    {
+        var retriever = new DefaultRetriever(
+            new ThrowingEmbeddingClient(),
+            new TrackingVectorStore([]));
+
+        var exception = await Assert.ThrowsAsync<RagRetrievalExecutionException>(() =>
+            retriever.RetrieveAsync(new RagQuery { Text = "search text", IndexName = "documents" }));
+
+        Assert.Equal(RetrievalErrorCode.EmbeddingFailed, exception.ErrorCode);
+        Assert.IsType<InvalidOperationException>(exception.InnerException);
     }
 
     private sealed class TrackingEmbeddingClient : IEmbeddingClient
@@ -196,6 +223,14 @@ public sealed class DefaultRetrieverTests
             LastRequest = request;
             return Task.FromResult(new EmbeddingResponse(request.Inputs.Select((_, index) => new EmbeddingResult(index, vector, vector.Count)).ToList()));
         }
+    }
+
+    private sealed class ThrowingEmbeddingClient : IEmbeddingClient
+    {
+        public Task<EmbeddingResponse> EmbedAsync(
+            EmbeddingRequest request,
+            CancellationToken cancellationToken = default) =>
+            Task.FromException<EmbeddingResponse>(new InvalidOperationException("provider secret"));
     }
 
     private sealed class TrackingVectorStore : IRagVectorStore

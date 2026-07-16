@@ -144,6 +144,15 @@ function parseStreamEventPayload(data: string): AgentChatStreamEvent | null {
       return null;
     }
 
+    if (
+      (parsed.type === 'rag_search_started' ||
+        parsed.type === 'rag_search_completed' ||
+        parsed.type === 'rag_search_failed') &&
+      !parsed.ragSearch
+    ) {
+      return null;
+    }
+
     return {
       type: parsed.type,
       content: parsed.content ?? null,
@@ -153,6 +162,7 @@ function parseStreamEventPayload(data: string): AgentChatStreamEvent | null {
       outputJson: parsed.outputJson ?? null,
       errorCode: parsed.errorCode ?? null,
       errorMessage: parsed.errorMessage ?? null,
+      ragSearch: parsed.ragSearch ?? null,
     } as AgentChatStreamEvent;
 
 

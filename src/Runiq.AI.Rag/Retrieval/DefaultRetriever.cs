@@ -8,6 +8,7 @@ using Runiq.AI.Rag.Abstractions.VectorStores;
 using Runiq.AI.Rag.Configuration;
 using Runiq.AI.Rag.Embeddings;
 using Runiq.AI.Rag.Models.Queries;
+using Runiq.AI.Rag.Models.Retrieval;
 using Runiq.AI.Rag.Models.Search;
 
 namespace Runiq.AI.Rag.Retrieval;
@@ -53,25 +54,13 @@ public sealed class DefaultRetriever : IRagRetriever
 
         var indexName = ResolveIndexName(query);
         var model = ResolveEmbeddingModel();
+        Models.Embeddings.RagEmbedding embedding;
         try
         {
             var response = await embeddingClient.EmbedAsync(new EmbeddingRequest(model, [query.Text], Dimensions: model.EmbeddingDimensions), cancellationToken).ConfigureAwait(false);
-            var embedding = new Models.Embeddings.RagEmbedding(response.Results.Single().Vector);
-            var resolvedQuery = new RagQuery
-            {
-                Text = query.Text,
-                IndexName = indexName,
-                TopK = query.TopK,
-                Metadata = query.Metadata,
-            };
-
-            return await vectorStore.SearchAsync(resolvedQuery, embedding, cancellationToken).ConfigureAwait(false);
+            embedding = new Models.Embeddings.RagEmbedding(response.Results.Single().Vector);
         }
         catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (RagVectorStoreQueryException)
         {
             throw;
         }
@@ -79,6 +68,31 @@ public sealed class DefaultRetriever : IRagRetriever
         {
             throw new RagRetrievalExecutionException(
                 $"RAG retrieval execution failed for index '{indexName}'.",
+                RetrievalErrorCode.EmbeddingFailed,
+                exception);
+        }
+
+        var resolvedQuery = new RagQuery
+        {
+            Text = query.Text,
+            IndexName = indexName,
+            TopK = query.TopK,
+            Metadata = query.Metadata,
+        };
+
+        try
+        {
+            return await vectorStore.SearchAsync(resolvedQuery, embedding, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            throw new RagRetrievalExecutionException(
+                $"RAG retrieval execution failed for index '{indexName}'.",
+                RetrievalErrorCode.VectorStoreQueryFailed,
                 exception);
         }
     }

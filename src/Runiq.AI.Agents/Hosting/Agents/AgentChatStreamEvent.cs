@@ -17,8 +17,17 @@ public sealed record AgentChatStreamEvent(
     [property: JsonPropertyName("errorMessage")] string? ErrorMessage = null)
 {
     /// <summary>
-    /// Gets or initializes the structured RAG policy outcome carried by terminal stream events.
+    /// Gets or initializes the structured RAG search lifecycle payload carried by RAG stream events.
+    /// </summary>
+    [JsonPropertyName("ragSearch")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public AgentChatRagSearchEvent? RagSearch { get; internal init; }
+
+    /// <summary>
+    /// Gets or initializes the in-process RAG policy outcome associated with terminal stream events.
+    /// Agent Chat SSE uses the content-free <see cref="RagSearch"/> lifecycle projection instead.
     /// </summary>
     [JsonPropertyName("rag")]
+    [JsonIgnore]
     public AgentRagExecutionMetadata? Rag { get; init; }
 }

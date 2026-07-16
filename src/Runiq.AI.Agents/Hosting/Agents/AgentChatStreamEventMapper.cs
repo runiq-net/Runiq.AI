@@ -13,7 +13,7 @@ internal static class AgentChatStreamEventMapper
 
         return executionEvent.Kind switch
         {
-            AgentExecutionEventKind.RagSearch => null!,
+            AgentExecutionEventKind.RagSearch => FromRagSearchEvent(executionEvent.RagSearch!),
 
             AgentExecutionEventKind.AssistantDelta => new AgentChatStreamEvent(
                 Type: "assistant_delta",
@@ -61,4 +61,82 @@ internal static class AgentChatStreamEventMapper
                 nameof(executionEvent), executionEvent.Kind, "The execution event kind is not supported.")
         };
     }
+
+    private static AgentChatStreamEvent FromRagSearchEvent(RagSearchEvent ragSearch) => ragSearch switch
+    {
+        RagSearchStarted started => CreateRagSearchEvent("rag_search_started", started),
+        RagSearchCompleted completed => CreateRagSearchEvent("rag_search_completed", completed) with
+        {
+            RagSearch = CreateCompletedPayload(completed),
+        },
+        RagSearchFailed failed => CreateRagSearchEvent("rag_search_failed", failed) with
+        {
+            RagSearch = CreateFailedPayload(failed),
+        },
+        _ => throw new ArgumentOutOfRangeException(nameof(ragSearch), ragSearch.GetType(), "The RAG search event type is not supported."),
+    };
+
+    private static AgentChatStreamEvent CreateRagSearchEvent(string type, RagSearchEvent ragSearch) =>
+        new(type, Content: null)
+        {
+            RagSearch = CreateCommonPayload(ragSearch),
+        };
+
+    private static AgentChatRagSearchEvent CreateCommonPayload(RagSearchEvent ragSearch) =>
+        new(
+            ragSearch.AgentId,
+            ragSearch.ConversationId,
+            ragSearch.CorrelationId,
+            ragSearch.IndexName,
+            ragSearch.OriginalQuery,
+            ragSearch.EffectiveQuery,
+            ragSearch.RequestedCandidateCount);
+
+    private static AgentChatRagSearchEvent CreateCompletedPayload(RagSearchCompleted completed) =>
+        new(
+            completed.AgentId,
+            completed.ConversationId,
+            completed.CorrelationId,
+            completed.IndexName,
+            completed.OriginalQuery,
+            completed.EffectiveQuery,
+            completed.RequestedCandidateCount)
+        {
+            ActualCandidateCount = completed.ActualCandidateCount,
+            AcceptedCount = completed.AcceptedCount,
+            RejectedCount = completed.RejectedCount,
+            MaximumAcceptedResultCount = completed.MaximumAcceptedResultCount,
+            TopRawScore = completed.TopRawScore,
+            TopNormalizedRelevance = completed.TopNormalizedRelevance,
+            Duration = completed.Duration,
+            SelectedResults = completed.SelectedResults
+                .Select(result => new AgentChatRagSelectedResult(result.DocumentId, result.ChunkId))
+                .ToArray(),
+            RejectedResults = completed.RejectedResults
+                .Select(result => new AgentChatRagRejectedResult(
+                    result.DocumentId,
+                    result.ChunkId,
+                    double.IsFinite(result.RawScore) ? result.RawScore : null,
+                    IsNormalizedRelevance(result.NormalizedRelevance) ? result.NormalizedRelevance : null,
+                    result.Reason))
+                .ToArray(),
+            NoContextReason = completed.NoContextReason,
+        };
+
+    private static AgentChatRagSearchEvent CreateFailedPayload(RagSearchFailed failed) =>
+        new(
+            failed.AgentId,
+            failed.ConversationId,
+            failed.CorrelationId,
+            failed.IndexName,
+            failed.OriginalQuery,
+            failed.EffectiveQuery,
+            failed.RequestedCandidateCount)
+        {
+            Duration = failed.Duration,
+            FailureClassification = failed.FailureClassification,
+        };
+
+    private static bool IsNormalizedRelevance(double? relevance) =>
+        relevance is double value && double.IsFinite(value) && value is >= 0 and <= 1;
 }

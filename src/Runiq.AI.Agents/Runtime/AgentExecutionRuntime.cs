@@ -326,15 +326,6 @@ public sealed class AgentExecutionRuntime
 
         if (agent.Rag is { Enabled: true } activeRag)
         {
-            if (ragRetriever is null)
-            {
-                yield return AgentExecutionEvent.Failed(
-                    $"RAG is enabled for agent '{agent.Id}', but IRagRetriever is not registered; the model was not invoked.",
-                    "RagConfigurationInvalid",
-                    CreateRagMetadata(activeRag, runtimeContext, modelInvocationSkipped: true, noContextBehaviorApplied: false));
-                yield break;
-            }
-
             var indexName = !string.IsNullOrWhiteSpace(query.IndexName)
                 ? query.IndexName.Trim()
                 : activeRag.IndexName?.Trim();
@@ -351,6 +342,18 @@ public sealed class AgentExecutionRuntime
             yield return AgentExecutionEvent.FromRagSearch(new RagSearchStarted(
                 correlationId, agent.Id, query.ConversationId, indexName, query.Message, effectiveQuery: null,
                 activeRag.Acceptance.CandidateCount));
+
+            if (ragRetriever is null)
+            {
+                yield return AgentExecutionEvent.FromRagSearch(new RagSearchFailed(
+                    correlationId, agent.Id, query.ConversationId, indexName, query.Message, effectiveQuery: null,
+                    activeRag.Acceptance.CandidateCount, RetrievalErrorCode.InvalidRequest, TimeSpan.Zero));
+                yield return AgentExecutionEvent.Failed(
+                    $"RAG is enabled for agent '{agent.Id}', but the retrieval service is unavailable; the model was not invoked.",
+                    "RagConfigurationInvalid",
+                    CreateRagMetadata(activeRag, runtimeContext, modelInvocationSkipped: true, noContextBehaviorApplied: false));
+                yield break;
+            }
 
             var retrievalStopwatch = Stopwatch.StartNew();
             Exception? retrievalFailure = null;
@@ -369,10 +372,10 @@ public sealed class AgentExecutionRuntime
             {
                 yield return AgentExecutionEvent.FromRagSearch(new RagSearchFailed(
                     correlationId, agent.Id, query.ConversationId, indexName, query.Message, effectiveQuery: null,
-                    activeRag.Acceptance.CandidateCount, RetrievalErrorCode.RetrievalFailed,
+                    activeRag.Acceptance.CandidateCount, ClassifyRetrievalFailure(retrievalFailure),
                     retrievalStopwatch.Elapsed));
                 yield return AgentExecutionEvent.Failed(
-                    $"RAG retrieval failed for agent '{agent.Id}'; the model was not invoked. {retrievalFailure.Message}",
+                    $"RAG retrieval failed for agent '{agent.Id}'; the model was not invoked.",
                     "RagRetrievalFailed",
                     CreateRagMetadata(activeRag, runtimeContext, modelInvocationSkipped: true, noContextBehaviorApplied: false));
                 yield break;
@@ -633,6 +636,11 @@ public sealed class AgentExecutionRuntime
             evaluation.RejectedResults,
             noContextReason);
     }
+
+    private static RetrievalErrorCode ClassifyRetrievalFailure(Exception exception) =>
+        exception is RagRetrievalExecutionException retrievalException
+            ? retrievalException.ErrorCode
+            : RetrievalErrorCode.RetrievalFailed;
 
     private static RagSearchCompleted CreateRagSearchCompleted(
         string correlationId,

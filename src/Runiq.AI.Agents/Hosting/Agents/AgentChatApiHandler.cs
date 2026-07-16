@@ -117,11 +117,6 @@ public sealed class AgentChatApiHandler
                            cancellationToken))
         {
             var streamEvent = AgentChatStreamEventMapper.FromExecutionEvent(executionEvent);
-            if (streamEvent is null)
-            {
-                continue;
-            }
-
             var payload = JsonSerializer.Serialize(streamEvent, StreamJsonOptions);
 
             await httpContext.Response.WriteAsync($"data: {payload}\n\n", cancellationToken);
@@ -139,4 +134,5 @@ public sealed class AgentChatApiHandler
             IndexName = request.IndexName,
         };
     }
+
 }
