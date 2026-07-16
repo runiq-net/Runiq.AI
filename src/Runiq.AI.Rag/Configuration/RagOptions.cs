@@ -14,7 +14,8 @@ public sealed class RagOptions
     public const string SectionName = "Runiq:Rag";
 
     /// <summary>
-    /// Gets or sets the default number of search results to retrieve.
+    /// Gets or sets the default number of raw search candidates to retrieve. This value does not guarantee
+    /// relevance or acceptance as Agent Chat context.
     /// </summary>
     public int DefaultTopK { get; set; } = 5;
 

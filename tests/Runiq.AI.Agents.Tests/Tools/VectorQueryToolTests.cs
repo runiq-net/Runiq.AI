@@ -261,7 +261,7 @@ public sealed class VectorQueryToolTests
         {
             RecordId = "chunk-1",
             Content = "content",
-            Score = 0.9,
+            RawScore = 0.9,
         };
         var metadata = new RagMetadata(new Dictionary<string, string> { ["k"] = "v" });
         var fake = new FakeVectorQueryTool

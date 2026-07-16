@@ -26,9 +26,19 @@ public sealed class CorporateDocumentSourceChunk
     public required string ChunkIndex { get; init; }
 
     /// <summary>
-    /// Gets the similarity score reported by the vector store.
+    /// Gets the raw score reported by the vector store.
     /// </summary>
-    public double Score { get; init; }
+    public double RawScore { get; init; }
+
+    /// <summary>
+    /// Gets the normalized relevance in the inclusive range from zero to one, when available.
+    /// </summary>
+    public double? Relevance { get; init; }
+
+    /// <summary>
+    /// Gets the metric that defines the raw score semantics.
+    /// </summary>
+    public string? Metric { get; init; }
 
     /// <summary>
     /// Gets a short snippet from the retrieved chunk content.

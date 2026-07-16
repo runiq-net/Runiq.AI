@@ -303,7 +303,7 @@ public sealed class VectorStoreModelTests
         result.Records.Add(new VectorSearchResult
         {
             Id = "vector-1",
-            Score = 0.98,
+            RawScore = 0.98,
             Content = "content",
             Metadata = new RagMetadata(new Dictionary<string, string>
             {
@@ -314,7 +314,7 @@ public sealed class VectorStoreModelTests
 
         var searchResult = Assert.Single(result.Records);
         Assert.Equal("vector-1", searchResult.Id);
-        Assert.Equal(0.98, searchResult.Score);
+        Assert.Equal(0.98, searchResult.RawScore);
         Assert.Equal("docs", searchResult.Metadata.Values["source"]);
         Assert.Equal([0.1f, 0.2f], searchResult.Values);
     }
@@ -327,7 +327,7 @@ public sealed class VectorStoreModelTests
         var result = new VectorSearchResult
         {
             Id = "vector-1",
-            Score = 0.98,
+            RawScore = 0.98,
         };
 
         Assert.NotNull(result.Metadata);

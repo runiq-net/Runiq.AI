@@ -19,13 +19,32 @@ internal static class AgentRagPolicyValidator
                 "The RAG no-context behavior is not defined.");
         }
 
-        if (options.MinimumRelevanceScore is double minimumScore &&
-            (double.IsNaN(minimumScore) || double.IsInfinity(minimumScore)))
+        var acceptance = options.Acceptance;
+
+        if (acceptance.MinimumRelevance is double minimumRelevance &&
+            (!double.IsFinite(minimumRelevance) || minimumRelevance is < 0.0 or > 1.0))
         {
             throw new ArgumentOutOfRangeException(
-                nameof(options.MinimumRelevanceScore),
-                minimumScore,
-                "The minimum relevance score must be finite.");
+                nameof(acceptance.MinimumRelevance),
+                minimumRelevance,
+                "The minimum relevance must be finite and in the inclusive range from zero to one.");
+        }
+
+        if (acceptance.CandidateCount <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(acceptance.CandidateCount),
+                acceptance.CandidateCount,
+                "The candidate count must be greater than zero.");
+        }
+
+        if (acceptance.MaximumAcceptedResults <= 0 ||
+            acceptance.MaximumAcceptedResults > acceptance.CandidateCount)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(acceptance.MaximumAcceptedResults),
+                acceptance.MaximumAcceptedResults,
+                "The maximum accepted result count must be greater than zero and cannot exceed the candidate count.");
         }
 
         if (options.Mode == RagExecutionMode.Required &&

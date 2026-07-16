@@ -13,7 +13,10 @@ public sealed class AgentRagOptionsTests
         Assert.True(options.Enabled);
         Assert.Equal(RagExecutionMode.Open, options.Mode);
         Assert.Equal(RagNoContextBehavior.AnswerNormally, options.NoContextBehavior);
-        Assert.Null(options.MinimumRelevanceScore);
+        Assert.Null(options.Acceptance.MinimumRelevance);
+        Assert.Equal(20, options.Acceptance.CandidateCount);
+        Assert.Equal(5, options.Acceptance.MaximumAcceptedResults);
+        Assert.Null(options.Acceptance.ProviderSpecificAcceptance);
         Assert.Null(options.IndexName);
     }
 }

@@ -81,7 +81,7 @@ public sealed class DefaultVectorQueryToolTests
                     {
                         RecordId = "document-1:chunk:0",
                         Content = "retrieved chunk content",
-                        Score = 0.91,
+                        RawScore = 0.91,
                         Metadata = new RagMetadata(new Dictionary<string, string>
                         {
                             ["source"] = "docs",
@@ -99,7 +99,7 @@ public sealed class DefaultVectorQueryToolTests
         var single = Assert.Single(result.Matches);
         Assert.Equal("document-1:chunk:0", single.RecordId);
         Assert.Equal("retrieved chunk content", single.Content);
-        Assert.Equal(0.91, single.Score);
+        Assert.Equal(0.91, single.RawScore);
         Assert.Equal("docs", single.Metadata.Values["source"]);
         Assert.Same(metadata, result.Metadata);
     }

@@ -1,4 +1,5 @@
 using Runiq.AI.Agents.Configuration;
+using Runiq.AI.Rag.Models.Search;
 
 namespace Runiq.AI.Agents;
 
@@ -13,7 +14,10 @@ public sealed class AgentRagExecutionMetadata
         RagNoContextBehavior? appliedNoContextBehavior,
         RagNoContextReason? noContextReason,
         bool modelInvocationSkipped,
-        bool isAnswerGrounded)
+        bool isAnswerGrounded,
+        IReadOnlyList<RagSearchResult> candidates,
+        IReadOnlyList<RagSearchResult> acceptedResults,
+        IReadOnlyList<RagRejectedResult> rejectedResults)
     {
         Mode = mode;
         HasAcceptedContext = hasAcceptedContext;
@@ -21,6 +25,9 @@ public sealed class AgentRagExecutionMetadata
         NoContextReason = noContextReason;
         ModelInvocationSkipped = modelInvocationSkipped;
         IsAnswerGrounded = isAnswerGrounded;
+        Candidates = candidates;
+        AcceptedResults = acceptedResults;
+        RejectedResults = rejectedResults;
     }
 
     /// <summary>
@@ -53,4 +60,34 @@ public sealed class AgentRagExecutionMetadata
     /// This reports the applied policy and does not independently verify model semantics.
     /// </summary>
     public bool IsAnswerGrounded { get; }
+
+    /// <summary>
+    /// Gets every raw retrieval candidate after framework-known relevance normalization and deterministic ordering.
+    /// </summary>
+    public IReadOnlyList<RagSearchResult> Candidates { get; }
+
+    /// <summary>
+    /// Gets the candidates accepted as Agent Chat context after all acceptance rules and result limits were applied.
+    /// </summary>
+    public IReadOnlyList<RagSearchResult> AcceptedResults { get; }
+
+    /// <summary>
+    /// Gets the candidates excluded from Agent Chat context together with their explicit rejection reasons.
+    /// </summary>
+    public IReadOnlyList<RagRejectedResult> RejectedResults { get; }
+
+    /// <summary>
+    /// Gets the number of raw retrieval candidates.
+    /// </summary>
+    public int CandidateCount => Candidates.Count;
+
+    /// <summary>
+    /// Gets the number of candidates accepted as Agent Chat context.
+    /// </summary>
+    public int AcceptedCount => AcceptedResults.Count;
+
+    /// <summary>
+    /// Gets the number of rejected retrieval candidates.
+    /// </summary>
+    public int RejectedCount => RejectedResults.Count;
 }

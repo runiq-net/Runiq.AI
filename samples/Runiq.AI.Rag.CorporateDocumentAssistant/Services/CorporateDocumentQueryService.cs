@@ -82,7 +82,9 @@ public sealed class CorporateDocumentQueryService
             DocumentId = GetMetadata(metadata, "documentId", "unknown-document"),
             SourceName = GetMetadata(metadata, "sourceName", "Unknown source"),
             ChunkIndex = GetMetadata(metadata, "chunkIndex", "n/a"),
-            Score = item.Score,
+            RawScore = item.RawScore,
+            Relevance = item.Relevance,
+            Metric = item.Metric,
             Snippet = CreateSnippet(item.Content),
         };
     }

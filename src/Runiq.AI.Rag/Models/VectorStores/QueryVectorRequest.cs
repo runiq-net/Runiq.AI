@@ -33,8 +33,9 @@ public sealed class QueryVectorRequest
     public required IReadOnlyList<float> Values { get; init; }
 
     /// <summary>
-    /// Gets or initializes the maximum number of matches to return. Results are ordered best match first and are
-    /// truncated to this count. Must be greater than zero.
+    /// Gets or initializes the maximum number of raw candidates to return. Results are ordered according to their
+    /// explicit metric direction and truncated to this count. This is not an acceptance guarantee and must be
+    /// greater than zero.
     /// </summary>
     public int TopK { get; init; } = 5;
 

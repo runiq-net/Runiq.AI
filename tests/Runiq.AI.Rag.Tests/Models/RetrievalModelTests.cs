@@ -327,8 +327,8 @@ public sealed class RetrievalModelTests
         // Verifies that a successful retrieval result exposes its retrieved item list.
         var result = RetrievalResult.Success(
             [
-                new RetrievalResultItem { Content = "chunk one", Score = 0.9 },
-                new RetrievalResultItem { Content = "chunk two", Score = 0.8 },
+                new RetrievalResultItem { Content = "chunk one", RawScore = 0.9 },
+                new RetrievalResultItem { Content = "chunk two", RawScore = 0.8 },
             ]);
 
         Assert.True(result.Succeeded);
@@ -424,7 +424,7 @@ public sealed class RetrievalModelTests
         var item = new RetrievalResultItem
         {
             Content = "retrieved chunk content",
-            Score = 0.97,
+            RawScore = 0.97,
             Metadata = new RagMetadata(new Dictionary<string, string>
             {
                 ["source"] = "docs",
@@ -432,7 +432,7 @@ public sealed class RetrievalModelTests
         };
 
         Assert.Equal("retrieved chunk content", item.Content);
-        Assert.Equal(0.97, item.Score);
+        Assert.Equal(0.97, item.RawScore);
         Assert.Equal("docs", item.Metadata.Values["source"]);
     }
 

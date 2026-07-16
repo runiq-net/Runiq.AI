@@ -108,7 +108,7 @@ public sealed class DefaultRagRetrievalPipelineTests
                     {
                         Id = "document-1:chunk:0",
                         Content = "First chunk content.",
-                        Score = 0.92,
+                        RawScore = 0.92,
                         Metadata = new RagMetadata(new Dictionary<string, string>
                         {
                             ["documentId"] = "document-1",
@@ -118,7 +118,7 @@ public sealed class DefaultRagRetrievalPipelineTests
                     {
                         Id = "document-1:chunk:1",
                         Content = "Second chunk content.",
-                        Score = 0.81,
+                        RawScore = 0.81,
                     },
                 ],
             },
@@ -132,10 +132,10 @@ public sealed class DefaultRagRetrievalPipelineTests
         Assert.Equal(2, result.Items.Count);
         Assert.Equal("document-1:chunk:0", result.Items[0].RecordId);
         Assert.Equal("First chunk content.", result.Items[0].Content);
-        Assert.Equal(0.92, result.Items[0].Score);
+        Assert.Equal(0.92, result.Items[0].RawScore);
         Assert.Equal("document-1", result.Items[0].Metadata.Values["documentId"]);
         Assert.Equal("document-1:chunk:1", result.Items[1].RecordId);
-        Assert.Equal(0.81, result.Items[1].Score);
+        Assert.Equal(0.81, result.Items[1].RawScore);
     }
 
     [Fact]

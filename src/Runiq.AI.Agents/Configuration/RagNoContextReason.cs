@@ -15,4 +15,9 @@ public enum RagNoContextReason
     /// Retrieval returned candidates, but none met the configured minimum relevance score.
     /// </summary>
     BelowRelevanceThreshold = 1,
+
+    /// <summary>
+    /// Retrieval returned candidates, but every candidate was rejected for one or more explicit acceptance reasons.
+    /// </summary>
+    CandidatesRejected = 2,
 }

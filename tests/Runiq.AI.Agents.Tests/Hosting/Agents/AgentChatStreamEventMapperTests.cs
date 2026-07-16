@@ -136,7 +136,10 @@ public sealed class AgentChatStreamEventMapperTests
             RagNoContextBehavior.ReturnNotFound,
             RagNoContextReason.NoResults,
             modelInvocationSkipped: true,
-            isAnswerGrounded: false);
+            isAnswerGrounded: false,
+            [],
+            [],
+            []);
         var executionEvent = AgentExecutionEvent.Completed(metadata);
 
         var streamEvent = AgentChatStreamEventMapper.FromExecutionEvent(executionEvent);

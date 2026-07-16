@@ -6,7 +6,7 @@ namespace Runiq.AI.Rag.Models.Tools;
 /// <summary>
 /// Carries the provider-independent outcome of a Vector Query Tool invocation in an agent-usable shape. The
 /// result reuses the existing retrieval contract rather than introducing a parallel one: matches are exposed as
-/// <see cref="RetrievalResultItem"/> values (preserving the content, similarity score, and metadata produced by
+/// <see cref="RetrievalResultItem"/> values (preserving content, raw score semantics, relevance, and metadata produced by
 /// the retrieval pipeline) and failures reuse the existing <see cref="RetrievalErrorCode"/> categories. It
 /// draws the same line between three states as <see cref="RetrievalResult"/>: a successful invocation that
 /// returned matches, a successful invocation that matched nothing (an empty <see cref="Matches"/> list, which
@@ -100,7 +100,7 @@ public sealed class VectorQueryToolResult
 
     /// <summary>
     /// Gets the retrieved matches ordered best match first, exposed in the existing
-    /// <see cref="RetrievalResultItem"/> shape so agents receive content, similarity score, and metadata without
+    /// <see cref="RetrievalResultItem"/> shape so agents receive content, raw score semantics, relevance, and metadata without
     /// binding to a vector store provider. A null value is normalized to an empty collection, and an empty
     /// collection represents a successful invocation that matched nothing.
     /// </summary>

@@ -88,7 +88,7 @@ public sealed class VectorQueryToolIntegrationTests
         Assert.Equal(2, result.Matches.Count);
         Assert.Equal(DatabaseTuningId, result.Matches[0].RecordId);
         Assert.Equal(DatabaseBackupId, result.Matches[1].RecordId);
-        Assert.True(result.Matches[0].Score > result.Matches[1].Score);
+        Assert.True(result.Matches[0].RawScore > result.Matches[1].RawScore);
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public sealed class VectorQueryToolIntegrationTests
         Assert.NotEmpty(result.Matches);
         var topMatch = result.Matches[0];
         Assert.Equal(DatabaseTuningContent, topMatch.Content);
-        Assert.True(topMatch.Score > 0.0);
+        Assert.True(topMatch.RawScore > 0.0);
         Assert.Equal("database", topMatch.Metadata.Values["category"]);
         Assert.Equal("platform", topMatch.Metadata.Values["team"]);
     }

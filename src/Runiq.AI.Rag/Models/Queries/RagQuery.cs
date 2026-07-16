@@ -27,7 +27,8 @@ public sealed class RagQuery
     public string? IndexName { get; init; }
 
     /// <summary>
-    /// Gets or initializes the maximum number of matches to retrieve.
+    /// Gets or initializes the maximum number of raw candidates to retrieve. This value does not guarantee
+    /// relevance or acceptance as Agent Chat context.
     /// </summary>
     public int TopK { get; init; } = 5;
 

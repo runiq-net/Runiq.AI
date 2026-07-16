@@ -87,12 +87,18 @@ options.AddAgent(new Agent(
         rag.IndexName = "company-policies";
         rag.Mode = RagExecutionMode.Grounded;
         rag.NoContextBehavior = RagNoContextBehavior.ReturnNotFound;
+        rag.Acceptance.MinimumRelevance = 0.75;
+        rag.Acceptance.CandidateCount = 20;
+        rag.Acceptance.MaximumAcceptedResults = 5;
     }));
 ```
 
 The default is `Open` with `AnswerNormally`, preserving normal model behavior when retrieval succeeds without
 accepted context. `Grounded` makes documents the primary source; `Required` allows answers only from accepted
 context and must use `ReturnNotFound` or `FailExecution`. Retrieval failures remain failures in every mode.
+`CandidateCount` controls how many raw matches are requested; it is not a relevance or acceptance guarantee.
+Every candidate is normalized when its metric supports a documented conversion, evaluated by the acceptance
+policy, and retained as either accepted or rejected runtime metadata before any document enters Agent Chat context.
 See the [Agents package guide](src/Runiq.AI.Agents/README.md#rag-execution-and-grounding-policies) for the complete
 policy matrix, relevance acceptance, trust boundary, and structured runtime outcome.
 

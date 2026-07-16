@@ -25,6 +25,7 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
     private const string RequestRequiredReason = "Request is required.";
     private const string InvalidIndexNameReason = "Vector index name is required.";
     private const string InvalidDimensionsReason = "Vector dimensions must be greater than zero.";
+    private const string InvalidMetricReason = "Vector distance metric is not defined.";
     private const string RecordsRequiredReason = "At least one vector record is required.";
     private const string InvalidVectorIdReason = "Vector identifier is required.";
     private const string InvalidVectorValuesReason = "Vector values are required.";
@@ -59,6 +60,11 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
         if (request.Dimensions <= 0)
         {
             return Task.FromResult(CreateFailedIndexResult(request.IndexName, InvalidDimensionsReason));
+        }
+
+        if (!Enum.IsDefined(request.Metric))
+        {
+            return Task.FromResult(CreateFailedIndexResult(request.IndexName, InvalidMetricReason));
         }
 
         lock (gate)
@@ -229,7 +235,7 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
     /// observed before any index state is read, so a cancelled token fails fast with
     /// <see cref="OperationCanceledException"/>. The query is isolated to the requested index, evaluates only the
     /// records under that index, applies the provider-independent metadata filter before similarity scoring so
-    /// filtered-out records never enter scoring, orders the remaining matches best score first, and returns at most
+    /// filtered-out records never enter scoring, orders the remaining matches according to metric direction, and returns at most
     /// <see cref="QueryVectorRequest.TopK"/> results. An empty or fully filtered index is a successful, empty result.
     /// A filter carrying an operator this store does not support fails deterministically with a failure result.
     /// Query state is read-only, so existing upsert behavior is never affected.
@@ -279,16 +285,8 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
 
             var records = index.Records.Values
                     .Where(record => MatchesMetadataFilter(record, request.MetadataFilter))
-                    .Select(record => new VectorSearchResult
-                    {
-                        Id = record.Id,
-                        Content = record.Content,
-                        Metadata = request.IncludeMetadata ? CopyMetadata(record.Metadata) : RagMetadata.Empty,
-                        Score = CalculateScore(index.Metric, request.Values, record.Values),
-                        Values = request.IncludeVectors ? record.Values.ToArray() : null,
-                    })
-                    .OrderByDescending(record => record.Score)
-                    .ThenBy(record => record.Id, StringComparer.Ordinal)
+                    .Select(record => MapSearchResult(index.Metric, request, record))
+                    .OrderBy(record => record, VectorSearchResultComparer.Instance)
                     .Take(request.TopK)
                     .ToList();
 
@@ -480,7 +478,27 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
         };
     }
 
-    private static double CalculateScore(
+    private static VectorSearchResult MapSearchResult(
+        VectorDistanceMetric metric,
+        QueryVectorRequest request,
+        VectorRecord record)
+    {
+        var rawScore = CalculateRawScore(metric, request.Values, record.Values);
+
+        return new VectorSearchResult
+        {
+            Id = record.Id,
+            Content = record.Content,
+            Metadata = request.IncludeMetadata ? CopyMetadata(record.Metadata) : RagMetadata.Empty,
+            RawScore = rawScore,
+            Relevance = NormalizeRelevance(metric, rawScore),
+            Metric = GetMetricName(metric),
+            HigherIsBetter = metric != VectorDistanceMetric.Euclidean,
+            Values = request.IncludeVectors ? record.Values.ToArray() : null,
+        };
+    }
+
+    private static double CalculateRawScore(
         VectorDistanceMetric metric,
         IReadOnlyList<float> queryValues,
         IReadOnlyList<float> recordValues)
@@ -488,8 +506,29 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
         return metric switch
         {
             VectorDistanceMetric.DotProduct => DotProduct(queryValues, recordValues),
-            VectorDistanceMetric.Euclidean => 1.0 / (1.0 + EuclideanDistance(queryValues, recordValues)),
+            VectorDistanceMetric.Euclidean => EuclideanDistance(queryValues, recordValues),
             _ => CosineSimilarity(queryValues, recordValues),
+        };
+    }
+
+    private static double? NormalizeRelevance(VectorDistanceMetric metric, double rawScore)
+    {
+        return metric switch
+        {
+            VectorDistanceMetric.Cosine => (rawScore + 1.0) / 2.0,
+            VectorDistanceMetric.Euclidean => 1.0 / (1.0 + rawScore),
+            _ => null,
+        };
+    }
+
+    private static string GetMetricName(VectorDistanceMetric metric)
+    {
+        return metric switch
+        {
+            VectorDistanceMetric.Cosine => RagScoreMetrics.CosineSimilarity,
+            VectorDistanceMetric.DotProduct => RagScoreMetrics.DotProduct,
+            VectorDistanceMetric.Euclidean => RagScoreMetrics.EuclideanDistance,
+            _ => throw new ArgumentOutOfRangeException(nameof(metric), metric, "The vector distance metric is not defined."),
         };
     }
 
@@ -578,6 +617,37 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
         public VectorDistanceMetric Metric { get; }
 
         public Dictionary<string, VectorRecord> Records { get; } = new(StringComparer.Ordinal);
+    }
+
+    private sealed class VectorSearchResultComparer : IComparer<VectorSearchResult>
+    {
+        public static VectorSearchResultComparer Instance { get; } = new();
+
+        public int Compare(VectorSearchResult? left, VectorSearchResult? right)
+        {
+            if (ReferenceEquals(left, right))
+            {
+                return 0;
+            }
+
+            if (left is null)
+            {
+                return 1;
+            }
+
+            if (right is null)
+            {
+                return -1;
+            }
+
+            var comparison = left.HigherIsBetter
+                ? right.RawScore.CompareTo(left.RawScore)
+                : left.RawScore.CompareTo(right.RawScore);
+
+            return comparison != 0
+                ? comparison
+                : StringComparer.Ordinal.Compare(left.Id, right.Id);
+        }
     }
 }
 

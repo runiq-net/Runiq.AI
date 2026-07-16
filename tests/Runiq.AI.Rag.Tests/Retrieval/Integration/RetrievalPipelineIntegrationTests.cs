@@ -108,7 +108,7 @@ public sealed class RetrievalPipelineIntegrationTests
         Assert.Equal(2, result.Items.Count);
         Assert.Equal(DatabaseTuningId, result.Items[0].RecordId);
         Assert.Equal(DatabaseBackupId, result.Items[1].RecordId);
-        Assert.True(result.Items[0].Score > result.Items[1].Score);
+        Assert.True(result.Items[0].RawScore > result.Items[1].RawScore);
     }
 
     [Fact]
@@ -148,8 +148,8 @@ public sealed class RetrievalPipelineIntegrationTests
 
         // Verifies that the similarity score is populated and, for the cosine higher-is-better contract, sits in the (0, 1] range.
         Assert.NotEmpty(result.Items);
-        Assert.True(result.Items[0].Score > 0.0);
-        Assert.True(result.Items[0].Score <= 1.0 + 1e-9);
+        Assert.True(result.Items[0].RawScore > 0.0);
+        Assert.True(result.Items[0].RawScore <= 1.0 + 1e-9);
     }
 
     [Fact]
