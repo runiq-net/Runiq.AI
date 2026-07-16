@@ -69,7 +69,9 @@ public sealed class DefaultRagChunkEmbeddingGenerator : IRagChunkEmbeddingGenera
             throw new InvalidOperationException("The embedding client returned a result count that does not match the input count.");
         return response.Results.OrderBy(result => result.Index).Select((result, index) => new RagChunkEmbeddingResult
         {
-            ChunkId = inputs[index].ChunkId, DocumentId = inputs[index].DocumentId, ChunkIndex = inputs[index].ChunkIndex,
+            ChunkId = inputs[index].ChunkId,
+            DocumentId = inputs[index].DocumentId,
+            ChunkIndex = inputs[index].ChunkIndex,
             Embedding = new RagEmbedding(result.Vector),
         }).ToList();
     }

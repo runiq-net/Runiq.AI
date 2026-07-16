@@ -1,5 +1,6 @@
 ﻿using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Core.AI.Chat;
 using Runiq.AI.Core.Configuration;
 using Runiq.AI.Core.Metadata;
@@ -20,6 +21,8 @@ namespace Runiq.AI.Agents.Runtime;
 /// </summary>
 public sealed class AgentExecutionRuntime
 {
+    private const string NoContextMessage = "No relevant information was found in the configured documents.";
+
     private readonly IEnumerable<Agent> agents;
     private readonly IChatClientResolver chatClientResolver;
     private readonly AgentToolInvoker toolInvoker;
@@ -266,7 +269,8 @@ public sealed class AgentExecutionRuntime
             ? AgentExecutionResult.Failure(
                 errorCode: "AgentExecutionEmptyMessage",
                 errorMessage: "Agent execution completed without producing a message.",
-                steps: result.Steps)
+                steps: result.Steps,
+                rag: result.Rag)
             : result;
     }
 
@@ -298,6 +302,27 @@ public sealed class AgentExecutionRuntime
 
         var runtimeContext = new AgentRuntimeContext();
 
+        AgentExecutionEvent? ragConfigurationFailure = null;
+        if (agent.Rag is { Enabled: true } ragOptions)
+        {
+            try
+            {
+                AgentRagPolicyValidator.Validate(ragOptions, requireIndex: false);
+            }
+            catch (ArgumentException exception)
+            {
+                ragConfigurationFailure = AgentExecutionEvent.Failed(
+                    $"RAG configuration is invalid for agent '{agent.Id}'; the model was not invoked. {exception.Message}",
+                    "RagConfigurationInvalid");
+            }
+        }
+
+        if (ragConfigurationFailure is not null)
+        {
+            yield return ragConfigurationFailure;
+            yield break;
+        }
+
         AgentExecutionEvent? ragFailureEvent = null;
 
         try
@@ -312,19 +337,15 @@ public sealed class AgentExecutionRuntime
         {
             ragFailureEvent = AgentExecutionEvent.Failed(
                 exception.Message,
-                "RagConfigurationInvalid");
+                "RagConfigurationInvalid",
+                CreateRagMetadata(agent.Rag, runtimeContext, modelInvocationSkipped: true, noContextBehaviorApplied: false));
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            var mayContinueWithoutGrounding =
-                agent.Rag?.Mode == Configuration.RagExecutionMode.Optional &&
-                exception is RagRetrievalExecutionException;
-            if (!mayContinueWithoutGrounding)
-            {
-                ragFailureEvent = AgentExecutionEvent.Failed(
-                    $"RAG retrieval failed for agent '{agent.Id}'; the model was not invoked. {exception.Message}",
-                    "RagRetrievalFailed");
-            }
+            ragFailureEvent = AgentExecutionEvent.Failed(
+                $"RAG retrieval failed for agent '{agent.Id}'; the model was not invoked. {exception.Message}",
+                "RagRetrievalFailed",
+                CreateRagMetadata(agent.Rag, runtimeContext, modelInvocationSkipped: true, noContextBehaviorApplied: false));
         }
 
         if (ragFailureEvent is not null)
@@ -333,13 +354,46 @@ public sealed class AgentExecutionRuntime
             yield break;
         }
 
+        if (agent.Rag is { Enabled: true } policy && !runtimeContext.HasContext)
+        {
+            switch (policy.NoContextBehavior)
+            {
+                case RagNoContextBehavior.ReturnNotFound:
+                    yield return AgentExecutionEvent.AssistantDelta(NoContextMessage);
+                    yield return AgentExecutionEvent.Completed(
+                        CreateRagMetadata(policy, runtimeContext, modelInvocationSkipped: true, noContextBehaviorApplied: true));
+                    yield break;
+
+                case RagNoContextBehavior.FailExecution:
+                    yield return AgentExecutionEvent.Failed(
+                        NoContextMessage,
+                        "RagContextUnavailable",
+                        CreateRagMetadata(policy, runtimeContext, modelInvocationSkipped: true, noContextBehaviorApplied: true));
+                    yield break;
+
+                case RagNoContextBehavior.AnswerNormally:
+                    break;
+
+                default:
+                    yield return AgentExecutionEvent.Failed(
+                        $"RAG configuration is invalid for agent '{agent.Id}'; the model was not invoked.",
+                        "RagConfigurationInvalid");
+                    yield break;
+            }
+        }
+
         var validationFailure = ValidateProviderRuntime(agent);
 
         if (validationFailure is not null)
         {
             yield return AgentExecutionEvent.Failed(
                 validationFailure.ErrorMessage ?? "Agent stream request failed.",
-                validationFailure.ErrorCode);
+                validationFailure.ErrorCode,
+                CreateRagMetadata(
+                    agent.Rag,
+                    runtimeContext,
+                    modelInvocationSkipped: true,
+                    noContextBehaviorApplied: agent.Rag?.Enabled == true && !runtimeContext.HasContext));
 
             yield break;
         }
@@ -356,10 +410,18 @@ public sealed class AgentExecutionRuntime
         {
             new(ChatRole.System, agent.Instructions),
         };
-        var grounding = AgentInstructionsBuilder.BuildGrounding(runtimeContext);
-        if (grounding is not null)
+
+        if (agent.Rag is { Enabled: true } ragPolicy)
         {
-            messages.Add(new ChatMessage(ChatRole.User, grounding));
+            messages.Add(new ChatMessage(
+                ChatRole.System,
+                AgentInstructionsBuilder.BuildPolicy(ragPolicy.Mode, runtimeContext.HasContext)));
+
+            var externalContext = AgentInstructionsBuilder.BuildExternalContext(runtimeContext);
+            if (externalContext is not null)
+            {
+                messages.Add(new ChatMessage(ChatRole.User, externalContext));
+            }
         }
 
         messages.Add(new ChatMessage(ChatRole.User, query.Message));
@@ -402,7 +464,12 @@ public sealed class AgentExecutionRuntime
 
             if (toolCalls.Count == 0)
             {
-                yield return AgentExecutionEvent.Completed();
+                yield return AgentExecutionEvent.Completed(
+                    CreateRagMetadata(
+                        agent.Rag,
+                        runtimeContext,
+                        modelInvocationSkipped: false,
+                        noContextBehaviorApplied: agent.Rag?.Enabled == true && !runtimeContext.HasContext));
                 yield break;
             }
 
@@ -527,7 +594,7 @@ public sealed class AgentExecutionRuntime
                 $"RAG is enabled for agent '{agent.Id}', but no index was configured; the model was not invoked.");
         }
 
-        var results = await ragRetriever.RetrieveAsync(
+        var candidates = await ragRetriever.RetrieveAsync(
             new RagQuery
             {
                 Text = query.Message,
@@ -535,7 +602,44 @@ public sealed class AgentExecutionRuntime
             },
             cancellationToken).ConfigureAwait(false);
 
-        return new AgentRuntimeContext(results);
+        if (candidates is null)
+        {
+            throw new RagRetrievalExecutionException("The RAG retriever returned a null result collection.");
+        }
+
+        var acceptedContext = agent.Rag.MinimumRelevanceScore is double minimumScore
+            ? candidates.Where(result => result.Score >= minimumScore).ToArray()
+            : candidates.ToArray();
+        RagNoContextReason? noContextReason = acceptedContext.Length > 0
+            ? null
+            : candidates.Count == 0
+                ? RagNoContextReason.NoResults
+                : RagNoContextReason.BelowRelevanceThreshold;
+
+        return new AgentRuntimeContext(acceptedContext, candidates, noContextReason);
+    }
+
+    private static AgentRagExecutionMetadata? CreateRagMetadata(
+        AgentRagOptions? options,
+        AgentRuntimeContext runtimeContext,
+        bool modelInvocationSkipped,
+        bool noContextBehaviorApplied)
+    {
+        if (options is null || !options.Enabled)
+        {
+            return null;
+        }
+
+        return new AgentRagExecutionMetadata(
+            options.Mode,
+            runtimeContext.HasContext,
+            noContextBehaviorApplied ? options.NoContextBehavior : null,
+            runtimeContext.NoContextReason,
+            modelInvocationSkipped,
+            isAnswerGrounded:
+                !modelInvocationSkipped &&
+                runtimeContext.HasContext &&
+                options.Mode is RagExecutionMode.Grounded or RagExecutionMode.Required);
     }
 
     /// <summary>

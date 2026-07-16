@@ -68,10 +68,10 @@ public sealed class ValidatingRagVectorStore : IRagVectorStore
             return CreateFailedUpsertResult(expectedDimensionsResult, request.Records.Count);
         }
 
-            var validationResult = await dimensionValidator.ValidateAsync(
-                request,
-                expectedDimensionsResult.ExpectedDimensions,
-                cancellationToken).ConfigureAwait(false);
+        var validationResult = await dimensionValidator.ValidateAsync(
+            request,
+            expectedDimensionsResult.ExpectedDimensions,
+            cancellationToken).ConfigureAwait(false);
 
         if (!validationResult.Succeeded)
         {

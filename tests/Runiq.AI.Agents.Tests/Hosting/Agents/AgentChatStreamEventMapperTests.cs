@@ -1,4 +1,5 @@
 using Runiq.AI.Agents;
+using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Core.Agents;
 
 namespace Runiq.AI.Core.Tests.Agents;
@@ -123,6 +124,24 @@ public sealed class AgentChatStreamEventMapperTests
         Assert.Null(streamEvent.OutputJson);
         Assert.Equal("AgentExecutionFailed", streamEvent.ErrorCode);
         Assert.Equal("Agent failed.", streamEvent.ErrorMessage);
+    }
+
+    [Fact]
+    // Ensures terminal stream events carry structured RAG policy metadata without answer-text parsing.
+    public void FromExecutionEvent_ShouldMapRagPolicyOutcome()
+    {
+        var metadata = new AgentRagExecutionMetadata(
+            RagExecutionMode.Required,
+            hasAcceptedContext: false,
+            RagNoContextBehavior.ReturnNotFound,
+            RagNoContextReason.NoResults,
+            modelInvocationSkipped: true,
+            isAnswerGrounded: false);
+        var executionEvent = AgentExecutionEvent.Completed(metadata);
+
+        var streamEvent = AgentChatStreamEventMapper.FromExecutionEvent(executionEvent);
+
+        Assert.Same(metadata, streamEvent.Rag);
     }
 
     [Fact]

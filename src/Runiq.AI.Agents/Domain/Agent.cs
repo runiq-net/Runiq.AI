@@ -180,13 +180,15 @@ public class Agent
     /// <summary>
     /// Configures framework-owned retrieval before the agent's initial model invocation.
     /// </summary>
-    /// <param name="configure">Configures the required index and retrieval failure mode.</param>
+    /// <param name="configure">Configures the index, execution mode, no-context behavior, and acceptance threshold.</param>
     /// <returns>The same agent instance so calls can be chained.</returns>
     public Agent UseRag(Action<AgentRagOptions> configure)
     {
         ArgumentNullException.ThrowIfNull(configure);
         var options = new AgentRagOptions();
         configure(options);
+
+        AgentRagPolicyValidator.Validate(options, requireIndex: options.Enabled);
 
         if (options.Enabled)
         {

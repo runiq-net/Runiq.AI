@@ -41,7 +41,7 @@ public sealed class FlowTests
 
         Assert.Equal("begin", step.Id);
         Assert.Equal(typeof(TestAgent), step.ExecutableType);
- 
+
         Assert.Equal(FailureBehavior.Stop, step.FailureBehavior);
     }
 

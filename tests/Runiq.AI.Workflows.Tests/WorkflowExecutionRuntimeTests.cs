@@ -193,7 +193,7 @@ public sealed class FlowRunnerTests
             workflow,
             input: "hello");
 
-         Assert.Equal(RunStatus.Completed, result.Status);
+        Assert.Equal(RunStatus.Completed, result.Status);
 
     }
 
@@ -252,7 +252,7 @@ public sealed class FlowRunnerTests
 
         Assert.Equal(RunStatus.Completed, result.Status);
 
-       
+
         Assert.Equal(2, result.StepResults.Count);
 
         Assert.Equal("weather", result.StepResults[0].StepId);

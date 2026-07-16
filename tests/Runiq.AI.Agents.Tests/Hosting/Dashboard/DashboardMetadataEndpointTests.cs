@@ -149,6 +149,7 @@ public sealed class DashboardMetadataEndpointTests
                                 {
                                     rag.IndexName = "documents";
                                     rag.Mode = RagExecutionMode.Required;
+                                    rag.NoContextBehavior = RagNoContextBehavior.ReturnNotFound;
                                 }));
 
                             options.AddAgent(new Agent(

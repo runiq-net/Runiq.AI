@@ -1,18 +1,24 @@
 namespace Runiq.AI.Agents.Configuration;
 
 /// <summary>
-/// Defines how an agent responds when an otherwise valid RAG retrieval operation fails.
+/// Defines how accepted retrieval context constrains an agent response.
 /// </summary>
 public enum RagExecutionMode
 {
     /// <summary>
-    /// Stops execution before model invocation when retrieval fails.
+    /// Uses accepted retrieval context when available and otherwise permits normal agent behavior.
     /// </summary>
-    Required,
+    Open = 0,
 
     /// <summary>
-    /// Continues without retrieved context when retrieval infrastructure is present but retrieval fails.
-    /// Invalid configuration and missing infrastructure still stop execution.
+    /// Treats accepted documents as the primary information source and requires unsupported information
+    /// and conflicting sources to be identified explicitly.
     /// </summary>
-    Optional,
+    Grounded = 1,
+
+    /// <summary>
+    /// Restricts the response to accepted retrieval context and prevents normal model answering when no
+    /// accepted context is available.
+    /// </summary>
+    Required = 2,
 }

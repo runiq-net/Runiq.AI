@@ -41,13 +41,19 @@ internal static class AgentChatStreamEventMapper
 
             AgentExecutionEventKind.Completed => new AgentChatStreamEvent(
                 Type: "completed",
-                Content: null),
+                Content: null)
+            {
+                Rag = executionEvent.Rag,
+            },
 
             AgentExecutionEventKind.Failed => new AgentChatStreamEvent(
                 Type: "failed",
                 Content: executionEvent.Content,
                 ErrorCode: executionEvent.ErrorCode,
-                ErrorMessage: executionEvent.ErrorMessage),
+                ErrorMessage: executionEvent.ErrorMessage)
+            {
+                Rag = executionEvent.Rag,
+            },
 
             _ => new AgentChatStreamEvent(
                 Type: "failed",

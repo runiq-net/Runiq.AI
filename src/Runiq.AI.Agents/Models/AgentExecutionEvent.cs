@@ -14,6 +14,11 @@ public sealed record AgentExecutionEvent(
     string? ErrorMessage = null)
 {
     /// <summary>
+    /// Gets or initializes the structured RAG policy outcome carried by a terminal event.
+    /// </summary>
+    public AgentRagExecutionMetadata? Rag { get; init; }
+
+    /// <summary>
     /// Assistant yanitindan gelen parça metin olayini olusturur.
     /// </summary>
     /// <param name="content">Assistant yanitina eklenecek parça metindir.</param>
@@ -100,6 +105,16 @@ public sealed record AgentExecutionEvent(
     }
 
     /// <summary>
+    /// Creates a successful completion event with a structured RAG policy outcome.
+    /// </summary>
+    /// <param name="rag">The RAG policy outcome observed by the framework.</param>
+    /// <returns>The completed stream event.</returns>
+    public static AgentExecutionEvent Completed(AgentRagExecutionMetadata? rag)
+    {
+        return Completed() with { Rag = rag };
+    }
+
+    /// <summary>
     /// Agent çalismasinin hata ile sonlandigini bildiren stream olayini olusturur.
     /// </summary>
     /// <param name="errorMessage">Agent çalismasi sirasinda olusan hata mesajidir.</param>
@@ -114,6 +129,21 @@ public sealed record AgentExecutionEvent(
             Content: errorMessage,
             ErrorCode: errorCode,
             ErrorMessage: errorMessage);
+    }
+
+    /// <summary>
+    /// Creates a failed completion event with a structured RAG policy outcome.
+    /// </summary>
+    /// <param name="errorMessage">The agent execution failure message.</param>
+    /// <param name="errorCode">The optional agent execution failure code.</param>
+    /// <param name="rag">The RAG policy outcome observed by the framework.</param>
+    /// <returns>The failed stream event.</returns>
+    public static AgentExecutionEvent Failed(
+        string errorMessage,
+        string? errorCode,
+        AgentRagExecutionMetadata? rag)
+    {
+        return Failed(errorMessage, errorCode) with { Rag = rag };
     }
 }
 

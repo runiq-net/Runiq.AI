@@ -10,13 +10,15 @@ namespace Runiq.AI.Agents
             string? message,
             string? errorCode,
             string? errorMessage,
-            IReadOnlyList<AgentExecutionStep> steps)
+            IReadOnlyList<AgentExecutionStep> steps,
+            AgentRagExecutionMetadata? rag)
         {
             IsSuccess = isSuccess;
             Message = message;
             ErrorCode = errorCode;
             ErrorMessage = errorMessage;
             Steps = steps;
+            Rag = rag;
         }
 
         /// <summary>
@@ -45,11 +47,16 @@ namespace Runiq.AI.Agents
         public IReadOnlyList<AgentExecutionStep> Steps { get; }
 
         /// <summary>
+        /// Gets the structured RAG policy outcome, or null when RAG was not configured for the agent.
+        /// </summary>
+        public AgentRagExecutionMetadata? Rag { get; }
+
+        /// <summary>
         /// Basarili agent çalistirma sonucu olusturur.
         /// </summary>
         public static AgentExecutionResult Success(string message)
         {
-            return Success(message, []);
+            return Success(message, [], rag: null);
         }
 
         /// <summary>
@@ -59,12 +66,28 @@ namespace Runiq.AI.Agents
             string message,
             IReadOnlyList<AgentExecutionStep> steps)
         {
+            return Success(message, steps, rag: null);
+        }
+
+        /// <summary>
+        /// Creates a successful agent execution result with execution steps and a structured RAG policy outcome.
+        /// </summary>
+        /// <param name="message">The final agent response.</param>
+        /// <param name="steps">The visible execution steps.</param>
+        /// <param name="rag">The RAG policy outcome, or null when RAG was not configured.</param>
+        /// <returns>The successful agent execution result.</returns>
+        public static AgentExecutionResult Success(
+            string message,
+            IReadOnlyList<AgentExecutionStep> steps,
+            AgentRagExecutionMetadata? rag)
+        {
             return new AgentExecutionResult(
                 isSuccess: true,
                 message: message,
                 errorCode: null,
                 errorMessage: null,
-                steps: steps);
+                steps: steps,
+                rag: rag);
         }
 
         /// <summary>
@@ -72,7 +95,7 @@ namespace Runiq.AI.Agents
         /// </summary>
         public static AgentExecutionResult Failure(string errorCode, string errorMessage)
         {
-            return Failure(errorCode, errorMessage, []);
+            return Failure(errorCode, errorMessage, [], rag: null);
         }
 
         /// <summary>
@@ -83,12 +106,30 @@ namespace Runiq.AI.Agents
             string errorMessage,
             IReadOnlyList<AgentExecutionStep> steps)
         {
+            return Failure(errorCode, errorMessage, steps, rag: null);
+        }
+
+        /// <summary>
+        /// Creates a failed agent execution result with execution steps and a structured RAG policy outcome.
+        /// </summary>
+        /// <param name="errorCode">The agent execution failure code.</param>
+        /// <param name="errorMessage">The agent execution failure message.</param>
+        /// <param name="steps">The visible execution steps.</param>
+        /// <param name="rag">The RAG policy outcome, or null when RAG was not configured.</param>
+        /// <returns>The failed agent execution result.</returns>
+        public static AgentExecutionResult Failure(
+            string errorCode,
+            string errorMessage,
+            IReadOnlyList<AgentExecutionStep> steps,
+            AgentRagExecutionMetadata? rag)
+        {
             return new AgentExecutionResult(
                 isSuccess: false,
                 message: null,
                 errorCode: errorCode,
                 errorMessage: errorMessage,
-                steps: steps);
+                steps: steps,
+                rag: rag);
         }
     }
 

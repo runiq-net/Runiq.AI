@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Runiq.AI.Agents;
 
 namespace Runiq.AI.Core.Agents;
 
@@ -13,4 +14,11 @@ public sealed record AgentChatStreamEvent(
     [property: JsonPropertyName("argumentsJson")] string? ArgumentsJson = null,
     [property: JsonPropertyName("outputJson")] string? OutputJson = null,
     [property: JsonPropertyName("errorCode")] string? ErrorCode = null,
-    [property: JsonPropertyName("errorMessage")] string? ErrorMessage = null);
+    [property: JsonPropertyName("errorMessage")] string? ErrorMessage = null)
+{
+    /// <summary>
+    /// Gets or initializes the structured RAG policy outcome carried by terminal stream events.
+    /// </summary>
+    [JsonPropertyName("rag")]
+    public AgentRagExecutionMetadata? Rag { get; init; }
+}

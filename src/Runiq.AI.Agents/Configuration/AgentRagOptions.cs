@@ -16,8 +16,21 @@ public sealed class AgentRagOptions
     public string? IndexName { get; set; }
 
     /// <summary>
-    /// Gets or sets how retrieval failures affect model invocation.
+    /// Gets or sets how accepted retrieval context constrains the response. The default is
+    /// <see cref="RagExecutionMode.Open"/> to preserve normal agent behavior when no context is accepted.
     /// </summary>
-    public RagExecutionMode Mode { get; set; } = RagExecutionMode.Required;
+    public RagExecutionMode Mode { get; set; } = RagExecutionMode.Open;
+
+    /// <summary>
+    /// Gets or sets how a successful retrieval with no accepted context affects execution. The default is
+    /// <see cref="RagNoContextBehavior.AnswerNormally"/>.
+    /// </summary>
+    public RagNoContextBehavior NoContextBehavior { get; set; } = RagNoContextBehavior.AnswerNormally;
+
+    /// <summary>
+    /// Gets or sets the optional minimum score a retrieved candidate must meet to become accepted context.
+    /// A null value accepts every retrieved candidate. Score semantics remain vector-store specific.
+    /// </summary>
+    public double? MinimumRelevanceScore { get; set; }
 }
 
