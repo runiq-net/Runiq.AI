@@ -100,10 +100,16 @@ public sealed class AgentChatRagSearchEvent
 /// <summary>Identifies a document and chunk selected as model context.</summary>
 public sealed class AgentChatRagSelectedResult
 {
-    internal AgentChatRagSelectedResult(string documentId, string chunkId)
+    internal AgentChatRagSelectedResult(string documentId, string chunkId, int contextOrder,
+        double? rawScore, double? normalizedRelevance, string? metric, bool? higherIsBetter)
     {
         DocumentId = documentId;
         ChunkId = chunkId;
+        ContextOrder = contextOrder;
+        RawScore = rawScore;
+        NormalizedRelevance = normalizedRelevance;
+        Metric = metric;
+        HigherIsBetter = higherIsBetter;
     }
 
     /// <summary>Gets the selected document identifier.</summary>
@@ -111,6 +117,16 @@ public sealed class AgentChatRagSelectedResult
 
     /// <summary>Gets the selected chunk identifier.</summary>
     public string ChunkId { get; }
+    /// <summary>Gets the zero-based order in which the result was included in model context.</summary>
+    public int ContextOrder { get; }
+    /// <summary>Gets the finite raw provider score when available.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public double? RawScore { get; }
+    /// <summary>Gets normalized relevance when reliably available.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public double? NormalizedRelevance { get; }
+    /// <summary>Gets the score metric when available.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Metric { get; }
+    /// <summary>Gets whether larger raw scores are better when the metric is known.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? HigherIsBetter { get; }
 }
 
 /// <summary>Describes a RAG candidate rejected by runtime policy without exposing its content.</summary>

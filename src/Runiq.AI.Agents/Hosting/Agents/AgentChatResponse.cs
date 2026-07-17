@@ -1,4 +1,5 @@
 using Runiq.AI.Agents;
+using System.Text.Json.Serialization;
 
 namespace Runiq.AI.Core.Agents;
 
@@ -15,7 +16,11 @@ public sealed record AgentChatResponse(
     /// <summary>
     /// Gets or initializes the structured RAG policy outcome, or null when RAG was not configured.
     /// </summary>
+    [JsonIgnore]
     public AgentRagExecutionMetadata? Rag { get; init; }
+
+    /// <summary>Gets content-free completed retrieval evidence for this response.</summary>
+    public IReadOnlyList<AgentChatRagSearchEvent>? GroundingEvidence { get; init; }
 }
 
 /// <summary>

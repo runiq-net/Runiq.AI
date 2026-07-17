@@ -53,22 +53,23 @@ public sealed class AgentChatApiHandler
             return Results.Empty;
         }
 
-        var result = await ExecuteToResultAsync(
+        var execution = await ExecuteToResultAsync(
             httpContext,
             agentId,
             CreateAgentQuery(request),
             cancellationToken);
 
-        return Results.Ok(ToChatResponse(result));
+        return Results.Ok(ToChatResponse(execution.Result, execution.GroundingEvidence));
     }
 
-    private async Task<AgentExecutionResult> ExecuteToResultAsync(
+    private async Task<(AgentExecutionResult Result, IReadOnlyList<AgentChatRagSearchEvent> GroundingEvidence)> ExecuteToResultAsync(
         HttpContext httpContext,
         string agentId,
         AgentQuery query,
         CancellationToken cancellationToken)
     {
         var resultBuilder = new AgentExecutionResultBuilder();
+        var groundingEvidence = new List<AgentChatRagSearchEvent>();
         var toolInvoker = new AgentToolInvoker(httpContext.RequestServices);
 
         await foreach (var executionEvent in agentRuntime.ExecuteStreamAsync(
@@ -78,12 +79,18 @@ public sealed class AgentChatApiHandler
                            cancellationToken))
         {
             resultBuilder.Apply(executionEvent);
+            if (executionEvent.RagSearch is not null &&
+                AgentChatStreamEventMapper.FromExecutionEvent(executionEvent) is { Type: "rag_search_completed", RagSearch: { } projection } &&
+                groundingEvidence.All(item => item.CorrelationId != projection.CorrelationId))
+            {
+                groundingEvidence.Add(projection);
+            }
         }
 
-        return resultBuilder.Build();
+        return (resultBuilder.Build(), groundingEvidence);
     }
 
-    private static AgentChatResponse ToChatResponse(AgentExecutionResult result)
+    private static AgentChatResponse ToChatResponse(AgentExecutionResult result, IReadOnlyList<AgentChatRagSearchEvent> groundingEvidence)
     {
         return new AgentChatResponse(
             IsSuccess: result.IsSuccess,
@@ -95,6 +102,7 @@ public sealed class AgentChatApiHandler
                 .ToArray())
         {
             Rag = result.Rag,
+            GroundingEvidence = groundingEvidence,
         };
     }
 

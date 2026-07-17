@@ -109,8 +109,12 @@ internal static class AgentChatStreamEventMapper
             TopRawScore = completed.TopRawScore,
             TopNormalizedRelevance = completed.TopNormalizedRelevance,
             Duration = completed.Duration,
-            SelectedResults = completed.SelectedResults
-                .Select(result => new AgentChatRagSelectedResult(result.DocumentId, result.ChunkId))
+            SelectedResults = completed.SelectedResults.Select((result, index) => new AgentChatRagSelectedResult(
+                    result.DocumentId, result.ChunkId, index,
+                    double.IsFinite(result.RawScore) ? result.RawScore : null,
+                    IsNormalizedRelevance(result.NormalizedRelevance) ? result.NormalizedRelevance : null,
+                    string.IsNullOrWhiteSpace(result.Metric) ? null : result.Metric,
+                    string.IsNullOrWhiteSpace(result.Metric) ? null : result.HigherIsBetter))
                 .ToArray(),
             RejectedResults = completed.RejectedResults
                 .Select(result => new AgentChatRagRejectedResult(

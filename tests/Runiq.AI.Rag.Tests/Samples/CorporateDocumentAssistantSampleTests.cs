@@ -116,6 +116,8 @@ public sealed class CorporateDocumentAssistantSampleTests
         Assert.IsType<RagSearchStarted>(uncovered[0].RagSearch);
         var uncoveredCompleted = Assert.IsType<RagSearchCompleted>(uncovered[1].RagSearch);
         Assert.NotNull(uncoveredCompleted.NoContextReason);
+        Assert.Empty(uncoveredCompleted.SelectedResults);
+        Assert.DoesNotContain(uncovered, item => item.RagSearch is RagSearchFailed);
         Assert.Equal("No relevant information was found in the configured documents.", uncovered.Single(item => item.Kind == AgentExecutionEventKind.AssistantDelta).Content);
         Assert.Single(chat.Requests);
     }

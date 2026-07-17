@@ -5,6 +5,7 @@ import './ChatThread.css';
 
 import { ToolCallCard } from './tool/ToolCallCard';
 import { RagSearchCard } from './rag/RagSearchCard';
+import { GroundingEvidenceCard } from './rag/GroundingEvidenceCard';
 
 import type { AgentChatMessage } from '../../types/agentChat';
 
@@ -196,6 +197,7 @@ function ChatMessageItem({ message }: { message: AgentChatMessage }) {
               )}
             </div>
           )}
+          <GroundingEvidenceCard lifecycles={message.ragSearches ?? []} />
         </div>
       )}
     </article>
