@@ -110,6 +110,7 @@ function applyStreamEvent(
     return {
       ...message,
       isStreaming: false,
+      citations: event.citations ?? [],
     };
   }
 
@@ -136,6 +137,7 @@ function createAssistantMessageFromResult(result: AgentChatResult): AgentChatMes
     isStreaming: false,
     toolCalls: mapResultStepsToToolCalls(result),
     ragSearches: (result.groundingEvidence ?? []).map((payload) => ({ status: 'completed' as const, payload })),
+    citations: result.citations ?? [],
   };
 }
 

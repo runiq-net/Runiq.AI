@@ -3,7 +3,7 @@ using System.Text;
 namespace Runiq.AI.Agents;
 
 /// <summary>
-/// Stream olarak gelen agent execution event'lerinden tamamlanmis AgentExecutionResult üretir.
+/// Stream olarak gelen agent execution event'lerinden tamamlanmis AgentExecutionResult Ã¼retir.
 /// </summary>
 public sealed class AgentExecutionResultBuilder
 {
@@ -16,6 +16,7 @@ public sealed class AgentExecutionResultBuilder
     private string? failureCode;
     private string? failureMessage;
     private AgentRagExecutionMetadata? rag;
+    private IReadOnlyList<AgentCitation> citations = [];
 
     /// <summary>
     /// Tek bir execution event'ini result state'ine uygular.
@@ -24,6 +25,7 @@ public sealed class AgentExecutionResultBuilder
     {
         ArgumentNullException.ThrowIfNull(executionEvent);
         rag = executionEvent.Rag ?? rag;
+        if (executionEvent.Kind == AgentExecutionEventKind.Completed) citations = executionEvent.Citations;
 
         switch (executionEvent.Kind)
         {
@@ -54,14 +56,14 @@ public sealed class AgentExecutionResultBuilder
     }
 
     /// <summary>
-    /// Toplanan event'lerden tamamlanmis agent execution result üretir.
+    /// Toplanan event'lerden tamamlanmis agent execution result Ã¼retir.
     /// </summary>
     public AgentExecutionResult Build()
     {
         AddFinalAnswerStep();
 
         return failureCode is null
-            ? AgentExecutionResult.Success(messageBuilder.ToString(), steps, rag)
+            ? AgentExecutionResult.Success(messageBuilder.ToString(), steps, rag, citations)
             : AgentExecutionResult.Failure(
                 failureCode,
                 failureMessage ?? "Agent execution failed.",

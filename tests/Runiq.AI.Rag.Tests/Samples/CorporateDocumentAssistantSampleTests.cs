@@ -98,7 +98,7 @@ public sealed class CorporateDocumentAssistantSampleTests
         await using var provider = CreateProvider(documents.Path, startIngestion: false);
         await StartHostedServicesAsync(provider);
         using var scope = provider.CreateScope();
-        var chat = new RecordingChatClient("Employees are allowed three remote work days per week.");
+        var chat = new RecordingChatClient("Employees are allowed three remote work days per week [1].");
         var agent = Assert.Single(provider.GetServices<Agent>());
         var runtime = new AgentExecutionRuntime(
             [agent], chat, chat, provider.GetRequiredService<AgentToolInvoker>(),
@@ -111,7 +111,10 @@ public sealed class CorporateDocumentAssistantSampleTests
         Assert.Equal(started.CorrelationId, completed.CorrelationId);
         Assert.Equal(CorporateDocumentAssistantSetup.IndexName, started.IndexName);
         Assert.Contains(completed.SelectedResults, selected => selected.DocumentId.Contains("remote-work-policy", StringComparison.Ordinal));
-        Assert.Equal("Employees are allowed three remote work days per week.", covered.Single(item => item.Kind == AgentExecutionEventKind.AssistantDelta).Content);
+        Assert.Equal("Employees are allowed three remote work days per week [1].", covered.Single(item => item.Kind == AgentExecutionEventKind.AssistantDelta).Content);
+        var citation = Assert.Single(covered.Single(item => item.Kind == AgentExecutionEventKind.Completed).Citations);
+        Assert.Equal(1, citation.Number);
+        Assert.Contains("remote-work-policy", citation.DocumentId, StringComparison.Ordinal);
         var request = Assert.Single(chat.Requests);
         var context = Assert.Single(request.Messages, message => message.Content.Contains("<untrusted-external-context>", StringComparison.Ordinal));
         Assert.Equal(ChatRole.User, context.Role);

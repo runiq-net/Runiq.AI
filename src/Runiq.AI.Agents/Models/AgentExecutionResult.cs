@@ -1,7 +1,7 @@
 namespace Runiq.AI.Agents
 {
     /// <summary>
-    /// Agent çalistirma sonucunu final cevap, hata bilgisi ve görünür execution adimlariyla temsil eder.
+    /// Agent Ã§alistirma sonucunu final cevap, hata bilgisi ve gÃ¶rÃ¼nÃ¼r execution adimlariyla temsil eder.
     /// </summary>
     public sealed class AgentExecutionResult
     {
@@ -11,7 +11,8 @@ namespace Runiq.AI.Agents
             string? errorCode,
             string? errorMessage,
             IReadOnlyList<AgentExecutionStep> steps,
-            AgentRagExecutionMetadata? rag)
+            AgentRagExecutionMetadata? rag,
+            IReadOnlyList<AgentCitation>? citations = null)
         {
             IsSuccess = isSuccess;
             Message = message;
@@ -19,30 +20,31 @@ namespace Runiq.AI.Agents
             ErrorMessage = errorMessage;
             Steps = steps;
             Rag = rag;
+            Citations = citations?.ToArray() ?? [];
         }
 
         /// <summary>
-        /// Agent çalistirma isleminin basarili olup olmadigini belirtir.
+        /// Agent Ã§alistirma isleminin basarili olup olmadigini belirtir.
         /// </summary>
         public bool IsSuccess { get; }
 
         /// <summary>
-        /// Basarili çalistirma sonucunda modelden dönen final cevaptir.
+        /// Basarili Ã§alistirma sonucunda modelden dÃ¶nen final cevaptir.
         /// </summary>
         public string? Message { get; }
 
         /// <summary>
-        /// Basarisiz çalistirma durumunda hata kodudur.
+        /// Basarisiz Ã§alistirma durumunda hata kodudur.
         /// </summary>
         public string? ErrorCode { get; }
 
         /// <summary>
-        /// Basarisiz çalistirma durumunda kullaniciya veya gelistiriciye gösterilebilecek hata açiklamasidir.
+        /// Basarisiz Ã§alistirma durumunda kullaniciya veya gelistiriciye gÃ¶sterilebilecek hata aÃ§iklamasidir.
         /// </summary>
         public string? ErrorMessage { get; }
 
         /// <summary>
-        /// Agent çalistirmasi sirasinda olusan görünür execution adimlarini döner.
+        /// Agent Ã§alistirmasi sirasinda olusan gÃ¶rÃ¼nÃ¼r execution adimlarini dÃ¶ner.
         /// </summary>
         public IReadOnlyList<AgentExecutionStep> Steps { get; }
 
@@ -50,9 +52,11 @@ namespace Runiq.AI.Agents
         /// Gets the structured RAG policy outcome, or null when RAG was not configured for the agent.
         /// </summary>
         public AgentRagExecutionMetadata? Rag { get; }
+        /// <summary>Gets citations validated against selected context.</summary>
+        public IReadOnlyList<AgentCitation> Citations { get; }
 
         /// <summary>
-        /// Basarili agent çalistirma sonucu olusturur.
+        /// Basarili agent Ã§alistirma sonucu olusturur.
         /// </summary>
         public static AgentExecutionResult Success(string message)
         {
@@ -60,7 +64,7 @@ namespace Runiq.AI.Agents
         }
 
         /// <summary>
-        /// Execution adimlariyla birlikte basarili agent çalistirma sonucu olusturur.
+        /// Execution adimlariyla birlikte basarili agent Ã§alistirma sonucu olusturur.
         /// </summary>
         public static AgentExecutionResult Success(
             string message,
@@ -80,6 +84,13 @@ namespace Runiq.AI.Agents
             string message,
             IReadOnlyList<AgentExecutionStep> steps,
             AgentRagExecutionMetadata? rag)
+            => Success(message, steps, rag, []);
+
+        /// <summary>Creates a successful result with validated citations.</summary>
+        /// <param name="message">The final agent response.</param><param name="steps">The visible steps.</param>
+        /// <param name="rag">The RAG outcome.</param><param name="citations">Validated citations.</param>
+        /// <returns>The successful result.</returns>
+        public static AgentExecutionResult Success(string message, IReadOnlyList<AgentExecutionStep> steps, AgentRagExecutionMetadata? rag, IReadOnlyList<AgentCitation> citations)
         {
             return new AgentExecutionResult(
                 isSuccess: true,
@@ -87,11 +98,12 @@ namespace Runiq.AI.Agents
                 errorCode: null,
                 errorMessage: null,
                 steps: steps,
-                rag: rag);
+                rag: rag,
+                citations: citations);
         }
 
         /// <summary>
-        /// Basarisiz agent çalistirma sonucu olusturur.
+        /// Basarisiz agent Ã§alistirma sonucu olusturur.
         /// </summary>
         public static AgentExecutionResult Failure(string errorCode, string errorMessage)
         {
@@ -99,7 +111,7 @@ namespace Runiq.AI.Agents
         }
 
         /// <summary>
-        /// Execution adimlariyla birlikte basarisiz agent çalistirma sonucu olusturur.
+        /// Execution adimlariyla birlikte basarisiz agent Ã§alistirma sonucu olusturur.
         /// </summary>
         public static AgentExecutionResult Failure(
             string errorCode,
@@ -134,7 +146,7 @@ namespace Runiq.AI.Agents
     }
 
     /// <summary>
-    /// Agent çalistirmasi sirasinda olusan tek bir görünür execution adimini temsil eder.
+    /// Agent Ã§alistirmasi sirasinda olusan tek bir gÃ¶rÃ¼nÃ¼r execution adimini temsil eder.
     /// </summary>
     public sealed record AgentExecutionStep(
         int Index,
@@ -156,28 +168,28 @@ namespace Runiq.AI.Agents
     public enum AgentExecutionStepKind
     {
         /// <summary>
-        /// Model tarafindan istenen tool çagrisini belirtir.
+        /// Model tarafindan istenen tool Ã§agrisini belirtir.
         /// </summary>
         ToolCall = 0,
 
         /// <summary>
-        /// Model tarafindan üretilen final cevabi belirtir.
+        /// Model tarafindan Ã¼retilen final cevabi belirtir.
         /// </summary>
         FinalAnswer = 1,
 
         /// <summary>
-        /// Agent veya tool çalismasi sirasinda olusan hatayi belirtir.
+        /// Agent veya tool Ã§alismasi sirasinda olusan hatayi belirtir.
         /// </summary>
         Error = 2
     }
 
     /// <summary>
-    /// Agent execution adiminin çalisma durumunu belirtir.
+    /// Agent execution adiminin Ã§alisma durumunu belirtir.
     /// </summary>
     public enum AgentExecutionStepStatus
     {
         /// <summary>
-        /// Adimin çalismakta oldugunu belirtir.
+        /// Adimin Ã§alismakta oldugunu belirtir.
         /// </summary>
         Running = 0,
 

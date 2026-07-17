@@ -97,6 +97,8 @@ options.AddAgent(new Agent(
 The default is `Open` with `AnswerNormally`, preserving normal model behavior when retrieval succeeds without
 accepted context. `Grounded` makes documents the primary source; `Required` allows answers only from accepted
 context and must use `ReturnNotFound` or `FailExecution`. Retrieval failures remain failures in every mode.
+
+When selected context is available, the runtime assigns stable citation numbers in model-context order and validates assistant markers such as `[1]` against that execution's selected sources. Agent Chat renders validated mappings in a separate **Sources cited** section. This is distinct from grounding evidence, which continues to show all selected context and rejected candidates; citation validation confirms source identity, not sentence-level semantic entailment.
 `CandidateCount` controls how many raw matches are requested; it is not a relevance or acceptance guarantee.
 Every candidate is normalized when its metric supports a documented conversion, evaluated by the acceptance
 policy, and retained as either accepted or rejected runtime metadata before any document enters Agent Chat context.

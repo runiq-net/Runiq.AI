@@ -21,6 +21,20 @@ export type AgentChatMessage = {
   toolCalls?: AgentToolCall[];
   ragSearches?: AgentChatRagLifecycle[];
   isStreaming?: boolean;
+  citations?: AgentChatCitation[];
+};
+
+export type AgentChatCitation = {
+  number: number;
+  documentId: string;
+  chunkId: string;
+  retrievalCorrelationId: string;
+  contextOrder: number;
+  markerCount: number;
+  rawScore?: number;
+  normalizedRelevance?: number;
+  metric?: string;
+  higherIsBetter?: boolean;
 };
 
 export type AgentChatStreamEventType =
@@ -127,6 +141,7 @@ export type AgentChatStreamEventFields = {
   outputJson?: string | null;
   errorCode?: string | null;
   errorMessage?: string | null;
+  citations?: AgentChatCitation[] | null;
 };
 
 export type AgentChatStreamEvent = AgentChatStreamEventFields & (
@@ -180,4 +195,5 @@ export type AgentChatResult = {
   errorMessage?: string | null;
   steps?: AgentChatExecutionStep[];
   groundingEvidence?: AgentChatRagSearchCompletedEvent[];
+  citations?: AgentChatCitation[];
 };

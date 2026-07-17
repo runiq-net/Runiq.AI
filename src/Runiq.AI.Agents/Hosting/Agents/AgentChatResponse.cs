@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace Runiq.AI.Core.Agents;
 
 /// <summary>
-/// Studio üzerinden çalistirilan agent chat cevabini temsil eder.
+/// Studio Ã¼zerinden Ã§alistirilan agent chat cevabini temsil eder.
 /// </summary>
 public sealed record AgentChatResponse(
     bool IsSuccess,
@@ -21,10 +21,12 @@ public sealed record AgentChatResponse(
 
     /// <summary>Gets content-free completed retrieval evidence for this response.</summary>
     public IReadOnlyList<AgentChatRagSearchEvent>? GroundingEvidence { get; init; }
+    /// <summary>Gets validated citations for this response.</summary>
+    public IReadOnlyList<AgentCitation>? Citations { get; init; }
 }
 
 /// <summary>
-/// Studio response içinde gösterilecek agent execution adimini temsil eder.
+/// Studio response iÃ§inde gÃ¶sterilecek agent execution adimini temsil eder.
 /// </summary>
 public sealed record AgentChatExecutionStepResponse(
     int Index,
@@ -41,7 +43,7 @@ public sealed record AgentChatExecutionStepResponse(
     DateTimeOffset? CompletedAt)
 {
     /// <summary>
-    /// Framework execution step modelinden API response modeline dönüsüm yapar.
+    /// Framework execution step modelinden API response modeline dÃ¶nÃ¼sÃ¼m yapar.
     /// </summary>
     public static AgentChatExecutionStepResponse FromExecutionStep(AgentExecutionStep step)
     {

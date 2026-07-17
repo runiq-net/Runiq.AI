@@ -56,7 +56,7 @@ Starting ingestion again from this screen uses the same managed runtime. Unchang
 
 ## Ask questions in Agent Chat
 
-Open **Agents**, select **Corporate Document Assistant**, and open Agent Chat. A covered answer shows the RAG started/completed timeline, selected and rejected results, and a **Grounded with N sources** card. The card identifies `corporate-documents`, the selected document and chunk, context order, available score/relevance values, and that the source was included in model context.
+Open **Agents**, select **Corporate Document Assistant**, and open Agent Chat. A covered answer can cite the selected policy as `[1]` and shows a separate **Sources cited** section below the answer. These validated citations map only markers actually emitted by the assistant to selected model context. The **Grounded with N sources** card remains broader evidence: it identifies all selected and rejected retrieval results even when the assistant did not cite every selected source.
 
 The evidence represents the actual accepted model context. It is not a formal `[1]` citation system.
 
