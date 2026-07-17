@@ -23,6 +23,7 @@ public sealed class DefaultRetriever : IRagRetriever
     private readonly IEmbeddingClient embeddingClient;
     private readonly IRagVectorStore vectorStore;
     private readonly RagOptions options;
+    private readonly IRagRetrievalPipeline? retrievalPipeline;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DefaultRetriever"/> class.
@@ -30,14 +31,17 @@ public sealed class DefaultRetriever : IRagRetriever
     /// <param name="embeddingClient">The Core embedding client used to embed query text.</param>
     /// <param name="vectorStore">The vector store used to search for matching chunks.</param>
     /// <param name="options">The RAG options used to resolve default retrieval settings.</param>
+    /// <param name="retrievalPipeline">The optional shared retrieval pipeline used for registered-index execution.</param>
     public DefaultRetriever(
         IEmbeddingClient embeddingClient,
         IRagVectorStore vectorStore,
-        IOptions<RagOptions>? options = null)
+        IOptions<RagOptions>? options = null,
+        IRagRetrievalPipeline? retrievalPipeline = null)
     {
         this.embeddingClient = embeddingClient ?? throw new ArgumentNullException(nameof(embeddingClient));
         this.vectorStore = vectorStore ?? throw new ArgumentNullException(nameof(vectorStore));
         this.options = options?.Value ?? new RagOptions();
+        this.retrievalPipeline = retrievalPipeline;
     }
 
     /// <summary>
@@ -53,6 +57,21 @@ public sealed class DefaultRetriever : IRagRetriever
         ArgumentNullException.ThrowIfNull(query);
 
         var indexName = ResolveIndexName(query);
+        if (retrievalPipeline is not null)
+        {
+            var result = await retrievalPipeline.RetrieveAsync(new RetrievalRequest
+            {
+                IndexName = indexName,
+                QueryText = query.Text,
+                TopK = query.TopK,
+                MetadataFilter = new RetrievalMetadataFilter(query.Metadata.Values),
+            }, cancellationToken).ConfigureAwait(false);
+            if (!result.Succeeded)
+            {
+                throw new RagRetrievalExecutionException(result.Reason, result.ErrorCode);
+            }
+            return RagSearchResultMapper.Map(result.Items);
+        }
         var model = ResolveEmbeddingModel();
         Models.Embeddings.RagEmbedding embedding;
         try

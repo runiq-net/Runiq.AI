@@ -2,6 +2,7 @@ using Runiq.AI.Rag.Models.Documents;
 using Runiq.AI.Rag.Models.Metadata;
 using Runiq.AI.Rag.Models.Search;
 using Runiq.AI.Rag.Models.VectorStores;
+using Runiq.AI.Rag.Models.Retrieval;
 
 namespace Runiq.AI.Rag.Retrieval;
 
@@ -33,6 +34,33 @@ internal static class RagSearchResultMapper
             })
             .ToList();
     }
+
+    public static IReadOnlyList<RagSearchResult> Map(IEnumerable<RetrievalResultItem> records)
+    {
+        ArgumentNullException.ThrowIfNull(records);
+
+        return records.Select(record => Create(
+            record.RecordId, record.Content, record.Metadata, record.RawScore,
+            record.Relevance, record.Metric, record.HigherIsBetter)).ToList();
+    }
+
+    private static RagSearchResult Create(string id, string content, RagMetadata metadata, double rawScore,
+        double? relevance, string? metric, bool higherIsBetter) => new()
+    {
+        Chunk = new RagChunk
+        {
+            Id = id,
+            DocumentId = GetMetadataValue(metadata, "documentId"),
+            Content = content,
+            Index = ParseInt32(GetMetadataValue(metadata, "chunkIndex")),
+            Metadata = new RagChunkMetadata { AdditionalMetadata = CopyMetadata(metadata) },
+        },
+        RawScore = rawScore,
+        Relevance = relevance,
+        Metric = metric,
+        HigherIsBetter = higherIsBetter,
+        Metadata = CopyMetadata(metadata),
+    };
 
     private static RagMetadata CopyMetadata(RagMetadata metadata)
     {

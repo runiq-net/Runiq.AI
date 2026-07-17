@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Runiq.AI.Core.AI.Embeddings;
 using Runiq.AI.Core.Models;
 using Runiq.AI.Rag.Abstractions.Ingestion;
@@ -34,6 +35,12 @@ public sealed class RagIndexRuntimeConfigurationTests
         services.AddRagEmbeddingClient("openai/model-b", _ => clientB);
         services.AddRagVectorStore("store-a", _ => storeA);
         services.AddRagVectorStore("store-b", _ => storeB);
+        services.Configure<RagOptions>(options =>
+        {
+            options.EmbeddingModel = "openai/global-model";
+            options.Chunking.MaxChunkLength = 999;
+            options.Chunking.ChunkOverlap = 99;
+        });
         await using var provider = services.BuildServiceProvider();
 
         var manager = provider.GetRequiredService<IRagIngestionManager>();
@@ -48,6 +55,16 @@ public sealed class RagIndexRuntimeConfigurationTests
         Assert.True((await retrieval.RetrieveAsync(new RetrievalRequest { IndexName = "index-b", QueryText = "policy", TopK = 3 })).Succeeded);
         Assert.Equal(2, clientA.Models.Count);
         Assert.Equal(2, clientB.Models.Count);
+        var registrations = provider.GetRequiredService<IRagIndexRegistry>().Registrations.ToDictionary(item => item.Name);
+        Assert.Equal(8, registrations["index-a"].Chunking.MaxChunkLength);
+        Assert.Equal(32, registrations["index-b"].Chunking.MaxChunkLength);
+        var runtimeA = scope.ServiceProvider.GetRequiredService<IRagIndexRuntimeConfigurationResolver>().Resolve("index-a");
+        Assert.Same(storeA, runtimeA.VectorStore);
+        Assert.Equal("model-a", runtimeA.EmbeddingModel.ModelName);
+        Assert.Equal(8, runtimeA.Chunking.MaxChunkLength);
+        var global = provider.GetRequiredService<IOptions<RagOptions>>().Value;
+        Assert.Equal("openai/global-model", global.EmbeddingModel);
+        Assert.Equal(999, global.Chunking.MaxChunkLength);
     }
 
     // Verifies an explicit index embedding reference fails clearly when no matching runtime client is registered.
