@@ -1,7 +1,0 @@
-External Access Request Procedure
-
-External access is required when a partner, vendor, or employee needs to reach internal systems from outside the corporate network. The requester must identify the system, access duration, business owner, and reason for access.
-
-Temporary access should use the shortest practical duration and must be reviewed by the system owner. Sensitive systems may require security approval and additional monitoring.
-
-When access is no longer required, the requester or system owner must notify IT so the permission can be removed.

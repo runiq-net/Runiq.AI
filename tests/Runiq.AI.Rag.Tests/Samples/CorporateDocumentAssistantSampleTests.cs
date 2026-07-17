@@ -1,139 +1,255 @@
+using System.Net;
+using System.Text;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Hosting;
+using Runiq.AI.Agents;
+using Runiq.AI.Agents.Providers.OpenAI;
 using Runiq.AI.Core.AI.Embeddings;
 using Runiq.AI.Core.Models;
+using Runiq.AI.Rag.Abstractions.Retrieval;
 using Runiq.AI.Rag.Abstractions.VectorStores;
 using Runiq.AI.Rag.Configuration;
-using Runiq.AI.Rag.CorporateDocumentAssistant.Models;
+using Runiq.AI.Rag.CorporateDocumentAssistant;
 using Runiq.AI.Rag.CorporateDocumentAssistant.Services;
 using Runiq.AI.Rag.DependencyInjection;
-using Runiq.AI.Rag.Models.VectorStores;
+using Runiq.AI.Rag.Ingestion;
+using Runiq.AI.Rag.Models.Retrieval;
+using Runiq.AI.Rag.Runtime;
 
 namespace Runiq.AI.Rag.Tests.Samples;
 
-/// <summary>
-/// Covers the provider-independent ingestion behavior of the Corporate Document Assistant sample.
-/// </summary>
+/// <summary>Covers the production registration and managed startup behavior demonstrated by the Corporate Document Assistant.</summary>
 public sealed class CorporateDocumentAssistantSampleTests
 {
-    // Verifies that a submitted plain-text document is chunked, embedded, and upserted into the configured sample index.
+    // Verifies the sample registers one typed OpenAI-backed OnStartup index and points the agent at the same effective name.
     [Fact]
-    public async Task IngestAsync_ShouldChunkEmbedAndUpsertDocument()
+    public void Configure_ShouldRegisterCorporateIndexAndGroundedAgent()
     {
-        using var serviceProvider = CreateServiceProvider("corporate-documents-test");
-        using var scope = serviceProvider.CreateScope();
-        var ingestionService = scope.ServiceProvider.GetRequiredService<CorporateDocumentIngestionService>();
+        using var documents = TestDocuments.Create();
+        using var provider = CreateProvider(documents.Path, startIngestion: false);
+        var registration = Assert.Single(provider.GetRequiredService<IRagIndexRegistry>().Registrations);
+        var agent = Assert.Single(provider.GetServices<Agent>());
 
-        var response = await ingestionService.IngestAsync(new CorporateDocumentIngestionRequest
-        {
-            Id = "vpn-guide",
-            Title = "VPN Guide",
-            Content = string.Join(
-                Environment.NewLine,
-                Enumerable.Repeat("VPN users should restart the client and verify multi-factor authentication before contacting IT support.", 12)),
-        });
-
-        Assert.True(response.UpsertSucceeded);
-        Assert.Equal("corporate-documents-test", response.IndexName);
-        Assert.True(response.ChunkCount > 1);
-        Assert.Equal(response.ChunkCount, response.EmbeddingCount);
-        Assert.Equal(response.ChunkCount, response.UpsertedCount);
-        Assert.Equal(response.ChunkCount, response.VectorIds.Count);
+        Assert.Equal(CorporateDocumentAssistantSetup.IndexName, registration.Name);
+        Assert.Equal(RagIngestionStrategyKind.OnStartup, registration.IngestionStrategy.Kind);
+        Assert.Equal(OpenAiEmbeddingModels.TextEmbedding3Small.Reference, registration.EmbeddingReference);
+        Assert.Equal("InMemory", registration.VectorStoreType);
+        Assert.Equal(CorporateDocumentAssistantSetup.IndexName, agent.Rag?.IndexName);
+        Assert.Equal(CorporateDocumentAssistantSetup.ChatModel, agent.Model);
+        var source = Assert.IsType<DirectoryRagDocumentSource>(Assert.Single(registration.Sources));
+        Assert.Equal(Path.GetFullPath(documents.Path), source.RootPath);
     }
 
-    // Verifies that vector records written by the sample retain document and chunk metadata needed by later source display work.
+    // Verifies managed startup ingestion discovers bundled documents and leaves a completed, ready runtime snapshot without a seed request.
     [Fact]
-    public async Task IngestAsync_ShouldRetainSourceMetadataInVectorRecords()
+    public async Task OnStartup_ShouldIngestDocumentsAndBecomeReady()
     {
-        using var serviceProvider = CreateServiceProvider("corporate-source-metadata-test");
-        using var scope = serviceProvider.CreateScope();
-        var ingestionService = scope.ServiceProvider.GetRequiredService<CorporateDocumentIngestionService>();
-        var vectorStore = scope.ServiceProvider.GetRequiredService<IRagVectorStore>();
-        var options = scope.ServiceProvider.GetRequiredService<IOptions<CorporateDocumentAssistantOptions>>().Value;
+        using var documents = TestDocuments.Create();
+        await using var provider = CreateProvider(documents.Path, startIngestion: false);
 
-        await ingestionService.IngestAsync(new CorporateDocumentIngestionRequest
-        {
-            Id = "password-policy",
-            Title = "Password Policy",
-            Content = "Corporate passwords must be unique, protected with multi-factor authentication, and changed after suspected exposure.",
-        });
+        await StartHostedServicesAsync(provider);
 
-        var queryResult = await vectorStore.QueryAsync(new QueryVectorRequest
-        {
-            IndexName = options.IndexName,
-            Values = DeterministicCorporateEmbeddingProvider.CreateEmbeddingValues("password multi-factor authentication"),
-            TopK = 1,
-            IncludeMetadata = true,
-        });
-
-        var record = Assert.Single(queryResult.Records);
-        Assert.True(queryResult.Succeeded);
-        Assert.Equal("password-policy", record.Metadata.Values["sourceId"]);
-        Assert.Equal("Password Policy", record.Metadata.Values["sourceName"]);
-        Assert.Equal("password-policy", record.Metadata.Values["documentId"]);
-        Assert.True(record.Metadata.Values.ContainsKey("chunkId"));
-        Assert.True(record.Metadata.Values.ContainsKey("chunkIndex"));
+        var status = provider.GetRequiredService<IRagIngestionManager>().GetStatus(CorporateDocumentAssistantSetup.IndexName);
+        Assert.Equal(RagIndexReadiness.Ready, status.Readiness);
+        Assert.Equal(RagIngestionOperationState.Completed, status.LastOperation?.State);
+        Assert.Equal(2, status.LastOperation?.Progress.DiscoveredDocuments);
+        Assert.True(status.LastOperation?.Progress.ProducedChunks > 0);
+        Assert.Equal(status.LastOperation?.Progress.ProducedChunks, status.LastOperation?.Progress.ProducedEmbeddings);
     }
 
-    // Verifies that the sample embedding provider is deterministic and advertises the dimensions used for index creation.
+    // Verifies ingestion and query-time retrieval share the same in-memory store and select the known remote-work document.
     [Fact]
-    public async Task DeterministicCorporateEmbeddingProvider_ShouldReturnStableVectorsWithAdvertisedDimensions()
+    public async Task Retrieval_ShouldUseStartupIndexAndReturnKnownDocument()
     {
-        var provider = new DeterministicCorporateEmbeddingProvider();
+        using var documents = TestDocuments.Create();
+        await using var provider = CreateProvider(documents.Path, startIngestion: false);
+        await StartHostedServicesAsync(provider);
+        using var scope = provider.CreateScope();
 
-        var first = (await provider.EmbedAsync(new EmbeddingRequest(ModelReference.Parse("openai/sample"), ["same corporate document chunk"]))).Results.Single();
-        var second = (await provider.EmbedAsync(new EmbeddingRequest(ModelReference.Parse("openai/sample"), ["same corporate document chunk"]))).Results.Single();
-
-        Assert.Equal(DeterministicCorporateEmbeddingProvider.Dimensions, first.Dimensions);
-        Assert.Equal(first.Vector, second.Vector);
-    }
-
-    // Verifies that the sample query-time flow retrieves stored chunks and exposes them as answer sources.
-    [Fact]
-    public async Task AskAsync_ShouldReturnAnswerWithRetrievedSources()
-    {
-        using var serviceProvider = CreateServiceProvider("corporate-query-test");
-        using var scope = serviceProvider.CreateScope();
-        var ingestionService = scope.ServiceProvider.GetRequiredService<CorporateDocumentIngestionService>();
-        var queryService = scope.ServiceProvider.GetRequiredService<CorporateDocumentQueryService>();
-
-        await ingestionService.IngestAsync(new CorporateDocumentIngestionRequest
+        var result = await scope.ServiceProvider.GetRequiredService<IRagRetrievalPipeline>().RetrieveAsync(new RetrievalRequest
         {
-            Id = "vpn-baglanti-rehberi",
-            Title = "vpn-baglanti-rehberi.md",
-            Content = "VPN baglantisi calismiyorsa kullanici internet baglantisini kontrol eder, VPN istemcisini yeniden baslatir ve MFA bildirimini dogrular.",
+            IndexName = CorporateDocumentAssistantSetup.IndexName,
+            QueryText = "How many remote work days are allowed?",
+            TopK = 2
         });
 
-        var response = await queryService.AskAsync(new CorporateDocumentQueryRequest
-        {
-            Question = "VPN baglantisi calismiyorsa ne yapmaliyim?",
-            TopK = 2,
-        });
-
-        Assert.Equal("corporate-query-test", response.IndexName);
-        Assert.Contains("Demo answer", response.Answer, StringComparison.Ordinal);
-        var source = Assert.Single(response.Sources);
-        Assert.Equal("vpn-baglanti-rehberi", source.DocumentId);
-        Assert.Equal("vpn-baglanti-rehberi.md", source.SourceName);
-        Assert.Contains("VPN", source.Snippet, StringComparison.OrdinalIgnoreCase);
+        Assert.True(result.Succeeded);
+        Assert.NotEmpty(result.Items);
+        Assert.Contains(result.Items, item => item.Metadata.Values.TryGetValue("documentId", out var documentId) && documentId.Contains("remote-work-policy", StringComparison.Ordinal));
+        Assert.Same(provider.GetRequiredService<IRagVectorStore>(), scope.ServiceProvider.GetRequiredService<IRagVectorStore>());
     }
 
-    private static ServiceProvider CreateServiceProvider(string indexName)
+    // Verifies an explicit second managed ingestion observes unchanged document hashes instead of creating duplicate content.
+    [Fact]
+    public async Task ManualIngestionAfterStartup_ShouldReportSameHashSkips()
+    {
+        using var documents = TestDocuments.Create();
+        await using var provider = CreateProvider(documents.Path, startIngestion: false);
+        await StartHostedServicesAsync(provider);
+
+        var operation = await provider.GetRequiredService<IRagIngestionManager>().StartAsync(CorporateDocumentAssistantSetup.IndexName);
+
+        Assert.Equal(RagIngestionOperationState.Completed, operation.State);
+        Assert.Equal(2, operation.Progress.SkippedDocuments);
+        Assert.Equal(0, operation.Progress.AddedDocuments);
+    }
+
+    // Verifies a missing bundled document directory fails managed startup instead of exposing an unusable application.
+    [Fact]
+    public async Task OnStartup_ShouldFail_WhenDocumentDirectoryIsMissing()
+    {
+        var missingPath = Path.Combine(Path.GetTempPath(), $"runiq-missing-{Guid.NewGuid():N}");
+        await using var provider = CreateProvider(missingPath, startIngestion: false);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => StartHostedServicesAsync(provider));
+
+        Assert.Contains(CorporateDocumentAssistantSetup.IndexName, exception.Message, StringComparison.Ordinal);
+        Assert.Equal(RagIndexReadiness.Failed, provider.GetRequiredService<IRagIngestionManager>().GetStatus(CorporateDocumentAssistantSetup.IndexName).Readiness);
+    }
+
+    // Verifies an embedding provider failure fails managed startup and records a safe failed readiness state.
+    [Fact]
+    public async Task OnStartup_ShouldFail_WhenEmbeddingProviderFails()
+    {
+        using var documents = TestDocuments.Create();
+        await using var provider = CreateProvider<ThrowingEmbeddingClient>(documents.Path);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => StartHostedServicesAsync(provider));
+
+        var status = provider.GetRequiredService<IRagIngestionManager>().GetStatus(CorporateDocumentAssistantSetup.IndexName);
+        Assert.Equal(RagIndexReadiness.Failed, status.Readiness);
+        Assert.Equal("DocumentFailed", status.LastOperation?.Progress.LastFailure?.Code);
+        Assert.DoesNotContain("provider-secret", status.LastOperation?.Progress.LastFailure?.Message, StringComparison.Ordinal);
+    }
+
+    // Verifies host-start cancellation propagates through managed ingestion instead of being converted into readiness.
+    [Fact]
+    public async Task OnStartup_ShouldPropagateCancellation()
+    {
+        using var documents = TestDocuments.Create();
+        await using var provider = CreateProvider<BlockingEmbeddingClient>(documents.Path);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => StartHostedServicesAsync(provider, cancellation.Token));
+
+        Assert.Equal(RagIngestionOperationState.Cancelled, provider.GetRequiredService<IRagIngestionManager>().GetStatus(CorporateDocumentAssistantSetup.IndexName).LastOperation?.State);
+    }
+
+    // Verifies missing credentials fail configuration before any provider, ingestion, or server work can begin.
+    [Fact]
+    public void Configure_ShouldFailFast_WhenOpenAiKeyIsMissing()
     {
         var services = new ServiceCollection();
+        var configuration = new ConfigurationBuilder().Build();
 
-        services.AddRuniqRag(builder => builder.UseInMemoryVectorStore());
-        services.AddRagEmbeddingClient<DeterministicCorporateEmbeddingProvider>();
-        services.Configure<RagOptions>(options =>
+        var exception = Assert.Throws<InvalidOperationException>(() => CorporateDocumentAssistantSetup.Configure(services, configuration, "documents"));
+
+        Assert.Contains("OpenAI:ApiKey", exception.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("sk-", exception.Message, StringComparison.Ordinal);
+    }
+
+    // Verifies the real OpenAI embedding adapter maps ordered vectors and sends credentials only in the authorization header.
+    [Fact]
+    public async Task OpenAiEmbeddingClient_ShouldMapSafeOrderedResponse()
+    {
+        const string secret = "test-secret-value";
+        var handler = new RecordingHandler("""{"data":[{"index":0,"embedding":[0.1,0.2,0.3]}],"usage":{"prompt_tokens":2,"total_tokens":2}}""");
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["OpenAI:ApiKey"] = secret }).Build();
+        var client = new HttpClient(handler) { BaseAddress = new Uri("https://api.openai.com/v1/") };
+        var provider = new OpenAiEmbeddingClient(client, configuration);
+
+        var response = await provider.EmbedAsync(new EmbeddingRequest(ModelReference.Parse("openai/text-embedding-3-small"), ["hello"]));
+
+        Assert.Equal(3, Assert.Single(response.Results).Dimensions);
+        Assert.Equal("Bearer", handler.AuthorizationScheme);
+        Assert.Equal(secret, handler.AuthorizationParameter);
+        Assert.Contains("text-embedding-3-small", handler.RequestBody, StringComparison.Ordinal);
+        Assert.DoesNotContain(secret, handler.RequestBody, StringComparison.Ordinal);
+    }
+
+    private static ServiceProvider CreateProvider(string documentsPath, bool startIngestion)
+    {
+        return CreateProvider<KeywordEmbeddingClient>(documentsPath, startIngestion);
+    }
+
+    private static ServiceProvider CreateProvider<TEmbeddingClient>(string documentsPath, bool startIngestion = false)
+        where TEmbeddingClient : class, IEmbeddingClient
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["OpenAI:ApiKey"] = "test-key" }).Build();
+        CorporateDocumentAssistantSetup.Configure(services, configuration, documentsPath);
+        services.AddRagEmbeddingClient<TEmbeddingClient>();
+        var provider = services.BuildServiceProvider();
+        if (startIngestion) StartHostedServicesAsync(provider).GetAwaiter().GetResult();
+        return provider;
+    }
+
+    private static async Task StartHostedServicesAsync(IServiceProvider provider, CancellationToken cancellationToken = default)
+    {
+        foreach (var service in provider.GetServices<IHostedService>())
         {
-            options.Chunking.MaxChunkLength = 180;
-            options.Chunking.ChunkOverlap = 20;
-        });
-        services.Configure<CorporateDocumentAssistantOptions>(options => options.IndexName = indexName);
-        services.AddScoped<CorporateDocumentIngestionService>();
-        services.AddScoped<CorporateDocumentQueryService>();
+            await service.StartAsync(cancellationToken);
+        }
+    }
 
-        return services.BuildServiceProvider();
+    private sealed class KeywordEmbeddingClient : IEmbeddingClient
+    {
+        public Task<EmbeddingResponse> EmbedAsync(EmbeddingRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new EmbeddingResponse(request.Inputs.Select((text, index) => new EmbeddingResult(index, Vector(text), 4)).ToArray()));
+
+        private static IReadOnlyList<float> Vector(string text)
+        {
+            var normalized = text.ToLowerInvariant();
+            return [normalized.Contains("remote") || normalized.Contains("work days") ? 1 : 0, normalized.Contains("expense") || normalized.Contains("manager approval") ? 1 : 0, normalized.Contains("security") || normalized.Contains("incident") ? 1 : 0, 0.01f];
+        }
+    }
+
+    private sealed class ThrowingEmbeddingClient : IEmbeddingClient
+    {
+        public Task<EmbeddingResponse> EmbedAsync(EmbeddingRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromException<EmbeddingResponse>(new InvalidOperationException("provider-secret diagnostic"));
+    }
+
+    private sealed class BlockingEmbeddingClient : IEmbeddingClient
+    {
+        public async Task<EmbeddingResponse> EmbedAsync(EmbeddingRequest request, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            throw new InvalidOperationException("Unreachable.");
+        }
+    }
+
+    private sealed class RecordingHandler(string responseBody) : HttpMessageHandler
+    {
+        public string? AuthorizationScheme { get; private set; }
+        public string? AuthorizationParameter { get; private set; }
+        public string RequestBody { get; private set; } = string.Empty;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            AuthorizationScheme = request.Headers.Authorization?.Scheme;
+            AuthorizationParameter = request.Headers.Authorization?.Parameter;
+            RequestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(responseBody, Encoding.UTF8, "application/json") };
+        }
+    }
+
+    private sealed class TestDocuments : IDisposable
+    {
+        private TestDocuments(string path) => Path = path;
+        public string Path { get; }
+
+        public static TestDocuments Create()
+        {
+            var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"runiq-corporate-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(path);
+            File.WriteAllText(System.IO.Path.Combine(path, "remote-work-policy.md"), "# Remote Work Policy\nEmployees may work remotely up to three days per week.");
+            File.WriteAllText(System.IO.Path.Combine(path, "expense-policy.md"), "# Expense Policy\nExpenses above USD 250 require manager approval.");
+            return new TestDocuments(path);
+        }
+
+        public void Dispose() => Directory.Delete(Path, recursive: true);
     }
 }
-

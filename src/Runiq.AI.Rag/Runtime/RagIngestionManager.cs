@@ -73,7 +73,12 @@ internal sealed class RagIngestionManager(IRagIndexRegistry registry, IServiceSc
                 Update(entry, operation => operation with { Progress = Add(operation.Progress, report, source.Identity) });
                 log.LogInformation("RAG ingestion {OperationId} completed source {SourceIdentity} with {DiscoveredDocuments} discovered documents.", entry.Operation!.OperationId, source.Identity, report.DiscoveredDocuments);
             }
-            var terminal = entry.Operation!.Progress.FailedDocuments > 0 ? RagIngestionOperationState.PartiallyCompleted : RagIngestionOperationState.Completed;
+            var progress = entry.Operation!.Progress;
+            var terminal = progress.FailedDocuments == 0
+                ? RagIngestionOperationState.Completed
+                : progress.ProcessedDocuments == progress.FailedDocuments
+                    ? RagIngestionOperationState.Failed
+                    : RagIngestionOperationState.PartiallyCompleted;
             return Complete(entry, terminal);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)

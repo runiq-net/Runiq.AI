@@ -14,8 +14,8 @@ internal sealed class RagIngestionHostedService(IRagIndexRegistry registry, RagI
             var operation = await manager.StartAsync(index.Name, RagIngestionOperationReason.Startup, cancellationToken).ConfigureAwait(false);
             if (operation.State == RagIngestionOperationState.Cancelled)
                 throw new OperationCanceledException(cancellationToken);
-            if (operation.State == RagIngestionOperationState.Failed)
-                throw new InvalidOperationException($"Startup ingestion failed for RAG index '{index.Name}'.");
+            if (operation.State is RagIngestionOperationState.Failed or RagIngestionOperationState.PartiallyCompleted)
+                throw new InvalidOperationException($"Startup ingestion did not complete successfully for RAG index '{index.Name}'.");
         }
         await base.StartAsync(cancellationToken).ConfigureAwait(false);
     }
