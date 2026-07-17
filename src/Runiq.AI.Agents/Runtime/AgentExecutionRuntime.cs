@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Core.AI.Chat;
@@ -361,6 +362,7 @@ public sealed class AgentExecutionRuntime
             {
                 runtimeContext = await SearchRagContextAsync(
                     activeRag, indexName, query.Message, cancellationToken);
+                runtimeContext = runtimeContext with { RetrievalCorrelationId = correlationId };
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -458,6 +460,7 @@ public sealed class AgentExecutionRuntime
 
         messages.Add(new ChatMessage(ChatRole.User, query.Message));
         string? previousResponseId = null;
+        var assistantResponse = new StringBuilder();
 
         while (true)
         {
@@ -486,6 +489,7 @@ public sealed class AgentExecutionRuntime
                 previousResponseId = update.ProviderResponseId ?? previousResponseId;
                 if (update.Kind == ChatStreamingUpdateKind.ContentDelta && !string.IsNullOrEmpty(update.ContentDelta))
                 {
+                    assistantResponse.Append(update.ContentDelta);
                     yield return AgentExecutionEvent.AssistantDelta(update.ContentDelta);
                 }
                 else if (update.Kind == ChatStreamingUpdateKind.ToolCallDelta && update.ToolCall is not null)
@@ -501,7 +505,8 @@ public sealed class AgentExecutionRuntime
                         agent.Rag,
                         runtimeContext,
                         modelInvocationSkipped: false,
-                        noContextBehaviorApplied: agent.Rag?.Enabled == true && !runtimeContext.HasContext));
+                        noContextBehaviorApplied: agent.Rag?.Enabled == true && !runtimeContext.HasContext),
+                    AgentCitationProcessor.Validate(assistantResponse.ToString(), runtimeContext));
                 yield break;
             }
 

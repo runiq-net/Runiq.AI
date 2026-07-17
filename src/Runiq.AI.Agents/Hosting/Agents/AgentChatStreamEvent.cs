@@ -30,4 +30,8 @@ public sealed record AgentChatStreamEvent(
     [JsonPropertyName("rag")]
     [JsonIgnore]
     public AgentRagExecutionMetadata? Rag { get; init; }
+    /// <summary>Gets validated citations on the terminal event.</summary>
+    [JsonPropertyName("citations")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<AgentCitation>? Citations { get; internal init; }
 }

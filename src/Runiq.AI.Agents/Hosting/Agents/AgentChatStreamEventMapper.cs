@@ -46,6 +46,7 @@ internal static class AgentChatStreamEventMapper
                 Content: null)
             {
                 Rag = executionEvent.Rag,
+                Citations = executionEvent.Citations.Count == 0 ? null : executionEvent.Citations,
             },
 
             AgentExecutionEventKind.Failed => new AgentChatStreamEvent(

@@ -6,6 +6,7 @@ import './ChatThread.css';
 import { ToolCallCard } from './tool/ToolCallCard';
 import { RagSearchCard } from './rag/RagSearchCard';
 import { GroundingEvidenceCard } from './rag/GroundingEvidenceCard';
+import { AnswerWithCitations, SourcesCited } from './rag/AnswerCitations';
 
 import type { AgentChatMessage } from '../../types/agentChat';
 
@@ -170,9 +171,7 @@ function ChatMessageItem({ message }: { message: AgentChatMessage }) {
 
       {hasContent && (
         <div className="group">
-          <div className="whitespace-pre-wrap break-words">
-            {message.content}
-          </div>
+          <AnswerWithCitations content={message.content} citations={message.citations ?? []} />
 
           {showCopy && (
             <div className="mt-3 flex items-center gap-2 opacity-0 transition group-hover:opacity-100">
@@ -197,6 +196,7 @@ function ChatMessageItem({ message }: { message: AgentChatMessage }) {
               )}
             </div>
           )}
+          <SourcesCited citations={message.citations ?? []} />
           <GroundingEvidenceCard lifecycles={message.ragSearches ?? []} />
         </div>
       )}

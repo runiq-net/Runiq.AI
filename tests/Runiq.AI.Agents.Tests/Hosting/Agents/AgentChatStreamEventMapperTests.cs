@@ -1,6 +1,7 @@
 using Runiq.AI.Agents;
 using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Core.Agents;
+using System.Text.Json;
 
 namespace Runiq.AI.Core.Tests.Agents;
 
@@ -9,7 +10,7 @@ public sealed class AgentChatStreamEventMapperTests
     [Fact]
     public void FromExecutionEvent_ShouldMapAssistantDelta()
     {
-        // Assistant delta olayinin Dashboard stream DTO formatina dogru çevrildigini dogrular.
+        // Assistant delta olayinin Dashboard stream DTO formatina dogru Ã§evrildigini dogrular.
         var executionEvent = AgentExecutionEvent.AssistantDelta("Hello");
 
         var streamEvent = AgentChatStreamEventMapper.FromExecutionEvent(executionEvent);
@@ -91,7 +92,7 @@ public sealed class AgentChatStreamEventMapperTests
     [Fact]
     public void FromExecutionEvent_ShouldMapCompleted()
     {
-        // Completed olayinin stream kapanis sinyali olarak dogru tipe çevrildigini dogrular.
+        // Completed olayinin stream kapanis sinyali olarak dogru tipe Ã§evrildigini dogrular.
         var executionEvent = AgentExecutionEvent.Completed();
 
         var streamEvent = AgentChatStreamEventMapper.FromExecutionEvent(executionEvent);
@@ -104,6 +105,34 @@ public sealed class AgentChatStreamEventMapperTests
         Assert.Null(streamEvent.OutputJson);
         Assert.Null(streamEvent.ErrorCode);
         Assert.Null(streamEvent.ErrorMessage);
+    }
+
+    // Ensures terminal SSE payloads expose validated citation metadata with the public JSON field names.
+    [Fact]
+    public void FromExecutionEvent_ShouldSerializeCompletedCitations()
+    {
+        var citation = new AgentCitation(
+            number: 1,
+            documentId: "policy.md",
+            chunkId: "chunk-1",
+            retrievalCorrelationId: "retrieval-1",
+            contextOrder: 0,
+            markerCount: 2,
+            rawScore: 0.91,
+            normalizedRelevance: 0.82,
+            metric: "cosine-similarity",
+            higherIsBetter: true);
+        var executionEvent = AgentExecutionEvent.Completed(rag: null, citations: [citation]);
+
+        var streamEvent = AgentChatStreamEventMapper.FromExecutionEvent(executionEvent);
+        var json = JsonSerializer.Serialize(streamEvent);
+
+        Assert.Same(citation, Assert.Single(streamEvent.Citations!));
+        Assert.Contains("\"citations\":[{", json, StringComparison.Ordinal);
+        Assert.Contains("\"number\":1", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"documentId\":\"policy.md\"", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"retrievalCorrelationId\":\"retrieval-1\"", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"markerCount\":2", json, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

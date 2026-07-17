@@ -37,6 +37,11 @@ public sealed record AgentRuntimeContext(
     internal Configuration.RagNoContextReason? NoContextReason { get; }
 
     /// <summary>
+    /// Identifies the single retrieval lifecycle supported by one agent execution.
+    /// </summary>
+    internal string? RetrievalCorrelationId { get; init; }
+
+    /// <summary>
     /// Calistirma icin herhangi bir context bilgisinin cozulup cozulmedigini belirtir.
     /// </summary>
     public bool HasContext => RetrievedRagContext.Count > 0;

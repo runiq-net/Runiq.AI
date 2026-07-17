@@ -103,6 +103,7 @@ public sealed class AgentChatApiHandler
         {
             Rag = result.Rag,
             GroundingEvidence = groundingEvidence,
+            Citations = result.Citations.Count == 0 ? null : result.Citations,
         };
     }
 

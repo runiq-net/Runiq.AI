@@ -1,7 +1,7 @@
 namespace Runiq.AI.Agents;
 
 /// <summary>
-/// Agent çalismasi sirasinda üretilen stream olayini temsil eder.
+/// Agent Ã§alismasi sirasinda Ã¼retilen stream olayini temsil eder.
 /// </summary>
 public sealed record AgentExecutionEvent
 {
@@ -68,6 +68,9 @@ public sealed record AgentExecutionEvent
     /// </summary>
     public RagSearchEvent? RagSearch { get; }
 
+    /// <summary>Gets citations validated against this execution's selected model context.</summary>
+    public IReadOnlyList<AgentCitation> Citations { get; private init; } = [];
+
     /// <summary>
     /// Creates an execution-stream event that carries a RAG search lifecycle payload.
     /// </summary>
@@ -84,9 +87,9 @@ public sealed record AgentExecutionEvent
     }
 
     /// <summary>
-    /// Assistant yanitindan gelen parça metin olayini olusturur.
+    /// Assistant yanitindan gelen parÃ§a metin olayini olusturur.
     /// </summary>
-    /// <param name="content">Assistant yanitina eklenecek parça metindir.</param>
+    /// <param name="content">Assistant yanitina eklenecek parÃ§a metindir.</param>
     /// <returns>Assistant delta olayini temsil eden stream olayidir.</returns>
     public static AgentExecutionEvent AssistantDelta(string content)
     {
@@ -96,12 +99,12 @@ public sealed record AgentExecutionEvent
     }
 
     /// <summary>
-    /// Bir tool çagrisinin basladigini bildiren stream olayini olusturur.
+    /// Bir tool Ã§agrisinin basladigini bildiren stream olayini olusturur.
     /// </summary>
-    /// <param name="toolCallId">Model tarafindan üretilen tool çagrisi kimligidir.</param>
-    /// <param name="toolName">Çalistirilacak tool adidir.</param>
-    /// <param name="argumentsJson">Tool çagrisi için üretilen JSON argümanlaridir.</param>
-    /// <returns>Tool çagrisi baslangiç olayini temsil eden stream olayidir.</returns>
+    /// <param name="toolCallId">Model tarafindan Ã¼retilen tool Ã§agrisi kimligidir.</param>
+    /// <param name="toolName">Ã‡alistirilacak tool adidir.</param>
+    /// <param name="argumentsJson">Tool Ã§agrisi iÃ§in Ã¼retilen JSON argÃ¼manlaridir.</param>
+    /// <returns>Tool Ã§agrisi baslangiÃ§ olayini temsil eden stream olayidir.</returns>
     public static AgentExecutionEvent ToolCallStarted(
         string toolCallId,
         string toolName,
@@ -116,12 +119,12 @@ public sealed record AgentExecutionEvent
     }
 
     /// <summary>
-    /// Bir tool çagrisinin basariyla tamamlandigini bildiren stream olayini olusturur.
+    /// Bir tool Ã§agrisinin basariyla tamamlandigini bildiren stream olayini olusturur.
     /// </summary>
-    /// <param name="toolCallId">Tamamlanan tool çagrisi kimligidir.</param>
+    /// <param name="toolCallId">Tamamlanan tool Ã§agrisi kimligidir.</param>
     /// <param name="toolName">Tamamlanan tool adidir.</param>
-    /// <param name="outputJson">Tool çalismasi sonucunda üretilen JSON çiktidir.</param>
-    /// <returns>Tool çagrisi tamamlanma olayini temsil eden stream olayidir.</returns>
+    /// <param name="outputJson">Tool Ã§alismasi sonucunda Ã¼retilen JSON Ã§iktidir.</param>
+    /// <returns>Tool Ã§agrisi tamamlanma olayini temsil eden stream olayidir.</returns>
     public static AgentExecutionEvent ToolCallCompleted(
         string toolCallId,
         string toolName,
@@ -136,13 +139,13 @@ public sealed record AgentExecutionEvent
     }
 
     /// <summary>
-    /// Bir tool çagrisinin hata ile sonuçlandigini bildiren stream olayini olusturur.
+    /// Bir tool Ã§agrisinin hata ile sonuÃ§landigini bildiren stream olayini olusturur.
     /// </summary>
-    /// <param name="toolCallId">Hata alan tool çagrisi kimligidir.</param>
+    /// <param name="toolCallId">Hata alan tool Ã§agrisi kimligidir.</param>
     /// <param name="toolName">Hata alan tool adidir.</param>
-    /// <param name="errorMessage">Tool çalismasi sirasinda olusan hata mesajidir.</param>
+    /// <param name="errorMessage">Tool Ã§alismasi sirasinda olusan hata mesajidir.</param>
     /// <param name="errorCode">Varsa hata kodudur.</param>
-    /// <returns>Tool çagrisi hata olayini temsil eden stream olayidir.</returns>
+    /// <returns>Tool Ã§agrisi hata olayini temsil eden stream olayidir.</returns>
     public static AgentExecutionEvent ToolCallFailed(
         string toolCallId,
         string toolName,
@@ -159,7 +162,7 @@ public sealed record AgentExecutionEvent
     }
 
     /// <summary>
-    /// Agent çalismasinin basariyla tamamlandigini bildiren stream olayini olusturur.
+    /// Agent Ã§alismasinin basariyla tamamlandigini bildiren stream olayini olusturur.
     /// </summary>
     /// <returns>Tamamlanma olayini temsil eden stream olayidir.</returns>
     public static AgentExecutionEvent Completed()
@@ -182,10 +185,23 @@ public sealed record AgentExecutionEvent
             Rag: rag);
     }
 
+    /// <summary>Creates a successful completion event with RAG outcome and validated citations.</summary>
+    /// <param name="rag">The RAG policy outcome observed by the framework.</param>
+    /// <param name="citations">Citations validated against selected context.</param>
+    /// <returns>The completed stream event.</returns>
+    public static AgentExecutionEvent Completed(AgentRagExecutionMetadata? rag, IReadOnlyList<AgentCitation> citations)
+    {
+        ArgumentNullException.ThrowIfNull(citations);
+        return new AgentExecutionEvent(Kind: AgentExecutionEventKind.Completed, Content: null, Rag: rag)
+        {
+            Citations = citations.ToArray(),
+        };
+    }
+
     /// <summary>
-    /// Agent çalismasinin hata ile sonlandigini bildiren stream olayini olusturur.
+    /// Agent Ã§alismasinin hata ile sonlandigini bildiren stream olayini olusturur.
     /// </summary>
-    /// <param name="errorMessage">Agent çalismasi sirasinda olusan hata mesajidir.</param>
+    /// <param name="errorMessage">Agent Ã§alismasi sirasinda olusan hata mesajidir.</param>
     /// <param name="errorCode">Varsa hata kodudur.</param>
     /// <returns>Hata olayini temsil eden stream olayidir.</returns>
     public static AgentExecutionEvent Failed(
@@ -226,32 +242,32 @@ public sealed record AgentExecutionEvent
 public enum AgentExecutionEventKind
 {
     /// <summary>
-    /// Assistant yanitindan gelen parça metin olayini belirtir.
+    /// Assistant yanitindan gelen parÃ§a metin olayini belirtir.
     /// </summary>
     AssistantDelta = 0,
 
     /// <summary>
-    /// Tool çagrisinin basladigini belirtir.
+    /// Tool Ã§agrisinin basladigini belirtir.
     /// </summary>
     ToolCallStarted = 1,
 
     /// <summary>
-    /// Tool çagrisinin basariyla tamamlandigini belirtir.
+    /// Tool Ã§agrisinin basariyla tamamlandigini belirtir.
     /// </summary>
     ToolCallCompleted = 2,
 
     /// <summary>
-    /// Tool çagrisinin hata ile sonuçlandigini belirtir.
+    /// Tool Ã§agrisinin hata ile sonuÃ§landigini belirtir.
     /// </summary>
     ToolCallFailed = 3,
 
     /// <summary>
-    /// Agent çalismasinin basariyla tamamlandigini belirtir.
+    /// Agent Ã§alismasinin basariyla tamamlandigini belirtir.
     /// </summary>
     Completed = 4,
 
     /// <summary>
-    /// Agent çalismasinin hata ile sonlandigini belirtir.
+    /// Agent Ã§alismasinin hata ile sonlandigini belirtir.
     /// </summary>
     Failed = 5,
 
