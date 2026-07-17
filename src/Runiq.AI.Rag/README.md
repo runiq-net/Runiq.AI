@@ -46,6 +46,23 @@ services.AddRuniqRag(rag => rag.AddIndex("corporate-documents", index => index
     .ConfigureIngestion(ingestion => ingestion.OnStartup())));
 ```
 
+RAG observability is content-free by default. Retrieved document and chunk content remains available to model context assembly but is not copied into client payloads. Applications may opt into small local-development previews explicitly:
+
+```csharp
+services.AddRuniqRag(rag =>
+{
+    rag.ConfigureObservability(options =>
+    {
+        options.QueryVisibility = RagQueryVisibility.Redacted;
+        options.ContentPreview.Enabled = true;
+        options.ContentPreview.MaximumCharacters = 160;
+        options.ContentPreview.IncludeSelectedResults = true;
+    });
+});
+```
+
+Preview values pass through `IRagObservabilityRedactor` before normalization and truncation. Enabling previews does not expose API keys, provider diagnostics, or source paths, and debug mode does not bypass these boundaries.
+
 `OpenAiEmbeddingModels` and `UseOpenAiEmbeddingModel` are provided by `Runiq.AI.Agents.Providers.OpenAI`, keeping
 provider-specific identities outside the provider-neutral RAG package. Schedule expressions use five fields and the
 runtime's default time-zone policy.

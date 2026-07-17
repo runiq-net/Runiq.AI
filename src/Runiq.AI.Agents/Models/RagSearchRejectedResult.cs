@@ -11,8 +11,12 @@ public sealed class RagSearchRejectedResult
     /// <param name="rawScore">The raw provider score.</param>
     /// <param name="normalizedRelevance">The normalized relevance, when reliably available.</param>
     /// <param name="reason">The reason the candidate was rejected.</param>
+    /// <param name="contentPreview">An optional redacted and bounded content preview.</param>
+    /// <param name="previewTruncated">Whether the preview was truncated.</param>
+    /// <param name="metadata">The bounded application-approved metadata snapshot.</param>
     public RagSearchRejectedResult(string documentId, string chunkId, double rawScore,
-        double? normalizedRelevance, RagResultRejectionReason reason)
+        double? normalizedRelevance, RagResultRejectionReason reason, string? contentPreview = null,
+        bool previewTruncated = false, IReadOnlyDictionary<string, string>? metadata = null)
     {
         DocumentId = string.IsNullOrWhiteSpace(documentId)
             ? throw new ArgumentException("Document id cannot be null, empty, or whitespace.", nameof(documentId))
@@ -25,6 +29,9 @@ public sealed class RagSearchRejectedResult
         Reason = Enum.IsDefined(reason)
             ? reason
             : throw new ArgumentOutOfRangeException(nameof(reason), reason, "The rejection reason is not defined.");
+        ContentPreview = contentPreview;
+        PreviewTruncated = previewTruncated;
+        Metadata = metadata is null ? new Dictionary<string, string>() : new Dictionary<string, string>(metadata);
     }
 
     /// <summary>Gets the source document identifier.</summary>
@@ -41,4 +48,10 @@ public sealed class RagSearchRejectedResult
 
     /// <summary>Gets the reason the candidate was rejected.</summary>
     public RagResultRejectionReason Reason { get; }
+    /// <summary>Gets the optional redacted and bounded content preview.</summary>
+    public string? ContentPreview { get; }
+    /// <summary>Gets whether the content preview was truncated.</summary>
+    public bool PreviewTruncated { get; }
+    /// <summary>Gets the bounded application-approved metadata snapshot.</summary>
+    public IReadOnlyDictionary<string, string> Metadata { get; }
 }

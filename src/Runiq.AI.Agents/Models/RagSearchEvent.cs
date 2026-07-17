@@ -15,14 +15,14 @@ public abstract class RagSearchEvent
     /// <param name="effectiveQuery">The effective query when it differs from the original query.</param>
     /// <param name="requestedCandidateCount">The maximum number of candidates requested from retrieval.</param>
     protected RagSearchEvent(string correlationId, string agentId, string conversationId, string indexName,
-        string originalQuery, string? effectiveQuery, int requestedCandidateCount)
+        string? originalQuery, string? effectiveQuery, int requestedCandidateCount)
     {
         CorrelationId = RequireValue(correlationId, nameof(correlationId));
         AgentId = RequireValue(agentId, nameof(agentId));
         ConversationId = RequireValue(conversationId, nameof(conversationId));
         IndexName = RequireValue(indexName, nameof(indexName));
-        OriginalQuery = RequireValue(originalQuery, nameof(originalQuery));
-        EffectiveQuery = string.IsNullOrWhiteSpace(effectiveQuery) || string.Equals(originalQuery, effectiveQuery, StringComparison.Ordinal)
+        OriginalQuery = string.IsNullOrWhiteSpace(originalQuery) ? null : originalQuery;
+        EffectiveQuery = string.IsNullOrWhiteSpace(effectiveQuery) || string.Equals(OriginalQuery, effectiveQuery, StringComparison.Ordinal)
             ? null
             : effectiveQuery;
         RequestedCandidateCount = RequirePositive(requestedCandidateCount, nameof(requestedCandidateCount));
@@ -37,7 +37,7 @@ public abstract class RagSearchEvent
     /// <summary>Gets the effective index queried by the runtime.</summary>
     public string IndexName { get; }
     /// <summary>Gets the original query received by the runtime.</summary>
-    public string OriginalQuery { get; }
+    public string? OriginalQuery { get; }
     /// <summary>Gets the effective query when it differs from <see cref="OriginalQuery"/>; otherwise, gets <see langword="null"/>.</summary>
     public string? EffectiveQuery { get; }
     /// <summary>Gets the maximum number of candidates requested from retrieval.</summary>
@@ -58,7 +58,7 @@ public sealed class RagSearchStarted : RagSearchEvent
     /// <summary>Initializes a RAG retrieval started payload.</summary>
     /// <inheritdoc cref="RagSearchEvent(string, string, string, string, string, string?, int)"/>
     public RagSearchStarted(string correlationId, string agentId, string conversationId, string indexName,
-        string originalQuery, string? effectiveQuery, int requestedCandidateCount)
+        string? originalQuery, string? effectiveQuery, int requestedCandidateCount)
         : base(correlationId, agentId, conversationId, indexName, originalQuery, effectiveQuery, requestedCandidateCount) { }
 }
 
@@ -84,7 +84,7 @@ public sealed class RagSearchCompleted : RagSearchEvent
     /// <param name="topNormalizedRelevance">The normalized relevance of the highest-ranked candidate, when reliably available.</param>
     /// <param name="noContextReason">The verifiable reason no context was accepted, or null when context was accepted.</param>
     public RagSearchCompleted(string correlationId, string agentId, string conversationId, string indexName,
-        string originalQuery, string? effectiveQuery, int requestedCandidateCount, int actualCandidateCount,
+        string? originalQuery, string? effectiveQuery, int requestedCandidateCount, int actualCandidateCount,
         int acceptedCount, int rejectedCount, IReadOnlyList<RagSearchSelectedResult> selectedResults,
         IReadOnlyList<RagSearchRejectedResult> rejectedResults, int maximumAcceptedResultCount, TimeSpan duration,
         double? topRawScore, double? topNormalizedRelevance, RagNoContextReason? noContextReason)
@@ -173,7 +173,7 @@ public sealed class RagSearchFailed : RagSearchEvent
     /// <param name="failureClassification">The provider-independent retrieval failure classification.</param>
     /// <param name="duration">The elapsed duration before retrieval failed.</param>
     public RagSearchFailed(string correlationId, string agentId, string conversationId, string indexName,
-        string originalQuery, string? effectiveQuery, int requestedCandidateCount,
+        string? originalQuery, string? effectiveQuery, int requestedCandidateCount,
         RetrievalErrorCode failureClassification, TimeSpan duration)
         : base(correlationId, agentId, conversationId, indexName, originalQuery, effectiveQuery, requestedCandidateCount)
     {

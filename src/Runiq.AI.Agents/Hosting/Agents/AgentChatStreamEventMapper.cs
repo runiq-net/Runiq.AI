@@ -115,7 +115,8 @@ internal static class AgentChatStreamEventMapper
                     double.IsFinite(result.RawScore) ? result.RawScore : null,
                     IsNormalizedRelevance(result.NormalizedRelevance) ? result.NormalizedRelevance : null,
                     string.IsNullOrWhiteSpace(result.Metric) ? null : result.Metric,
-                    string.IsNullOrWhiteSpace(result.Metric) ? null : result.HigherIsBetter))
+                    string.IsNullOrWhiteSpace(result.Metric) ? null : result.HigherIsBetter,
+                    result.ContentPreview, result.PreviewTruncated, result.Metadata.Count == 0 ? null : result.Metadata))
                 .ToArray(),
             RejectedResults = completed.RejectedResults
                 .Select(result => new AgentChatRagRejectedResult(
@@ -123,7 +124,8 @@ internal static class AgentChatStreamEventMapper
                     result.ChunkId,
                     double.IsFinite(result.RawScore) ? result.RawScore : null,
                     IsNormalizedRelevance(result.NormalizedRelevance) ? result.NormalizedRelevance : null,
-                    result.Reason))
+                    result.Reason, result.ContentPreview, result.PreviewTruncated,
+                    result.Metadata.Count == 0 ? null : result.Metadata))
                 .ToArray(),
             NoContextReason = completed.NoContextReason,
         };

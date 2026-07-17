@@ -13,6 +13,11 @@ using Runiq.AI.Core.Configuration;
 using Runiq.AI.Core.Metadata;
 using Runiq.AI.Core.Studio;
 using Runiq.AI.Core.Tools;
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
+using Runiq.AI.Rag.Abstractions.Observability;
+using Runiq.AI.Rag.Configuration;
+using Runiq.AI.Rag.Abstractions.Retrieval;
 
 namespace Runiq.AI.Core;
 
@@ -74,7 +79,17 @@ public static class RuniqAgentServerServiceCollectionExtensions
         services.AddSingleton<AgentToolInvoker>();
 
         services.AddScoped<ToolRunApiHandler>();
-        services.AddScoped<AgentExecutionRuntime>();
+        services.AddScoped<RagObservabilityProjection>(provider => new RagObservabilityProjection(
+            provider.GetRequiredService<IOptions<RagObservabilityOptions>>(),
+            provider.GetService<IRagObservabilityRedactor>(),
+            provider.GetService<IRagObservabilityMetadataProjector>(),
+            provider.GetRequiredService<ILogger<RagObservabilityProjection>>()));
+        services.AddScoped<AgentExecutionRuntime>(provider => new AgentExecutionRuntime(
+            provider.GetServices<Agent>(),
+            provider.GetRequiredService<IChatClientResolver>(),
+            provider.GetRequiredService<AgentToolInvoker>(),
+            provider.GetService<IRagRetriever>(),
+            provider.GetRequiredService<RagObservabilityProjection>()));
         services.AddScoped<AgentChatApiHandler>();
 
         return services;

@@ -15,7 +15,7 @@ public sealed class AgentChatRagSearchEvent
         string conversationId,
         string correlationId,
         string indexName,
-        string originalQuery,
+        string? originalQuery,
         string? effectiveQuery,
         int requestedCandidateCount)
     {
@@ -41,7 +41,7 @@ public sealed class AgentChatRagSearchEvent
     public string IndexName { get; }
 
     /// <summary>Gets the original query received by the runtime.</summary>
-    public string OriginalQuery { get; }
+    public string? OriginalQuery { get; }
 
     /// <summary>Gets the effective query when it differs from the original query.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -101,7 +101,8 @@ public sealed class AgentChatRagSearchEvent
 public sealed class AgentChatRagSelectedResult
 {
     internal AgentChatRagSelectedResult(string documentId, string chunkId, int contextOrder,
-        double? rawScore, double? normalizedRelevance, string? metric, bool? higherIsBetter)
+        double? rawScore, double? normalizedRelevance, string? metric, bool? higherIsBetter,
+        string? contentPreview, bool previewTruncated, IReadOnlyDictionary<string, string>? metadata)
     {
         DocumentId = documentId;
         ChunkId = chunkId;
@@ -110,6 +111,9 @@ public sealed class AgentChatRagSelectedResult
         NormalizedRelevance = normalizedRelevance;
         Metric = metric;
         HigherIsBetter = higherIsBetter;
+        ContentPreview = contentPreview;
+        PreviewTruncated = previewTruncated;
+        Metadata = metadata;
     }
 
     /// <summary>Gets the selected document identifier.</summary>
@@ -127,6 +131,12 @@ public sealed class AgentChatRagSelectedResult
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Metric { get; }
     /// <summary>Gets whether larger raw scores are better when the metric is known.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? HigherIsBetter { get; }
+    /// <summary>Gets the optional redacted and bounded content preview.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ContentPreview { get; }
+    /// <summary>Gets whether the preview was truncated.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public bool PreviewTruncated { get; }
+    /// <summary>Gets the bounded application-approved metadata snapshot.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyDictionary<string, string>? Metadata { get; }
 }
 
 /// <summary>Describes a RAG candidate rejected by runtime policy without exposing its content.</summary>
@@ -137,13 +147,17 @@ public sealed class AgentChatRagRejectedResult
         string chunkId,
         double? rawScore,
         double? normalizedRelevance,
-        RagResultRejectionReason reason)
+        RagResultRejectionReason reason, string? contentPreview, bool previewTruncated,
+        IReadOnlyDictionary<string, string>? metadata)
     {
         DocumentId = documentId;
         ChunkId = chunkId;
         RawScore = rawScore;
         NormalizedRelevance = normalizedRelevance;
         Reason = reason;
+        ContentPreview = contentPreview;
+        PreviewTruncated = previewTruncated;
+        Metadata = metadata;
     }
 
     /// <summary>Gets the rejected document identifier.</summary>
@@ -163,4 +177,10 @@ public sealed class AgentChatRagRejectedResult
     /// <summary>Gets the runtime policy reason for rejecting the candidate.</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public RagResultRejectionReason Reason { get; }
+    /// <summary>Gets the optional redacted and bounded content preview.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ContentPreview { get; }
+    /// <summary>Gets whether the preview was truncated.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public bool PreviewTruncated { get; }
+    /// <summary>Gets the bounded application-approved metadata snapshot.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyDictionary<string, string>? Metadata { get; }
 }
