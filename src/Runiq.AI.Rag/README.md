@@ -58,6 +58,19 @@ operation are held in memory and reset when the process restarts; registry metad
 uses a lightweight local in-process five-field scheduler. Scheduled execution is intentionally per process: it does
 not provide distributed locking, leader election, or multi-instance coordination.
 
+## Dashboard management API
+
+When RAG and the embedded Dashboard are registered together, the Dashboard exposes management endpoints under its
+configured API base path: `GET /api/rag/indexes`, `GET /api/rag/indexes/{indexName}`,
+`GET /api/rag/indexes/{indexName}/status`, `POST /api/rag/indexes/{indexName}/ingestion/start`, and
+`POST /api/rag/indexes/{indexName}/ingestion/cancel`. These endpoints use the Dashboard's configured access policy.
+
+The API projects explicit hosting DTOs and safe registry display metadata; it does not serialize domain models,
+provider credentials, raw paths, document content, or exceptions. Readiness and operation state remain separate.
+All registered indexes support an explicit manual run, including indexes whose strategy is `OnStartup`,
+`BackgroundOnStartup`, or `Scheduled`; the strategy controls automatic triggers only. Start and cancel commands are
+coordinated exclusively by `IRagIngestionManager`, including conflict and cancellation behavior.
+
 ## Related Packages
 
 | Package | Purpose |

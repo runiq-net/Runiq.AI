@@ -17,7 +17,7 @@ public sealed class RagIndexMetadata
     internal RagIndexMetadata(RagIndexRegistration registration)
     {
         Name = registration.Name;
-        Sources = registration.Sources.Select(source => new RagDocumentSourceMetadata(source.SourceType, source.DisplayValue)).ToArray();
+        Sources = registration.Sources.Select(source => new RagDocumentSourceMetadata(source.Identity, source.SourceType, source.DisplayValue)).ToArray();
         VectorStoreReference = registration.VectorStoreReference;
         EmbeddingReference = registration.EmbeddingReference;
         ChunkingSummary = $"max:{registration.Chunking.MaxChunkLength};overlap:{registration.Chunking.ChunkOverlap}";
@@ -27,6 +27,8 @@ public sealed class RagIndexMetadata
         VectorStoreType = registration.VectorStoreType;
         VectorStoreDisplayName = registration.VectorStoreDisplayName;
         NamedVectorStoreReference = registration.NamedVectorStoreReference;
+        ChunkSize = registration.Chunking.MaxChunkLength;
+        ChunkOverlap = registration.Chunking.ChunkOverlap;
     }
 
     /// <summary>Gets the logical index name.</summary>
@@ -53,6 +55,10 @@ public sealed class RagIndexMetadata
     public string VectorStoreDisplayName { get; }
     /// <summary>Gets the named vector-store reference, when present.</summary>
     public string? NamedVectorStoreReference { get; }
+    /// <summary>Gets the configured maximum chunk size.</summary>
+    public int ChunkSize { get; }
+    /// <summary>Gets the configured overlap between adjacent chunks.</summary>
+    public int ChunkOverlap { get; }
     /// <summary>Gets a value indicating whether startup validation accepted this definition.</summary>
     public bool IsValid => true;
 }
@@ -60,7 +66,9 @@ public sealed class RagIndexMetadata
 /// <summary>Describes a document source without exposing credentials or full paths.</summary>
 public sealed record RagDocumentSourceMetadata
 {
-    internal RagDocumentSourceMetadata(string sourceType, string displayValue) { SourceType = sourceType; DisplayValue = displayValue; }
+    internal RagDocumentSourceMetadata(string identity, string sourceType, string displayValue) { Identity = identity; SourceType = sourceType; DisplayValue = displayValue; }
+    /// <summary>Gets the stable safe source identity.</summary>
+    public string Identity { get; }
     /// <summary>Gets the provider-independent source type.</summary>
     public string SourceType { get; }
     /// <summary>Gets the safe source display value.</summary>

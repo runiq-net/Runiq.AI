@@ -25,6 +25,7 @@ internal sealed class RagIngestionManager(IRagIndexRegistry registry, IServiceSc
             entry.Cancellation?.Dispose();
             entry.Cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             entry.Operation = NewOperation(indexName, reason);
+            entry.LastUpdatedAt = entry.Operation.StartedAt;
             entry.ActiveTask = RunAsync(registration, entry);
             return entry.ActiveTask;
         }
@@ -36,7 +37,7 @@ internal sealed class RagIngestionManager(IRagIndexRegistry registry, IServiceSc
         {
             if (!entries.TryGetValue(indexName, out var entry)) throw new KeyNotFoundException($"RAG index '{indexName}' is not registered.");
             var active = entry.ActiveTask is { IsCompleted: false } ? entry.Operation : null;
-            return new RagIndexRuntimeStatus { IndexName = indexName, Readiness = GetReadiness(entry, active), ActiveOperation = active, LastOperation = entry.LastOperation };
+            return new RagIndexRuntimeStatus { IndexName = indexName, Readiness = GetReadiness(entry, active), ActiveOperation = active, LastOperation = entry.LastOperation, LastUpdatedAt = entry.LastUpdatedAt };
         }
     }
 
@@ -49,6 +50,7 @@ internal sealed class RagIngestionManager(IRagIndexRegistry registry, IServiceSc
             task = entry.ActiveTask;
             if (task is null || task.IsCompleted) return;
             entry.Operation = entry.Operation! with { State = RagIngestionOperationState.Cancelling };
+            entry.LastUpdatedAt = DateTimeOffset.UtcNow;
             entry.Cancellation!.Cancel();
         }
         await task.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -95,14 +97,15 @@ internal sealed class RagIngestionManager(IRagIndexRegistry registry, IServiceSc
             var completedAt = DateTimeOffset.UtcNow;
             entry.Operation = entry.Operation! with { State = state, CompletedAt = completedAt, Duration = completedAt - entry.Operation.StartedAt, Progress = entry.Operation.Progress with { CurrentSource = null, CurrentDocument = null } };
             entry.LastOperation = entry.Operation;
+            entry.LastUpdatedAt = completedAt;
             if (state is RagIngestionOperationState.Completed or RagIngestionOperationState.PartiallyCompleted) entry.HasUsableIndex = true;
             return entry.Operation;
         }
     }
 
-    private void Update(Entry entry, Func<RagIngestionOperation, RagIngestionOperation> update) { lock (gate) entry.Operation = update(entry.Operation!); }
+    private void Update(Entry entry, Func<RagIngestionOperation, RagIngestionOperation> update) { lock (gate) { entry.Operation = update(entry.Operation!); entry.LastUpdatedAt = DateTimeOffset.UtcNow; } }
     private static RagIngestionOperation NewOperation(string name, RagIngestionOperationReason reason) => new() { OperationId = Guid.NewGuid(), IndexName = name, Reason = reason, State = RagIngestionOperationState.Running, StartedAt = DateTimeOffset.UtcNow, Progress = new() };
     private static RagIngestionProgress Add(RagIngestionProgress p, Models.Ingestion.RagIngestionReport r, string source) => p with { DiscoveredDocuments = p.DiscoveredDocuments + r.DiscoveredDocuments, ProcessedDocuments = p.ProcessedDocuments + r.CreatedDocuments + r.UpdatedDocuments + r.SkippedDocuments + r.FailedDocuments, AddedDocuments = p.AddedDocuments + r.CreatedDocuments, UpdatedDocuments = p.UpdatedDocuments + r.UpdatedDocuments, SkippedDocuments = p.SkippedDocuments + r.SkippedDocuments, DeletedDocuments = p.DeletedDocuments + r.DeletedDocuments, FailedDocuments = p.FailedDocuments + r.FailedDocuments, ProducedChunks = p.ProducedChunks + r.CreatedChunks, ProducedEmbeddings = p.ProducedEmbeddings + r.CreatedChunks, CurrentSource = source, LastFailure = r.Failures.LastOrDefault() is { } f ? new() { Code = "DocumentFailed", Message = "A document could not be ingested.", SourceIdentity = source, DocumentIdentity = f.DocumentId, Timestamp = DateTimeOffset.UtcNow } : p.LastFailure };
     private static RagIndexReadiness GetReadiness(Entry e, RagIngestionOperation? active) => active is not null ? e.HasUsableIndex ? RagIndexReadiness.Ready : RagIndexReadiness.Initializing : e.LastOperation?.State switch { RagIngestionOperationState.Completed => RagIndexReadiness.Ready, RagIngestionOperationState.PartiallyCompleted => RagIndexReadiness.Degraded, RagIngestionOperationState.Failed when e.HasUsableIndex => RagIndexReadiness.Degraded, RagIngestionOperationState.Failed => RagIndexReadiness.Failed, _ when e.HasUsableIndex => RagIndexReadiness.Ready, _ => RagIndexReadiness.NotInitialized };
-    private sealed class Entry { public CancellationTokenSource? Cancellation; public Task<RagIngestionOperation>? ActiveTask; public RagIngestionOperation? Operation; public RagIngestionOperation? LastOperation; public bool HasUsableIndex; }
+    private sealed class Entry { public CancellationTokenSource? Cancellation; public Task<RagIngestionOperation>? ActiveTask; public RagIngestionOperation? Operation; public RagIngestionOperation? LastOperation; public bool HasUsableIndex; public DateTimeOffset LastUpdatedAt = DateTimeOffset.UtcNow; }
 }

@@ -123,6 +123,8 @@ public sealed record RagIndexRuntimeStatus
     public RagIngestionOperation? ActiveOperation { get; init; }
     /// <summary>Gets the most recent terminal operation, when present.</summary>
     public RagIngestionOperation? LastOperation { get; init; }
+    /// <summary>Gets the time at which this runtime state last changed.</summary>
+    public required DateTimeOffset LastUpdatedAt { get; init; }
 }
 
 /// <summary>Coordinates managed ingestion operations for registered RAG indexes.</summary>
