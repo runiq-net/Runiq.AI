@@ -79,6 +79,9 @@ export type AgentChatRagSelectedResult = {
   normalizedRelevance?: number;
   metric?: string;
   higherIsBetter?: boolean;
+  contentPreview?: string;
+  previewTruncated?: boolean;
+  metadata?: Record<string, string>;
 };
 
 export type AgentChatRagRejectedResult = {
@@ -87,6 +90,9 @@ export type AgentChatRagRejectedResult = {
   rawScore?: number;
   normalizedRelevance?: number;
   reason: AgentChatRagRejectionReason;
+  contentPreview?: string;
+  previewTruncated?: boolean;
+  metadata?: Record<string, string>;
 };
 
 export type AgentChatRagSearchEventBase = {
@@ -94,7 +100,7 @@ export type AgentChatRagSearchEventBase = {
   conversationId: string;
   correlationId: string;
   indexName: string;
-  originalQuery: string;
+  originalQuery?: string;
   effectiveQuery?: string;
   requestedCandidateCount: number;
 };

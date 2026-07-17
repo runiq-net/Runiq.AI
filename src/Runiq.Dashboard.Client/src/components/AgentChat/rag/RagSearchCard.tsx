@@ -138,16 +138,17 @@ function RagDetails({ lifecycle }: RagSearchCardProps) {
 }
 
 function QueryDetails({ payload }: { payload: AgentChatRagLifecycle['payload'] }) {
-  const effectiveQuery = getDistinctEffectiveQuery(payload.originalQuery, payload.effectiveQuery);
-  return <><Detail label="Original query" value={payload.originalQuery} wide />{effectiveQuery && <Detail label="Effective query" value={effectiveQuery} wide />}</>;
+  const originalQuery = payload.originalQuery ?? 'Redacted';
+  const effectiveQuery = getDistinctEffectiveQuery(originalQuery, payload.effectiveQuery);
+  return <><Detail label="Original query" value={originalQuery} wide />{effectiveQuery && <Detail label="Effective query" value={effectiveQuery} wide />}</>;
 }
 
 function Detail({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
   return <div className={`min-w-0 ${wide ? 'sm:col-span-2' : ''}`}><dt className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">{label}</dt><dd className="mt-0.5 break-words text-zinc-900 dark:text-zinc-100">{value}</dd></div>;
 }
 
-function ResultList({ title, emptyText, results }: { title: string; emptyText: string; results: Array<{ documentId: string; chunkId: string; reason?: string }> }) {
-  return <div className="min-w-0"><h4 className="font-semibold text-zinc-950 dark:text-zinc-100">{title}</h4>{results.length === 0 ? <p className="mt-1 text-zinc-500">{emptyText}</p> : <ul className="mt-2 space-y-1.5">{results.map((result, index) => <li key={`${result.documentId}:${result.chunkId}:${index}`} className="min-w-0 rounded-lg border border-zinc-200 bg-white px-2.5 py-2 dark:border-zinc-800 dark:bg-zinc-900/50"><div className="break-all font-mono text-[11px]">{result.documentId} / {result.chunkId}</div>{result.reason && <div className="mt-1 text-[11px] text-zinc-500">{result.reason}</div>}</li>)}</ul>}</div>;
+function ResultList({ title, emptyText, results }: { title: string; emptyText: string; results: Array<{ documentId: string; chunkId: string; reason?: string; contentPreview?: string; previewTruncated?: boolean }> }) {
+  return <div className="min-w-0"><h4 className="font-semibold text-zinc-950 dark:text-zinc-100">{title}</h4>{results.length === 0 ? <p className="mt-1 text-zinc-500">{emptyText}</p> : <ul className="mt-2 space-y-1.5">{results.map((result, index) => <li key={`${result.documentId}:${result.chunkId}:${index}`} className="min-w-0 rounded-lg border border-zinc-200 bg-white px-2.5 py-2 dark:border-zinc-800 dark:bg-zinc-900/50"><div className="break-all font-mono text-[11px]">{result.documentId} / {result.chunkId}</div>{result.reason && <div className="mt-1 text-[11px] text-zinc-500">{result.reason}</div>}{result.contentPreview && <details className="mt-2"><summary className="cursor-pointer font-medium">Content preview{result.previewTruncated ? ' (truncated)' : ''}</summary><pre className="mt-1 whitespace-pre-wrap break-words font-sans text-[11px]">{result.contentPreview}</pre></details>}</li>)}</ul>}</div>;
 }
 
 function formatOptionalNumber(value: number | undefined): string {

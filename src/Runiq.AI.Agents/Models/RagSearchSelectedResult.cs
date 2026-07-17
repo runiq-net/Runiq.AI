@@ -10,8 +10,13 @@ public sealed class RagSearchSelectedResult
     /// <param name="normalizedRelevance">The normalized relevance when reliably available.</param>
     /// <param name="metric">The provider-independent score metric when available.</param>
     /// <param name="higherIsBetter">Whether larger raw scores are better for the metric.</param>
+    /// <param name="contentPreview">An optional redacted and bounded content preview.</param>
+    /// <param name="previewTruncated">Whether the preview was truncated.</param>
+    /// <param name="metadata">The bounded application-approved metadata snapshot.</param>
     public RagSearchSelectedResult(string documentId, string chunkId, double rawScore = double.NaN,
-        double? normalizedRelevance = null, string? metric = null, bool? higherIsBetter = null)
+        double? normalizedRelevance = null, string? metric = null, bool? higherIsBetter = null,
+        string? contentPreview = null, bool previewTruncated = false,
+        IReadOnlyDictionary<string, string>? metadata = null)
     {
         DocumentId = string.IsNullOrWhiteSpace(documentId) ? throw new ArgumentException("Document id cannot be empty.", nameof(documentId)) : documentId;
         ChunkId = string.IsNullOrWhiteSpace(chunkId) ? throw new ArgumentException("Chunk id cannot be empty.", nameof(chunkId)) : chunkId;
@@ -19,6 +24,9 @@ public sealed class RagSearchSelectedResult
         NormalizedRelevance = normalizedRelevance;
         Metric = metric;
         HigherIsBetter = higherIsBetter;
+        ContentPreview = contentPreview;
+        PreviewTruncated = previewTruncated;
+        Metadata = metadata is null ? new Dictionary<string, string>() : new Dictionary<string, string>(metadata);
     }
     /// <summary>Gets the source document identifier.</summary>
     public string DocumentId { get; }
@@ -32,4 +40,10 @@ public sealed class RagSearchSelectedResult
     public string? Metric { get; }
     /// <summary>Gets whether larger raw scores are better when the metric is known.</summary>
     public bool? HigherIsBetter { get; }
+    /// <summary>Gets the optional redacted and bounded content preview.</summary>
+    public string? ContentPreview { get; }
+    /// <summary>Gets whether the content preview was truncated.</summary>
+    public bool PreviewTruncated { get; }
+    /// <summary>Gets the bounded application-approved metadata snapshot.</summary>
+    public IReadOnlyDictionary<string, string> Metadata { get; }
 }

@@ -2,6 +2,8 @@
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Core.AI.Chat;
 using Runiq.AI.Core.Configuration;
@@ -15,6 +17,7 @@ using Runiq.AI.Rag.Models.Queries;
 using Runiq.AI.Rag.Models.Retrieval;
 using Runiq.AI.Rag.Models.Search;
 using Runiq.AI.Rag.Models.Tools;
+using Runiq.AI.Rag.Configuration;
 
 namespace Runiq.AI.Agents.Runtime;
 
@@ -29,6 +32,7 @@ public sealed class AgentExecutionRuntime
     private readonly IChatClientResolver chatClientResolver;
     private readonly AgentToolInvoker toolInvoker;
     private readonly IRagRetriever? ragRetriever;
+    private readonly RagObservabilityProjection observability;
 
     /// <summary>
     /// Initializes the runtime with two provider-neutral clients for compatibility with existing manual construction.
@@ -70,6 +74,18 @@ public sealed class AgentExecutionRuntime
         this.chatClientResolver = chatClientResolver ?? throw new ArgumentNullException(nameof(chatClientResolver));
         this.toolInvoker = toolInvoker ?? throw new ArgumentNullException(nameof(toolInvoker));
         this.ragRetriever = ragRetriever;
+        observability = new RagObservabilityProjection(Options.Create(new RagObservabilityOptions()), null, null,
+            NullLogger<RagObservabilityProjection>.Instance);
+    }
+
+    internal AgentExecutionRuntime(IEnumerable<Agent> agents, IChatClientResolver chatClientResolver,
+        AgentToolInvoker toolInvoker, IRagRetriever? ragRetriever, RagObservabilityProjection observability)
+    {
+        this.agents = agents ?? throw new ArgumentNullException(nameof(agents));
+        this.chatClientResolver = chatClientResolver ?? throw new ArgumentNullException(nameof(chatClientResolver));
+        this.toolInvoker = toolInvoker ?? throw new ArgumentNullException(nameof(toolInvoker));
+        this.ragRetriever = ragRetriever;
+        this.observability = observability ?? throw new ArgumentNullException(nameof(observability));
     }
 
     /// <summary>
@@ -340,14 +356,15 @@ public sealed class AgentExecutionRuntime
             }
 
             var correlationId = Guid.NewGuid().ToString("N");
+            var safeQueries = observability.ProjectQueries(query.Message, effective: null);
             yield return AgentExecutionEvent.FromRagSearch(new RagSearchStarted(
-                correlationId, agent.Id, query.ConversationId, indexName, query.Message, effectiveQuery: null,
+                correlationId, agent.Id, query.ConversationId, indexName, safeQueries.Original, safeQueries.Effective,
                 activeRag.Acceptance.CandidateCount));
 
             if (ragRetriever is null)
             {
                 yield return AgentExecutionEvent.FromRagSearch(new RagSearchFailed(
-                    correlationId, agent.Id, query.ConversationId, indexName, query.Message, effectiveQuery: null,
+                    correlationId, agent.Id, query.ConversationId, indexName, safeQueries.Original, safeQueries.Effective,
                     activeRag.Acceptance.CandidateCount, RetrievalErrorCode.InvalidRequest, TimeSpan.Zero));
                 yield return AgentExecutionEvent.Failed(
                     $"RAG is enabled for agent '{agent.Id}', but the retrieval service is unavailable; the model was not invoked.",
@@ -373,7 +390,7 @@ public sealed class AgentExecutionRuntime
             if (retrievalFailure is not null)
             {
                 yield return AgentExecutionEvent.FromRagSearch(new RagSearchFailed(
-                    correlationId, agent.Id, query.ConversationId, indexName, query.Message, effectiveQuery: null,
+                    correlationId, agent.Id, query.ConversationId, indexName, safeQueries.Original, safeQueries.Effective,
                     activeRag.Acceptance.CandidateCount, ClassifyRetrievalFailure(retrievalFailure),
                     retrievalStopwatch.Elapsed));
                 yield return AgentExecutionEvent.Failed(
@@ -384,7 +401,7 @@ public sealed class AgentExecutionRuntime
             }
 
             yield return AgentExecutionEvent.FromRagSearch(CreateRagSearchCompleted(
-                correlationId, query.ConversationId, agent, activeRag, indexName, query.Message, runtimeContext,
+                correlationId, query.ConversationId, agent, activeRag, indexName, safeQueries, runtimeContext,
                 retrievalStopwatch.Elapsed));
         }
 
@@ -647,13 +664,13 @@ public sealed class AgentExecutionRuntime
             ? retrievalException.ErrorCode
             : RetrievalErrorCode.RetrievalFailed;
 
-    private static RagSearchCompleted CreateRagSearchCompleted(
+    private RagSearchCompleted CreateRagSearchCompleted(
         string correlationId,
         string conversationId,
         Agent agent,
         AgentRagOptions options,
         string indexName,
-        string originalQuery,
+        (string? Original, string? Effective) queries,
         AgentRuntimeContext runtimeContext,
         TimeSpan duration)
     {
@@ -669,23 +686,31 @@ public sealed class AgentExecutionRuntime
             agent.Id,
             conversationId,
             indexName,
-            originalQuery,
-            effectiveQuery: null,
+            queries.Original,
+            queries.Effective,
             options.Acceptance.CandidateCount,
             runtimeContext.RetrievedRagCandidates.Count,
             runtimeContext.RetrievedRagContext.Count,
             runtimeContext.RejectedRagCandidates.Count,
             runtimeContext.RetrievedRagContext
-                .Select(result => new RagSearchSelectedResult(result.Chunk.DocumentId, result.Chunk.Id,
-                    result.RawScore, result.Relevance, result.Metric, result.HigherIsBetter))
+                .Select(result =>
+                {
+                    var preview = observability.ProjectContent(result.Chunk.Content, selected: true);
+                    return new RagSearchSelectedResult(result.Chunk.DocumentId, result.Chunk.Id,
+                        result.RawScore, result.Relevance, result.Metric, result.HigherIsBetter,
+                        preview.Value, preview.Truncated,
+                        observability.ProjectMetadata(new Dictionary<string, string>(result.Metadata.Values)));
+                })
                 .ToArray(),
             runtimeContext.RejectedRagCandidates
-                .Select(result => new RagSearchRejectedResult(
-                    result.Result.Chunk.DocumentId,
-                    result.Result.Chunk.Id,
-                    result.Result.RawScore,
-                    result.Result.Relevance,
-                    result.Reason))
+                .Select(result =>
+                {
+                    var preview = observability.ProjectContent(result.Result.Chunk.Content, selected: false);
+                    return new RagSearchRejectedResult(result.Result.Chunk.DocumentId, result.Result.Chunk.Id,
+                        result.Result.RawScore, result.Result.Relevance, result.Reason,
+                        preview.Value, preview.Truncated,
+                        observability.ProjectMetadata(new Dictionary<string, string>(result.Result.Metadata.Values)));
+                })
                 .ToArray(),
             options.Acceptance.MaximumAcceptedResults,
             duration,

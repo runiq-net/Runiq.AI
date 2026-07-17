@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Runiq.AI.Rag.Abstractions.Chunking;
 using Runiq.AI.Core.AI.Embeddings;
@@ -54,6 +55,9 @@ public static class RuniqRagServiceCollectionExtensions
         services.TryAddScoped<IRagService, RagService>();
         services.TryAddSingleton<RagIngestionState>();
         services.Configure<RagIngestionOptions>(_ => { });
+        services.AddOptions<RagObservabilityOptions>()
+            .ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<RagObservabilityOptions>, RagObservabilityOptionsValidator>());
         services.TryAddScoped<IRagDocumentIngestionService, DefaultRagDocumentIngestionService>();
         services.TryAddSingleton<RagIngestionManager>();
         services.TryAddSingleton<IRagIngestionManager>(provider => provider.GetRequiredService<RagIngestionManager>());

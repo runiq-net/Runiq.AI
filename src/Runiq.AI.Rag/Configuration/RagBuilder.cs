@@ -53,6 +53,16 @@ public sealed class RagBuilder
         return this;
     }
 
+    /// <summary>Configures safe RAG observability projection.</summary>
+    /// <param name="configure">The observability configuration action.</param>
+    /// <returns>The same builder instance.</returns>
+    public RagBuilder ConfigureObservability(Action<RagObservabilityOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        services.Configure(configure);
+        return this;
+    }
+
     /// <summary>
     /// Replaces the Core embedding client used by RAG with the specified client type.
     /// </summary>

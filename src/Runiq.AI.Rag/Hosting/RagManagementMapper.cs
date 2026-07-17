@@ -22,9 +22,15 @@ internal static class RagManagementMapper
     public static RagOperationDto? Map(RagIngestionOperation? operation) => operation is null ? null :
         new(operation.OperationId, operation.IndexName, operation.Reason.ToString(), operation.State.ToString(), operation.StartedAt, operation.CompletedAt, operation.Duration.TotalMilliseconds, Map(operation.Progress));
 
-    private static RagSourceDto Map(RagDocumentSourceMetadata source) => new(SafeIdentity(source.Identity)!, source.SourceType, source.DisplayValue);
+    private static RagSourceDto Map(RagDocumentSourceMetadata source)
+    {
+        var identity = SafeIdentity(source.Identity)!;
+        return new(identity, source.SourceType, $"Source {identity[..12]}");
+    }
     private static RagIndexConfigurationDto Map(RagIndexMetadata metadata) => new(metadata.IngestionStrategyKind.ToString(), metadata.ScheduleExpression, metadata.VectorStoreType, metadata.VectorStoreDisplayName, metadata.EmbeddingDisplayName, metadata.ChunkSize, metadata.ChunkOverlap);
     private static RagProgressDto Map(RagIngestionProgress progress) => new(progress.DiscoveredDocuments, progress.ProcessedDocuments, progress.AddedDocuments, progress.UpdatedDocuments, progress.SkippedDocuments, progress.DeletedDocuments, progress.FailedDocuments, progress.ProducedChunks, progress.ProducedEmbeddings, SafeIdentity(progress.CurrentSource), SafeIdentity(progress.CurrentDocument));
-    private static RagFailureDto? Map(RagIngestionRuntimeFailure? failure) => failure is null ? null : new(failure.Code, failure.Message, SafeIdentity(failure.SourceIdentity), SafeIdentity(failure.DocumentIdentity), failure.Timestamp);
+    private static RagFailureDto? Map(RagIngestionRuntimeFailure? failure) => failure is null ? null :
+        new(failure.Code, "The ingestion operation failed. Review server logs using the operation identity.",
+            SafeIdentity(failure.SourceIdentity), SafeIdentity(failure.DocumentIdentity), failure.Timestamp);
     private static string? SafeIdentity(string? identity) => identity is null ? null : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)));
 }
