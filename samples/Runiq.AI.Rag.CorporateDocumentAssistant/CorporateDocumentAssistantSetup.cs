@@ -66,7 +66,6 @@ internal static class CorporateDocumentAssistantSetup
                 .UseDirectory(documentsPath, "*.md", recursive: true)
                 .UseOpenAiEmbeddingModel(OpenAiEmbeddingModels.TextEmbedding3Small)
                 .UseInMemoryVectorStore()
-                .ConfigureChunking(900, 120)
                 .ConfigureIngestion(ingestion => ingestion.OnStartup()));
         });
         services.AddRagEmbeddingClient(OpenAiEmbeddingModels.TextEmbedding3Small.Reference, provider => provider.GetRequiredService<OpenAiEmbeddingClient>());

@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Runiq.AI.Agents;
 using Runiq.AI.Agents.Runtime;
 using Runiq.AI.Agents.Tools;
@@ -38,10 +39,16 @@ public sealed class CorporateDocumentAssistantSampleTests
         Assert.Equal(RagIngestionStrategyKind.OnStartup, registration.IngestionStrategy.Kind);
         Assert.Equal(OpenAiEmbeddingModels.TextEmbedding3Small.Reference, registration.EmbeddingReference);
         Assert.Equal("InMemory", registration.VectorStoreType);
+        Assert.Equal("in-memory", registration.VectorStoreReference);
         Assert.Equal(CorporateDocumentAssistantSetup.IndexName, agent.Rag?.IndexName);
         Assert.Equal(CorporateDocumentAssistantSetup.ChatModel, agent.Model);
         var source = Assert.IsType<DirectoryRagDocumentSource>(Assert.Single(registration.Sources));
         Assert.Equal(Path.GetFullPath(documents.Path), source.RootPath);
+        var globalOptions = provider.GetRequiredService<IOptions<RagOptions>>().Value;
+        Assert.Null(globalOptions.EmbeddingModel);
+        Assert.Null(globalOptions.EmbeddingProvider);
+        Assert.Equal(1000, globalOptions.Chunking.MaxChunkLength);
+        Assert.Equal(100, globalOptions.Chunking.ChunkOverlap);
     }
 
     // Verifies managed startup ingestion discovers bundled documents and leaves a completed, ready runtime snapshot without a seed request.
