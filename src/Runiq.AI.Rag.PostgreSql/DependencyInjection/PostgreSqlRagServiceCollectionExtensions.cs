@@ -5,6 +5,7 @@ using Npgsql;
 using Pgvector.Npgsql;
 using Runiq.AI.Rag.DependencyInjection;
 using Runiq.AI.Rag.Configuration;
+using Runiq.AI.Rag.Abstractions.VectorStores;
 using Runiq.AI.Rag.PostgreSql.Documents;
 
 namespace Runiq.AI.Rag.PostgreSql.DependencyInjection;
@@ -57,6 +58,21 @@ public static class PostgreSqlRagServiceCollectionExtensions
         services.TryAddSingleton<IPostgreSqlRagHealthCheck, PostgreSqlRagHealthCheck>();
         services.TryAddSingleton<IPostgreSqlRagDocumentStore, PostgreSqlRagDocumentStore>();
         services.AddRagVectorStore<PostgreSqlRagVectorStore>();
+        services.AddRagVectorStore("postgresql", provider => provider.GetRequiredService<IRagVectorStore>());
+        return services;
+    }
+
+    /// <summary>Adds PostgreSQL persistence and binds it to a named index vector-store reference.</summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="name">The name used by <see cref="UsePostgreSqlVectorStore(RagIndexBuilder, string)"/>.</param>
+    /// <param name="configure">The provider configuration.</param>
+    /// <returns>The same service collection.</returns>
+    public static IServiceCollection AddRuniqRagPostgreSql(this IServiceCollection services, string name, Action<PostgreSqlRagOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("A non-empty PostgreSQL store name is required.", nameof(name));
+        services.AddRuniqRagPostgreSql(configure);
+        services.AddRagVectorStore($"postgresql/{name.Trim()}", provider => provider.GetRequiredService<IRagVectorStore>());
         return services;
     }
 

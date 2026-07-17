@@ -6,13 +6,15 @@ namespace Runiq.AI.Rag.Configuration;
 /// <summary>Describes a validated, provider-independent RAG index registration.</summary>
 public sealed class RagIndexRegistration
 {
+    private readonly RagChunkingOptions chunking;
+
     internal RagIndexRegistration(string name, IReadOnlyList<IRagDocumentSource> sources, string vectorStoreReference, string embeddingReference, RagChunkingOptions chunking, RagIngestionStartStrategy ingestionStrategy, string embeddingDisplayName, string vectorStoreType, string vectorStoreDisplayName, string? namedVectorStoreReference)
     {
         Name = name;
         Sources = sources;
         VectorStoreReference = vectorStoreReference;
         EmbeddingReference = embeddingReference;
-        Chunking = chunking;
+        this.chunking = CopyChunking(chunking);
         IngestionStrategy = ingestionStrategy;
         EmbeddingDisplayName = embeddingDisplayName;
         VectorStoreType = vectorStoreType;
@@ -32,8 +34,8 @@ public sealed class RagIndexRegistration
     /// <summary>Gets the effective embedding model or client reference.</summary>
     public string EmbeddingReference { get; }
 
-    /// <summary>Gets the effective chunking configuration.</summary>
-    public RagChunkingOptions Chunking { get; }
+    /// <summary>Gets a defensive snapshot of the effective chunking configuration.</summary>
+    public RagChunkingOptions Chunking => CopyChunking(chunking);
     /// <summary>Gets the immutable ingestion start strategy; the default is manual.</summary>
     public RagIngestionStartStrategy IngestionStrategy { get; }
     /// <summary>Gets the safe embedding display name.</summary>
@@ -44,6 +46,9 @@ public sealed class RagIndexRegistration
     public string VectorStoreDisplayName { get; }
     /// <summary>Gets the named vector-store reference, when one was selected.</summary>
     public string? NamedVectorStoreReference { get; }
+
+    private static RagChunkingOptions CopyChunking(RagChunkingOptions value) =>
+        new() { MaxChunkLength = value.MaxChunkLength, ChunkOverlap = value.ChunkOverlap };
 }
 
 /// <summary>Builds one named RAG index definition without executing ingestion or provider work.</summary>

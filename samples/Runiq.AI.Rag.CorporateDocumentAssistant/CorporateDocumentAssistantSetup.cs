@@ -62,7 +62,6 @@ internal static class CorporateDocumentAssistantSetup
 
         services.AddRuniqRag(rag =>
         {
-            rag.UseInMemoryVectorStore();
             rag.AddIndex(IndexName, index => index
                 .UseDirectory(documentsPath, "*.md", recursive: true)
                 .UseOpenAiEmbeddingModel(OpenAiEmbeddingModels.TextEmbedding3Small)
@@ -70,13 +69,10 @@ internal static class CorporateDocumentAssistantSetup
                 .ConfigureChunking(900, 120)
                 .ConfigureIngestion(ingestion => ingestion.OnStartup()));
         });
-        services.AddRagEmbeddingClient(provider => provider.GetRequiredService<OpenAiEmbeddingClient>());
+        services.AddRagEmbeddingClient(OpenAiEmbeddingModels.TextEmbedding3Small.Reference, provider => provider.GetRequiredService<OpenAiEmbeddingClient>());
         services.Configure<RagOptions>(options =>
         {
             options.DefaultIndexName = IndexName;
-            options.EmbeddingModel = OpenAiEmbeddingModels.TextEmbedding3Small.Reference;
-            options.Chunking.MaxChunkLength = 900;
-            options.Chunking.ChunkOverlap = 120;
         });
     }
 }

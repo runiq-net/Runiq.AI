@@ -46,6 +46,8 @@ public sealed class DefaultRagRetrievalPipeline : IRagRetrievalPipeline
     private readonly IRagOperationTelemetryRecorder? telemetryRecorder;
     private readonly TimeProvider timeProvider;
     private readonly RagOptions options;
+    private readonly IRagIndexRegistry? indexRegistry;
+    private readonly IRagIndexRuntimeConfigurationResolver? runtimeResolver;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DefaultRagRetrievalPipeline"/> class.
@@ -61,18 +63,24 @@ public sealed class DefaultRagRetrievalPipeline : IRagRetrievalPipeline
     /// <see cref="TimeProvider.System"/>.
     /// </param>
     /// <param name="options">The RAG options used to resolve the embedding model.</param>
+    /// <param name="indexRegistry">The optional registered-index source of truth.</param>
+    /// <param name="runtimeResolver">The optional per-index runtime dependency resolver.</param>
     public DefaultRagRetrievalPipeline(
         IEmbeddingClient embeddingClient,
         IRagVectorStore vectorStore,
         IRagOperationTelemetryRecorder? telemetryRecorder = null,
         TimeProvider? timeProvider = null,
-        IOptions<RagOptions>? options = null)
+        IOptions<RagOptions>? options = null,
+        IRagIndexRegistry? indexRegistry = null,
+        IRagIndexRuntimeConfigurationResolver? runtimeResolver = null)
     {
         this.embeddingClient = embeddingClient ?? throw new ArgumentNullException(nameof(embeddingClient));
         this.vectorStore = vectorStore ?? throw new ArgumentNullException(nameof(vectorStore));
         this.telemetryRecorder = telemetryRecorder;
         this.timeProvider = timeProvider ?? TimeProvider.System;
         this.options = options?.Value ?? new RagOptions();
+        this.indexRegistry = indexRegistry;
+        this.runtimeResolver = runtimeResolver;
     }
 
     /// <inheritdoc />
@@ -106,9 +114,10 @@ public sealed class DefaultRagRetrievalPipeline : IRagRetrievalPipeline
             return validationFailure;
         }
 
+        var runtime = ResolveRuntime(request.IndexName);
         var queryVector = request.QueryVector is { Count: > 0 }
             ? request.QueryVector
-            : await ResolveQueryVectorAsync(request.QueryText!, cancellationToken).ConfigureAwait(false);
+            : await ResolveQueryVectorAsync(request.QueryText!, runtime.EmbeddingClient, runtime.EmbeddingModel, cancellationToken).ConfigureAwait(false);
 
         if (queryVector is null || queryVector.Count == 0)
         {
@@ -118,7 +127,7 @@ public sealed class DefaultRagRetrievalPipeline : IRagRetrievalPipeline
         QueryVectorResult queryResult;
         try
         {
-            queryResult = await vectorStore.QueryAsync(
+            queryResult = await runtime.VectorStore.QueryAsync(
                 new QueryVectorRequest
                 {
                     IndexName = request.IndexName,
@@ -201,12 +210,13 @@ public sealed class DefaultRagRetrievalPipeline : IRagRetrievalPipeline
     /// </summary>
     private async Task<IReadOnlyList<float>?> ResolveQueryVectorAsync(
         string queryText,
+        IEmbeddingClient effectiveEmbeddingClient,
+        ModelReference effectiveModel,
         CancellationToken cancellationToken)
     {
         try
         {
-            var model = ResolveEmbeddingModel();
-            var response = await embeddingClient.EmbedAsync(new EmbeddingRequest(model, [queryText], Dimensions: model.EmbeddingDimensions), cancellationToken).ConfigureAwait(false);
+            var response = await effectiveEmbeddingClient.EmbedAsync(new EmbeddingRequest(effectiveModel, [queryText], Dimensions: effectiveModel.EmbeddingDimensions), cancellationToken).ConfigureAwait(false);
             return response.Results.SingleOrDefault()?.Vector;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -220,6 +230,16 @@ public sealed class DefaultRagRetrievalPipeline : IRagRetrievalPipeline
         if (string.IsNullOrWhiteSpace(options.EmbeddingModel)) return ModelReference.Parse("openai/rag-embedding");
 
         return ProviderModelReferenceResolver.Resolve(ModelReference.Parse(options.EmbeddingModel), options.EmbeddingProvider);
+    }
+
+    private (IEmbeddingClient EmbeddingClient, ModelReference EmbeddingModel, IRagVectorStore VectorStore) ResolveRuntime(string indexName)
+    {
+        if (runtimeResolver is not null && indexRegistry?.Registrations.Any(index => string.Equals(index.Name, indexName, StringComparison.Ordinal)) == true)
+        {
+            var runtime = runtimeResolver.Resolve(indexName);
+            return (runtime.EmbeddingClient, runtime.EmbeddingModel, runtime.VectorStore);
+        }
+        return (embeddingClient, ResolveEmbeddingModel(), vectorStore);
     }
 
     /// <summary>

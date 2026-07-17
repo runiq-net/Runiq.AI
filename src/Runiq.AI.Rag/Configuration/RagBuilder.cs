@@ -43,7 +43,10 @@ public sealed class RagBuilder
 
         var builder = new RagIndexBuilder(normalizedName);
         configure(builder);
-        indexes.Add(builder.Build());
+        var registration = builder.Build();
+        indexes.Add(registration);
+        if (string.Equals(registration.VectorStoreReference, "in-memory", StringComparison.Ordinal))
+            services.AddInMemoryRagVectorStore();
         services.RemoveAll<IRagIndexRegistry>();
         services.AddSingleton<IRagIndexRegistry>(new RagIndexRegistry(indexes.AsReadOnly()));
         services.TryAddEnumerable(ServiceDescriptor.Singleton<Microsoft.Extensions.Hosting.IHostedService, RagIngestionHostedService>());

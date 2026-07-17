@@ -56,13 +56,37 @@ public sealed class RagIngestionStartStrategy
         int[] minimums = [0, 0, 1, 1, 0];
         int[] maximums = [59, 23, 31, 12, 7];
         for (var index = 0; index < fields.Length; index++)
-        {
-            if (int.TryParse(fields[index], out var literal) && (literal < minimums[index] || literal > maximums[index]))
-                throw new ArgumentException("The schedule contains a literal outside the supported five-field range.", nameof(expression));
-        }
+            ValidateField(fields[index], minimums[index], maximums[index], expression);
 
         return normalized;
     }
+
+    private static void ValidateField(string field, int minimum, int maximum, string expression)
+    {
+        foreach (var part in field.Split(','))
+        {
+            var stepParts = part.Split('/');
+            if (stepParts.Length > 2 || stepParts.Length == 2 && (!int.TryParse(stepParts[1], out var step) || step <= 0))
+                throw InvalidSchedule(expression);
+
+            var range = stepParts[0];
+            if (range == "*") continue;
+
+            var bounds = range.Split('-');
+            if (bounds.Length > 2 || bounds.Any(bound => !int.TryParse(bound, out _)))
+                throw InvalidSchedule(expression);
+
+            var start = int.Parse(bounds[0], System.Globalization.CultureInfo.InvariantCulture);
+            var end = bounds.Length == 2
+                ? int.Parse(bounds[1], System.Globalization.CultureInfo.InvariantCulture)
+                : start;
+            if (start < minimum || start > maximum || end < minimum || end > maximum || start > end)
+                throw InvalidSchedule(expression);
+        }
+    }
+
+    private static ArgumentException InvalidSchedule(string expression) =>
+        new($"The schedule '{expression}' contains an invalid range, step, or literal for its five-field position.", nameof(expression));
 }
 
 /// <summary>Builds exactly one ingestion start strategy for an index.</summary>

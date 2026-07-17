@@ -179,8 +179,10 @@ public sealed class CorporateDocumentAssistantSampleTests
         var services = new ServiceCollection();
         services.AddLogging();
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["OpenAI:ApiKey"] = "test-key" }).Build();
+        services.AddSingleton<IConfiguration>(configuration);
         CorporateDocumentAssistantSetup.Configure(services, configuration, documentsPath);
-        services.AddRagEmbeddingClient<TEmbeddingClient>();
+        services.AddSingleton<TEmbeddingClient>();
+        services.AddRagEmbeddingClient(OpenAiEmbeddingModels.TextEmbedding3Small.Reference, provider => provider.GetRequiredService<TEmbeddingClient>());
         var provider = services.BuildServiceProvider();
         if (startIngestion) StartHostedServicesAsync(provider).GetAwaiter().GetResult();
         return provider;

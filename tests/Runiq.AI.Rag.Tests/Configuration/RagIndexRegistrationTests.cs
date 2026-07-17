@@ -68,6 +68,16 @@ public sealed class RagIndexRegistrationTests
     public void ScheduledStrategy_ShouldRejectInvalidExpression(string expression) =>
         Assert.Throws<ArgumentException>(() => new RagIngestionStartStrategy(RagIngestionStrategyKind.Scheduled, expression));
 
+    // Verifies malformed ranges and non-positive steps fail during configuration instead of crashing the hosted scheduler.
+    [Theory]
+    [InlineData("*/0 * * * *")]
+    [InlineData("10-5 * * * *")]
+    [InlineData("1-2-3 * * * *")]
+    [InlineData("1//2 * * * *")]
+    [InlineData("60 * * * *")]
+    public void ScheduledStrategy_ShouldRejectUnsafeFieldSegments(string expression) =>
+        Assert.Throws<ArgumentException>(() => new RagIngestionStartStrategy(RagIngestionStrategyKind.Scheduled, expression));
+
     // Verifies that non-scheduled strategies reject schedule state.
     [Theory]
     [InlineData(RagIngestionStrategyKind.Manual)]
@@ -269,6 +279,28 @@ public sealed class RagIndexRegistrationTests
         Assert.True(metadata.IsValid);
         Assert.Equal("documents", Assert.Single(metadata.Sources).DisplayValue);
         Assert.DoesNotContain(Path.GetFullPath("secret-parent"), metadata.Sources[0].DisplayValue, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Verifies callers cannot mutate the registered chunking source of truth through the public options object.
+    [Fact]
+    public void Registration_ShouldDefensivelySnapshotChunkingConfiguration()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag(rag => rag.AddIndex("documents", index =>
+        {
+            CompleteIndex(index);
+            index.ConfigureChunking(500, 50);
+        }));
+        using var provider = services.BuildServiceProvider();
+        var registry = provider.GetRequiredService<IRagIndexRegistry>();
+        var registration = Assert.Single(registry.Registrations);
+
+        registration.Chunking.MaxChunkLength = 42;
+        registration.Chunking.ChunkOverlap = 41;
+
+        Assert.Equal(500, registration.Chunking.MaxChunkLength);
+        Assert.Equal(50, registration.Chunking.ChunkOverlap);
+        Assert.Equal(500, Assert.Single(registry.GetMetadata()).ChunkSize);
     }
 
     // Verifies that custom source implementations can participate without provider-specific registration APIs.
