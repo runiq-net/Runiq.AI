@@ -29,6 +29,48 @@ in the [Agents package guide](../Runiq.AI.Agents/README.md#rag-execution-and-gro
 dotnet add package Runiq.AI.Rag --prerelease
 ```
 
+## Named index ingestion strategies
+
+Named indexes default to `Manual`, so registering a large corpus never unexpectedly blocks application startup.
+Select an explicit lifecycle contract with `ConfigureIngestion`: `Manual`, blocking `OnStartup`, non-blocking
+`BackgroundOnStartup`, or `Scheduled`. Registration stores immutable configuration only; it does not scan files,
+start ingestion, create background work, or run a scheduler.
+
+Use typed provider conveniences for built-in selections and retain string references only for custom registrations:
+
+```csharp
+services.AddRuniqRag(rag => rag.AddIndex("corporate-documents", index => index
+    .UseDirectory("./documents", "*.md", recursive: true)
+    .UseOpenAiEmbeddingModel(OpenAiEmbeddingModels.TextEmbedding3Small)
+    .UseInMemoryVectorStore()
+    .ConfigureIngestion(ingestion => ingestion.OnStartup())));
+```
+
+`OpenAiEmbeddingModels` and `UseOpenAiEmbeddingModel` are provided by `Runiq.AI.Agents.Providers.OpenAI`, keeping
+provider-specific identities outside the provider-neutral RAG package. Schedule expressions use five fields and the
+runtime's default time-zone policy.
+
+## Managed ingestion runtime
+
+Resolve `IRagIngestionManager` to start, inspect, and cancel an index operation. Runtime state and the most recent
+operation are held in memory and reset when the process restarts; registry metadata remains static configuration.
+`OnStartup` blocks host startup, `BackgroundOnStartup` runs through managed background execution, and `Scheduled`
+uses a lightweight local in-process five-field scheduler. Scheduled execution is intentionally per process: it does
+not provide distributed locking, leader election, or multi-instance coordination.
+
+## Dashboard management API
+
+When RAG and the embedded Dashboard are registered together, the Dashboard exposes management endpoints under its
+configured API base path: `GET /api/rag/indexes`, `GET /api/rag/indexes/{indexName}`,
+`GET /api/rag/indexes/{indexName}/status`, `POST /api/rag/indexes/{indexName}/ingestion/start`, and
+`POST /api/rag/indexes/{indexName}/ingestion/cancel`. These endpoints use the Dashboard's configured access policy.
+
+The API projects explicit hosting DTOs and safe registry display metadata; it does not serialize domain models,
+provider credentials, raw paths, document content, or exceptions. Readiness and operation state remain separate.
+All registered indexes support an explicit manual run, including indexes whose strategy is `OnStartup`,
+`BackgroundOnStartup`, or `Scheduled`; the strategy controls automatic triggers only. Start and cancel commands are
+coordinated exclusively by `IRagIngestionManager`, including conflict and cancellation behavior.
+
 ## Related Packages
 
 | Package | Purpose |

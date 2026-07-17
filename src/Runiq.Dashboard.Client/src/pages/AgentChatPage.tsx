@@ -135,6 +135,7 @@ function createAssistantMessageFromResult(result: AgentChatResult): AgentChatMes
     ...createMessage('assistant', result.message ?? ''),
     isStreaming: false,
     toolCalls: mapResultStepsToToolCalls(result),
+    ragSearches: (result.groundingEvidence ?? []).map((payload) => ({ status: 'completed' as const, payload })),
   };
 }
 

@@ -20,6 +20,9 @@ using Runiq.AI.Rag.VectorStores;
 using Runiq.AI.Rag.VectorStores.InMemory;
 using Runiq.AI.Rag.Ingestion;
 using Runiq.AI.Rag.Models.Ingestion;
+using Runiq.AI.Rag.Runtime;
+using Runiq.AI.Core.Studio;
+using Runiq.AI.Rag.Hosting;
 
 namespace Runiq.AI.Rag.DependencyInjection;
 
@@ -52,6 +55,10 @@ public static class RuniqRagServiceCollectionExtensions
         services.TryAddSingleton<RagIngestionState>();
         services.Configure<RagIngestionOptions>(_ => { });
         services.TryAddScoped<IRagDocumentIngestionService, DefaultRagDocumentIngestionService>();
+        services.TryAddSingleton<RagIngestionManager>();
+        services.TryAddSingleton<IRagIngestionManager>(provider => provider.GetRequiredService<RagIngestionManager>());
+        services.TryAddSingleton<RagRuntimeProviderRegistry>();
+        services.TryAddScoped<IRagIndexRuntimeConfigurationResolver, RagIndexRuntimeConfigurationResolver>();
 
         // Last-operation telemetry: singleton so snapshots survive scoped pipeline instances, registered
         // through TryAdd so hosts can replace the recorder, the reader, or the time source.
@@ -63,6 +70,8 @@ public static class RuniqRagServiceCollectionExtensions
             provider => provider.GetRequiredService<DefaultRagOperationTelemetryRecorder>());
 
         services.Configure<RagOptions>(_ => { });
+        services.TryAddSingleton<IRagIndexRegistry>(new RagIndexRegistry(Array.Empty<RagIndexRegistration>()));
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IRuniqDashboardEndpointContributor, RuniqRagDashboardEndpointContributor>());
 
         return services;
     }
@@ -79,6 +88,7 @@ public static class RuniqRagServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.Replace(ServiceDescriptor.Singleton<IEmbeddingClient, TClient>());
+        GetRuntimeProviders(services).Embeddings["default"] = provider => provider.GetRequiredService<IEmbeddingClient>();
 
         return services;
     }
@@ -97,7 +107,23 @@ public static class RuniqRagServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(factory);
 
         services.Replace(ServiceDescriptor.Singleton(factory));
+        GetRuntimeProviders(services).Embeddings["default"] = provider => provider.GetRequiredService<IEmbeddingClient>();
 
+        return services;
+    }
+
+    /// <summary>Registers an embedding client factory for an effective index embedding reference.</summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="reference">The exact provider/model or custom embedding reference.</param>
+    /// <param name="factory">The scoped-resolution-safe client factory.</param>
+    /// <returns>The same service collection.</returns>
+    public static IServiceCollection AddRagEmbeddingClient(this IServiceCollection services, string reference, Func<IServiceProvider, IEmbeddingClient> factory)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(factory);
+        var normalized = RequireRuntimeReference(reference, nameof(reference));
+        GetRuntimeProviders(services).Embeddings[normalized] = factory;
+        services.TryAddScoped<IEmbeddingClient>(factory);
         return services;
     }
 
@@ -142,7 +168,12 @@ public static class RuniqRagServiceCollectionExtensions
     /// <returns>The same service collection so calls can be chained.</returns>
     public static IServiceCollection AddInMemoryRagVectorStore(this IServiceCollection services)
     {
-        return services.AddRagVectorStore<InMemoryRagVectorStore>();
+        ArgumentNullException.ThrowIfNull(services);
+        services.TryAddSingleton<InMemoryRagVectorStore>();
+        services.ReplaceRagVectorStore(ServiceDescriptor.Singleton<IRagVectorStore>(provider => provider.GetRequiredService<InMemoryRagVectorStore>()));
+        GetRuntimeProviders(services).VectorStores["in-memory"] = provider => provider.GetRequiredService<InMemoryRagVectorStore>();
+        GetRuntimeProviders(services).VectorStores["default"] = provider => provider.GetRequiredService<IRagVectorStore>();
+        return services;
     }
 
     /// <summary>
@@ -157,6 +188,7 @@ public static class RuniqRagServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.ReplaceRagVectorStore(ServiceDescriptor.Singleton<IRagVectorStore, TVectorStore>());
+        GetRuntimeProviders(services).VectorStores["default"] = provider => provider.GetRequiredService<IRagVectorStore>();
 
         return services;
     }
@@ -175,7 +207,22 @@ public static class RuniqRagServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(factory);
 
         services.ReplaceRagVectorStore(ServiceDescriptor.Singleton(factory));
+        GetRuntimeProviders(services).VectorStores["default"] = provider => provider.GetRequiredService<IRagVectorStore>();
 
+        return services;
+    }
+
+    /// <summary>Registers a vector-store factory for an effective index store reference.</summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="reference">The exact custom or named vector-store reference.</param>
+    /// <param name="factory">The scoped-resolution-safe store factory.</param>
+    /// <returns>The same service collection.</returns>
+    public static IServiceCollection AddRagVectorStore(this IServiceCollection services, string reference, Func<IServiceProvider, IRagVectorStore> factory)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(factory);
+        var normalized = RequireRuntimeReference(reference, nameof(reference));
+        GetRuntimeProviders(services).VectorStores[normalized] = factory;
         return services;
     }
 
@@ -307,5 +354,18 @@ public static class RuniqRagServiceCollectionExtensions
 
         throw new InvalidOperationException("The RAG vector store registration is invalid.");
     }
+
+    private static RagRuntimeProviderRegistry GetRuntimeProviders(IServiceCollection services)
+    {
+        var existing = services.LastOrDefault(descriptor => descriptor.ServiceType == typeof(RagRuntimeProviderRegistry))?.ImplementationInstance as RagRuntimeProviderRegistry;
+        if (existing is not null) return existing;
+        var registry = new RagRuntimeProviderRegistry();
+        services.RemoveAll<RagRuntimeProviderRegistry>();
+        services.AddSingleton(registry);
+        return registry;
+    }
+
+    private static string RequireRuntimeReference(string reference, string parameterName) =>
+        string.IsNullOrWhiteSpace(reference) ? throw new ArgumentException("A non-empty runtime reference is required.", parameterName) : reference.Trim();
 }
 

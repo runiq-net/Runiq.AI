@@ -6,6 +6,7 @@ using Runiq.AI.Rag.Abstractions.Retrieval;
 using Runiq.AI.Rag.Abstractions.Tools;
 using Runiq.AI.Rag.Abstractions.VectorStores;
 using Runiq.AI.Rag.DependencyInjection;
+using Runiq.AI.Rag.Runtime;
 
 namespace Runiq.AI.Rag.Configuration;
 
@@ -15,6 +16,7 @@ namespace Runiq.AI.Rag.Configuration;
 public sealed class RagBuilder
 {
     private readonly IServiceCollection services;
+    private readonly List<RagIndexRegistration> indexes = [];
 
     /// <summary>
     /// Initializes a new instance of the <see cref="RagBuilder"/> class.
@@ -23,6 +25,32 @@ public sealed class RagBuilder
     public RagBuilder(IServiceCollection services)
     {
         this.services = services ?? throw new ArgumentNullException(nameof(services));
+        var existingRegistry = services.LastOrDefault(descriptor => descriptor.ServiceType == typeof(IRagIndexRegistry))?.ImplementationInstance as IRagIndexRegistry;
+        if (existingRegistry is not null) indexes.AddRange(existingRegistry.Registrations);
+    }
+
+    /// <summary>Adds a validated named index definition without creating the index or starting ingestion.</summary>
+    /// <param name="name">The deterministic logical index name.</param>
+    /// <param name="configure">The index configuration action.</param>
+    /// <returns>The same builder instance.</returns>
+    public RagBuilder AddIndex(string name, Action<RagIndexBuilder> configure)
+    {
+        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("A non-empty index name is required.", nameof(name));
+        ArgumentNullException.ThrowIfNull(configure);
+        var normalizedName = name.Trim();
+        if (indexes.Any(index => string.Equals(index.Name, normalizedName, StringComparison.Ordinal)))
+            throw new InvalidOperationException($"RAG index '{normalizedName}' is already registered.");
+
+        var builder = new RagIndexBuilder(normalizedName);
+        configure(builder);
+        var registration = builder.Build();
+        indexes.Add(registration);
+        if (string.Equals(registration.VectorStoreReference, "in-memory", StringComparison.Ordinal))
+            services.AddInMemoryRagVectorStore();
+        services.RemoveAll<IRagIndexRegistry>();
+        services.AddSingleton<IRagIndexRegistry>(new RagIndexRegistry(indexes.AsReadOnly()));
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<Microsoft.Extensions.Hosting.IHostedService, RagIngestionHostedService>());
+        return this;
     }
 
     /// <summary>

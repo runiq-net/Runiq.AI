@@ -207,7 +207,9 @@ function isValidRagPayload(
       hasNumber(payload, 'maximumAcceptedResultCount') &&
       hasString(payload, 'duration') &&
       Array.isArray(payload.selectedResults) &&
-      Array.isArray(payload.rejectedResults);
+      payload.selectedResults.every(isValidSelectedResult) &&
+      Array.isArray(payload.rejectedResults) &&
+      payload.rejectedResults.every(isValidRejectedResult);
   }
 
   return true;
@@ -223,4 +225,41 @@ function hasString(value: Record<string, unknown>, key: string): boolean {
 
 function hasNumber(value: Record<string, unknown>, key: string): boolean {
   return typeof value[key] === 'number' && Number.isFinite(value[key]);
+}
+
+function isValidSelectedResult(value: unknown): boolean {
+  return isRecord(value) &&
+    hasString(value, 'documentId') &&
+    hasString(value, 'chunkId') &&
+    hasNonNegativeInteger(value, 'contextOrder') &&
+    hasOptionalFiniteNumber(value, 'rawScore') &&
+    hasOptionalFiniteNumber(value, 'normalizedRelevance') &&
+    hasOptionalString(value, 'metric') &&
+    hasOptionalBoolean(value, 'higherIsBetter');
+}
+
+function isValidRejectedResult(value: unknown): boolean {
+  return isRecord(value) &&
+    hasString(value, 'documentId') &&
+    hasString(value, 'chunkId') &&
+    hasString(value, 'reason') &&
+    hasOptionalFiniteNumber(value, 'rawScore') &&
+    hasOptionalFiniteNumber(value, 'normalizedRelevance');
+}
+
+function hasOptionalFiniteNumber(value: Record<string, unknown>, key: string): boolean {
+  return value[key] === undefined || hasNumber(value, key);
+}
+
+function hasOptionalString(value: Record<string, unknown>, key: string): boolean {
+  return value[key] === undefined || typeof value[key] === 'string';
+}
+
+function hasOptionalBoolean(value: Record<string, unknown>, key: string): boolean {
+  return value[key] === undefined || typeof value[key] === 'boolean';
+}
+
+function hasNonNegativeInteger(value: Record<string, unknown>, key: string): boolean {
+  const candidate = value[key];
+  return typeof candidate === 'number' && Number.isFinite(candidate) && Number.isInteger(candidate) && candidate >= 0;
 }

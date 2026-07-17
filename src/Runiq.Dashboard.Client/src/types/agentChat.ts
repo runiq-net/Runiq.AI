@@ -60,6 +60,11 @@ export type AgentChatRagRejectionReason =
 export type AgentChatRagSelectedResult = {
   documentId: string;
   chunkId: string;
+  contextOrder: number;
+  rawScore?: number;
+  normalizedRelevance?: number;
+  metric?: string;
+  higherIsBetter?: boolean;
 };
 
 export type AgentChatRagRejectedResult = {
@@ -174,4 +179,5 @@ export type AgentChatResult = {
   errorCode?: string | null;
   errorMessage?: string | null;
   steps?: AgentChatExecutionStep[];
+  groundingEvidence?: AgentChatRagSearchCompletedEvent[];
 };

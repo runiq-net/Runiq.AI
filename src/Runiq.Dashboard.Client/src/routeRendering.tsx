@@ -84,7 +84,7 @@ export function getRouteTitle(route: DashboardRoute): string {
   }
 
   if (route.page === 'rag') {
-    return 'RAG';
+    return 'RAG Management';
   }
 
   if (route.page === 'workflow-detail') {
@@ -100,7 +100,7 @@ export function getRouteSubtitle(route: DashboardRoute): string | undefined {
   }
 
   if (route.page === 'rag') {
-    return 'Inspect read-only retrieval configuration and last-operation telemetry.';
+    return 'Registered indexes, document sources, ingestion strategies and runtime operations can be monitored and managed from this page.';
   }
 
   return undefined;

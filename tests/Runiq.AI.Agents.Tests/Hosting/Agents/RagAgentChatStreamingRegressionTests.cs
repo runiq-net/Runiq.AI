@@ -18,6 +18,43 @@ namespace Runiq.AI.Core.Tests.Agents;
 
 public sealed class RagAgentChatStreamingRegressionTests
 {
+    // Ensures result-mode responses reuse the completed lifecycle projection without serializing raw RAG metadata or chunk content.
+    [Fact]
+    public async Task ChatAsync_RagEnabledResult_ShouldProjectContentFreeGroundingEvidence()
+    {
+        var agent = new Agent("rag-agent", "RAG Agent", "Help.", "ollama/llama3")
+            .UseRag(options =>
+            {
+                options.IndexName = "documents";
+                options.NoContextBehavior = RagNoContextBehavior.ReturnNotFound;
+            });
+        var services = new ServiceCollection().BuildServiceProvider();
+        var runtime = new AgentExecutionRuntime(
+            [agent],
+            new TestChatClientResolver(),
+            new AgentToolInvoker(services),
+            new EmptyRetriever());
+        var handler = new AgentChatApiHandler(runtime);
+
+        var result = await handler.ChatAsync(
+            agent.Id,
+            new AgentChatRequest("Find notes.", AgentChatResponseMode.Result),
+            new DefaultHttpContext { RequestServices = services },
+            CancellationToken.None);
+
+        var valueResult = Assert.IsAssignableFrom<IValueHttpResult>(result);
+        var response = Assert.IsType<AgentChatResponse>(valueResult.Value);
+        Assert.True(response.IsSuccess, response.ErrorMessage);
+        var evidence = Assert.Single(response.GroundingEvidence!);
+        Assert.Empty(evidence.SelectedResults!);
+        Assert.Equal(RagNoContextReason.NoResults, evidence.NoContextReason);
+
+        var payload = System.Text.Json.JsonSerializer.Serialize(response, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        Assert.Contains("groundingEvidence", payload);
+        Assert.DoesNotContain("\"rag\"", payload);
+        Assert.DoesNotContain("\"content\":\"content\"", payload);
+    }
+
     [Fact]
     // Ensures RAG lifecycle events are projected instead of being silently ignored by the SSE transport.
     public void FromExecutionEvent_ShouldProjectRagSearchLifecycleEvent()

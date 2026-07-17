@@ -671,7 +671,8 @@ public sealed class AgentExecutionRuntime
             runtimeContext.RetrievedRagContext.Count,
             runtimeContext.RejectedRagCandidates.Count,
             runtimeContext.RetrievedRagContext
-                .Select(result => new RagSearchSelectedResult(result.Chunk.DocumentId, result.Chunk.Id))
+                .Select(result => new RagSearchSelectedResult(result.Chunk.DocumentId, result.Chunk.Id,
+                    result.RawScore, result.Relevance, result.Metric, result.HigherIsBetter))
                 .ToArray(),
             runtimeContext.RejectedRagCandidates
                 .Select(result => new RagSearchRejectedResult(

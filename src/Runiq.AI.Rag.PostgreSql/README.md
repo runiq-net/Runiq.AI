@@ -30,6 +30,14 @@ services.AddRuniqRagPostgreSql(options =>
 The last provider registration wins, consistently with the existing RAG vector-store convention. A missing
 connection string fails during registration. Connection failures never fall back to memory.
 
+For named index metadata, select the default or a named PostgreSQL store without opening a connection during index
+registration:
+
+```csharp
+index.UsePostgreSqlVectorStore();
+index.UsePostgreSqlVectorStore("corporate-store");
+```
+
 ## Persistence and migrations
 
 Versioned, provider-owned SQL persists logical indexes, documents, chunks, embeddings, JSONB metadata, and ingestion

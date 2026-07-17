@@ -1,7 +1,0 @@
-Software Request Procedure
-
-Employees who need new software should open an IT service desk request with the business justification, target device, required version, license owner, and expected usage period.
-
-IT reviews each request for security, licensing, compatibility, and budget impact. Approved software is installed through the managed software portal when possible.
-
-Requests for unsupported or high-risk software may require manager approval, security review, or an alternative approved tool recommendation.
