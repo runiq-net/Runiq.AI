@@ -23,6 +23,8 @@ public sealed record AgentChatResponse(
     public IReadOnlyList<AgentChatRagSearchEvent>? GroundingEvidence { get; init; }
     /// <summary>Gets validated citations for this response.</summary>
     public IReadOnlyList<AgentCitation>? Citations { get; init; }
+    /// <summary>Gets the content-free readiness outcome when execution was blocked before retrieval.</summary>
+    public AgentChatRagSearchEvent? RagReadiness { get; init; }
 }
 
 /// <summary>

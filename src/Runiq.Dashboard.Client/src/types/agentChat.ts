@@ -45,12 +45,13 @@ export type AgentChatStreamEventType =
   | 'rag_search_started'
   | 'rag_search_completed'
   | 'rag_search_failed'
+  | 'rag_search_blocked'
   | 'completed'
   | 'failed';
 
 export type AgentChatNonRagStreamEventType = Exclude<
   AgentChatStreamEventType,
-  'rag_search_started' | 'rag_search_completed' | 'rag_search_failed'
+  'rag_search_started' | 'rag_search_completed' | 'rag_search_failed' | 'rag_search_blocked'
 >;
 
 export type AgentChatRagNoContextReason =
@@ -118,11 +119,24 @@ export type AgentChatRagSearchCompletedEvent = AgentChatRagSearchEventBase & {
   selectedResults: AgentChatRagSelectedResult[];
   rejectedResults: AgentChatRagRejectedResult[];
   noContextReason?: AgentChatRagNoContextReason;
+  indexReadiness?: 'Degraded';
+  safeFailureSummary?: string;
 };
 
 export type AgentChatRagSearchFailedEvent = AgentChatRagSearchEventBase & {
   duration: string;
   failureClassification: AgentChatRagFailureClassification;
+};
+
+export type AgentChatRagSearchBlockedEvent = AgentChatRagSearchEventBase & {
+  readiness?: 'NotInitialized' | 'Initializing' | 'Failed';
+  blockingReason: string;
+  suggestedAction: 'StartIngestion' | 'WaitForIngestion' | 'RetryIngestion' | 'CheckConfiguration';
+  lastUpdatedAt?: string;
+  activeOperationState?: string;
+  activeOperationReason?: string;
+  progress?: { discoveredDocuments: number; processedDocuments: number };
+  safeFailureSummary?: string;
 };
 
 export type AgentChatRagLifecycle =
@@ -137,6 +151,10 @@ export type AgentChatRagLifecycle =
   | {
     status: 'failed';
     payload: AgentChatRagSearchFailedEvent;
+  }
+  | {
+    status: 'blocked';
+    payload: AgentChatRagSearchBlockedEvent;
   };
 
 export type AgentChatStreamEventFields = {
@@ -162,6 +180,10 @@ export type AgentChatStreamEvent = AgentChatStreamEventFields & (
   | {
     type: 'rag_search_failed';
     ragSearch: AgentChatRagSearchFailedEvent;
+  }
+  | {
+    type: 'rag_search_blocked';
+    ragSearch: AgentChatRagSearchBlockedEvent;
   }
   | {
     type: AgentChatNonRagStreamEventType;
@@ -201,5 +223,6 @@ export type AgentChatResult = {
   errorMessage?: string | null;
   steps?: AgentChatExecutionStep[];
   groundingEvidence?: AgentChatRagSearchCompletedEvent[];
+  ragReadiness?: AgentChatRagSearchBlockedEvent;
   citations?: AgentChatCitation[];
 };

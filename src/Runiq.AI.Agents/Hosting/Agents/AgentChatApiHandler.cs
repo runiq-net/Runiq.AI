@@ -102,8 +102,11 @@ public sealed class AgentChatApiHandler
                 .ToArray())
         {
             Rag = result.Rag,
-            GroundingEvidence = groundingEvidence,
+            GroundingEvidence = groundingEvidence.Count == 0 ? null : groundingEvidence,
             Citations = result.Citations.Count == 0 ? null : result.Citations,
+            RagReadiness = result.RagReadiness is null
+                ? null
+                : AgentChatStreamEventMapper.FromExecutionEvent(AgentExecutionEvent.FromRagSearch(result.RagReadiness)).RagSearch,
         };
     }
 

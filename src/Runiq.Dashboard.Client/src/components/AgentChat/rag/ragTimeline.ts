@@ -85,6 +85,8 @@ function toLifecycle(event: AgentChatStreamEvent): AgentChatRagLifecycle | null 
       return { status: 'completed', payload: event.ragSearch };
     case 'rag_search_failed':
       return { status: 'failed', payload: event.ragSearch };
+    case 'rag_search_blocked':
+      return { status: 'blocked', payload: event.ragSearch };
     default:
       return null;
   }

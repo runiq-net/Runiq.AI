@@ -18,11 +18,192 @@ using Runiq.AI.Rag.Models.Search;
 using Runiq.AI.Rag.Models.VectorStores;
 using Runiq.AI.Rag.Retrieval;
 using Runiq.AI.Rag.VectorStores.InMemory;
+using Runiq.AI.Rag.Configuration;
+using Runiq.AI.Rag.Runtime;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace Runiq.AI.Agents.Tests.Agents;
 
 public sealed class AgentRagExecutionRuntimeTests
 {
+    // Ensures every execution mode blocks a registered index that has not completed its first ingestion.
+    [Theory]
+    [InlineData(RagExecutionMode.Open)]
+    [InlineData(RagExecutionMode.Grounded)]
+    [InlineData(RagExecutionMode.Required)]
+    public async Task ExecuteStreamAsync_NotInitialized_BlocksEveryExecutionMode(RagExecutionMode mode)
+    {
+        var agent = CreateAgent(mode, mode == RagExecutionMode.Required ? RagNoContextBehavior.FailExecution : RagNoContextBehavior.AnswerNormally);
+        var client = new ScriptedChatClient();
+        var retriever = new RecordingRetriever([]);
+        var status = Status("documents", RagIndexReadiness.NotInitialized);
+        var runtime = CreateReadinessRuntime(agent, client, retriever, new RegisteredIndexRegistry("documents"), new FixedIngestionManager(status));
+
+        var events = await CollectAsync(runtime.ExecuteStreamAsync(agent.Id, "question"));
+
+        var blocked = Assert.IsType<RagSearchBlocked>(events[1].RagSearch);
+        Assert.Equal(RagReadinessSuggestedAction.StartIngestion, blocked.SuggestedAction);
+        Assert.DoesNotContain(events, item => item.RagSearch is RagSearchCompleted or RagSearchFailed);
+        Assert.Null(retriever.Query);
+        Assert.Empty(client.Requests);
+    }
+
+    // Ensures initializing and failed snapshots expose only safe structured readiness details before provider work.
+    [Theory]
+    [InlineData(RagIndexReadiness.Initializing, RagReadinessSuggestedAction.WaitForIngestion)]
+    [InlineData(RagIndexReadiness.Failed, RagReadinessSuggestedAction.RetryIngestion)]
+    public async Task ExecuteStreamAsync_BlockingReadiness_ProjectsSafeSnapshot(RagIndexReadiness readiness, RagReadinessSuggestedAction action)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var progress = new RagIngestionProgress
+        {
+            DiscoveredDocuments = 8,
+            ProcessedDocuments = 3,
+            FailedDocuments = readiness == RagIndexReadiness.Failed ? 1 : 0,
+            CurrentSource = @"C:\secret\source",
+            CurrentDocument = "private-document",
+            LastFailure = new RagIngestionRuntimeFailure { Code = "ProviderSecret", Message = "The ingestion operation failed.", Timestamp = now }
+        };
+        var operation = new RagIngestionOperation
+        {
+            OperationId = Guid.NewGuid(),
+            IndexName = "documents",
+            Reason = RagIngestionOperationReason.Manual,
+            State = readiness == RagIndexReadiness.Initializing ? RagIngestionOperationState.Running : RagIngestionOperationState.Failed,
+            StartedAt = now,
+            CompletedAt = readiness == RagIndexReadiness.Failed ? now : null,
+            Progress = progress
+        };
+        var status = new RagIndexRuntimeStatus
+        {
+            IndexName = "documents",
+            Readiness = readiness,
+            ActiveOperation = readiness == RagIndexReadiness.Initializing ? operation : null,
+            LastOperation = readiness == RagIndexReadiness.Failed ? operation : null,
+            LastUpdatedAt = now
+        };
+        var agent = CreateAgent();
+        var client = new ScriptedChatClient();
+        var retriever = new RecordingRetriever([]);
+        var runtime = CreateReadinessRuntime(agent, client, retriever, new RegisteredIndexRegistry("documents"), new FixedIngestionManager(status));
+
+        var events = await CollectAsync(runtime.ExecuteStreamAsync(agent.Id, "question"));
+        var blocked = Assert.IsType<RagSearchBlocked>(events[1].RagSearch);
+
+        Assert.Equal(action, blocked.SuggestedAction);
+        Assert.Equal(readiness == RagIndexReadiness.Initializing ? 3 : null, blocked.Progress?.ProcessedDocuments);
+        Assert.Equal(readiness == RagIndexReadiness.Failed ? "The ingestion operation failed." : null, blocked.SafeFailureSummary);
+        Assert.DoesNotContain(@"C:\secret", System.Text.Json.JsonSerializer.Serialize(blocked), StringComparison.Ordinal);
+        Assert.DoesNotContain("private-document", System.Text.Json.JsonSerializer.Serialize(blocked), StringComparison.Ordinal);
+        Assert.Null(retriever.Query);
+        Assert.Empty(client.Requests);
+    }
+
+    // Ensures degraded readiness remains a successful retrieval lifecycle with a warning snapshot and model invocation.
+    [Fact]
+    public async Task ExecuteStreamAsync_Degraded_ContinuesRetrievalAndProjectsWarning()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var last = new RagIngestionOperation
+        {
+            OperationId = Guid.NewGuid(),
+            IndexName = "documents",
+            Reason = RagIngestionOperationReason.Manual,
+            State = RagIngestionOperationState.Failed,
+            StartedAt = now,
+            CompletedAt = now,
+            Progress = new RagIngestionProgress { LastFailure = new RagIngestionRuntimeFailure { Code = "IngestionFailed", Message = "The ingestion operation failed.", Timestamp = now } }
+        };
+        var status = new RagIndexRuntimeStatus { IndexName = "documents", Readiness = RagIndexReadiness.Degraded, LastOperation = last, LastUpdatedAt = now };
+        var agent = CreateAgent(RagExecutionMode.Grounded);
+        var client = new OrderingChatClient([]);
+        var retriever = new RecordingRetriever([]);
+        var runtime = CreateReadinessRuntime(agent, client, retriever, new RegisteredIndexRegistry("documents"), new FixedIngestionManager(status));
+
+        var events = await CollectAsync(runtime.ExecuteStreamAsync(agent.Id, "question"));
+        var completed = Assert.IsType<RagSearchCompleted>(events.Single(item => item.RagSearch is RagSearchCompleted).RagSearch);
+
+        Assert.Equal(RagIndexReadiness.Degraded, completed.IndexReadiness);
+        Assert.Equal("The ingestion operation failed.", completed.SafeFailureSummary);
+        Assert.DoesNotContain(events, item => item.RagSearch is RagSearchBlocked);
+        Assert.NotNull(retriever.Query);
+        Assert.Single(client.Requests);
+    }
+
+    // Ensures an initializing snapshot deterministically blocks the current request while the next request observes a ready transition.
+    [Fact]
+    public async Task ExecuteStreamAsync_InitializingThenReady_AppliesOneSnapshotPerExecution()
+    {
+        var agent = CreateAgent();
+        var client = new OrderingChatClient([]);
+        var retriever = new RecordingRetriever([]);
+        var manager = new SequencedIngestionManager(Status("documents", RagIndexReadiness.Initializing), Status("documents", RagIndexReadiness.Ready));
+        var runtime = CreateReadinessRuntime(agent, client, retriever, new RegisteredIndexRegistry("documents"), manager);
+
+        var first = await CollectAsync(runtime.ExecuteStreamAsync(agent.Id, "question"));
+        var second = await CollectAsync(runtime.ExecuteStreamAsync(agent.Id, "question"));
+
+        Assert.Contains(first, item => item.RagSearch is RagSearchBlocked);
+        Assert.DoesNotContain(first, item => item.RagSearch is RagSearchCompleted);
+        Assert.Contains(second, item => item.RagSearch is RagSearchCompleted);
+        Assert.DoesNotContain(second, item => item.RagSearch is RagSearchBlocked);
+        Assert.NotNull(retriever.Query);
+        Assert.Single(client.Requests);
+    }
+
+    // Ensures query-level override readiness takes precedence over a ready agent-configured index without falling back.
+    [Fact]
+    public async Task ExecuteStreamAsync_OverrideNotInitialized_TakesPrecedenceOverReadyAgentIndex()
+    {
+        var agent = CreateAgent();
+        var client = new ScriptedChatClient();
+        var retriever = new RecordingRetriever([]);
+        var manager = new FixedIngestionManager(Status("documents", RagIndexReadiness.Ready), Status("override / ü", RagIndexReadiness.NotInitialized));
+        var runtime = CreateReadinessRuntime(agent, client, retriever, new RegisteredIndexRegistry("documents", "override / ü"), manager);
+
+        var events = await CollectAsync(runtime.ExecuteStreamAsync(agent.Id, new AgentQuery("question") { IndexName = "override / ü" }));
+        var blocked = Assert.IsType<RagSearchBlocked>(events[1].RagSearch);
+
+        Assert.Equal("override / ü", blocked.IndexName);
+        Assert.Equal(RagIndexReadiness.NotInitialized, blocked.Readiness);
+        Assert.Null(retriever.Query);
+        Assert.Empty(client.Requests);
+    }
+    // Ensures an unregistered effective index produces a structured readiness outcome before retrieval or model invocation.
+    [Fact]
+    public async Task ExecuteStreamAsync_UnregisteredIndex_BlocksRetrievalAndModel()
+    {
+        var agent = CreateAgent();
+        var client = new ScriptedChatClient();
+        var retriever = new ThrowingRetriever(new InvalidOperationException("Retriever must not run."));
+        var observability = new RagObservabilityProjection(Options.Create(new RagObservabilityOptions()), null, null,
+            NullLogger<RagObservabilityProjection>.Instance);
+        var runtime = new AgentExecutionRuntime([agent], new TestChatClientResolver(client),
+            new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()), retriever, observability,
+            new EmptyIndexRegistry(), new UnusedIngestionManager());
+
+        var events = new List<AgentExecutionEvent>();
+        await foreach (var executionEvent in runtime.ExecuteStreamAsync(agent.Id,
+            new AgentQuery("question") { IndexName = "missing" })) events.Add(executionEvent);
+
+        Assert.Collection(events,
+            item => Assert.IsType<RagSearchStarted>(item.RagSearch),
+            item =>
+            {
+                var blocked = Assert.IsType<RagSearchBlocked>(item.RagSearch);
+                Assert.Null(blocked.Readiness);
+                Assert.Equal("IndexNotRegistered", blocked.BlockingReason);
+                Assert.Equal(RagReadinessSuggestedAction.CheckConfiguration, blocked.SuggestedAction);
+                Assert.Equal("missing", blocked.IndexName);
+            },
+            item => Assert.Equal("RagIndexNotReady", item.ErrorCode));
+        Assert.Empty(client.Requests);
+
+        var result = await runtime.ExecuteAsync(agent, new AgentQuery("question") { IndexName = "missing" });
+        Assert.Equal("RagIndexNotReady", result.ErrorCode);
+        Assert.Equal("missing", result.RagReadiness?.IndexName);
+    }
     // Ensures named model capabilities are resolved before the shared chat client is selected.
     [Fact]
     public async Task ExecuteStreamAsync_ProjectsNamedModelBeforeClientResolution()
@@ -614,6 +795,21 @@ public sealed class AgentRagExecutionRuntimeTests
     private static AgentExecutionRuntime CreateRuntime(Agent agent, IChatClient client, IRagRetriever? retriever = null) =>
         new([agent], new TestChatClientResolver(client), new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()), retriever);
 
+    private static AgentExecutionRuntime CreateReadinessRuntime(Agent agent, IChatClient client, IRagRetriever retriever,
+        IRagIndexRegistry registry, IRagIngestionManager manager) => new([agent], new TestChatClientResolver(client),
+        new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()), retriever,
+        new RagObservabilityProjection(Options.Create(new RagObservabilityOptions()), null, null, NullLogger<RagObservabilityProjection>.Instance), registry, manager);
+
+    private static async Task<List<AgentExecutionEvent>> CollectAsync(IAsyncEnumerable<AgentExecutionEvent> source)
+    {
+        var events = new List<AgentExecutionEvent>();
+        await foreach (var item in source) events.Add(item);
+        return events;
+    }
+
+    private static RagIndexRuntimeStatus Status(string indexName, RagIndexReadiness readiness) =>
+        new() { IndexName = indexName, Readiness = readiness, LastUpdatedAt = DateTimeOffset.UtcNow };
+
     private static RagSearchResult CreateCandidate(
         string chunkId,
         string documentId,
@@ -689,6 +885,52 @@ public sealed class AgentRagExecutionRuntimeTests
     {
         public Task<IReadOnlyList<RagSearchResult>> RetrieveAsync(RagQuery query, CancellationToken cancellationToken = default) =>
             Task.FromCanceled<IReadOnlyList<RagSearchResult>>(cancellationToken);
+    }
+
+    private sealed class EmptyIndexRegistry : IRagIndexRegistry
+    {
+        public IReadOnlyList<RagIndexRegistration> Registrations => [];
+        public IReadOnlyList<RagIndexMetadata> GetMetadata() => [];
+    }
+
+    private sealed class UnusedIngestionManager : IRagIngestionManager
+    {
+        public Task<RagIngestionOperation> StartAsync(string indexName, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+        public RagIndexRuntimeStatus GetStatus(string indexName) => throw new InvalidOperationException("Status must not be read for an unregistered index.");
+        public Task CancelAsync(string indexName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class FixedIngestionManager(params RagIndexRuntimeStatus[] statuses) : IRagIngestionManager
+    {
+        private readonly Dictionary<string, RagIndexRuntimeStatus> values = statuses.ToDictionary(item => item.IndexName, StringComparer.Ordinal);
+        public Task<RagIngestionOperation> StartAsync(string indexName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public RagIndexRuntimeStatus GetStatus(string indexName) => values[indexName];
+        public Task CancelAsync(string indexName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class SequencedIngestionManager(params RagIndexRuntimeStatus[] statuses) : IRagIngestionManager
+    {
+        private readonly Queue<RagIndexRuntimeStatus> values = new(statuses);
+        public Task<RagIngestionOperation> StartAsync(string indexName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public RagIndexRuntimeStatus GetStatus(string indexName) => values.Dequeue();
+        public Task CancelAsync(string indexName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class RegisteredIndexRegistry : IRagIndexRegistry
+    {
+        public RegisteredIndexRegistry(params string[] names) => Registrations = names.Select(CreateRegistration).ToArray();
+        public IReadOnlyList<RagIndexRegistration> Registrations { get; }
+        public IReadOnlyList<RagIndexMetadata> GetMetadata() => [];
+
+        private static RagIndexRegistration CreateRegistration(string name)
+        {
+            var builder = (RagIndexBuilder)Activator.CreateInstance(typeof(RagIndexBuilder),
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, [name], null)!;
+            builder.UseDirectory("documents").UseVectorStore("store").UseEmbeddingModel("model");
+            var build = typeof(RagIndexBuilder).GetMethod("Build", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            return (RagIndexRegistration)build.Invoke(builder, null)!;
+        }
     }
 
     private sealed class OrderingChatClient(List<string> order) : IChatClient

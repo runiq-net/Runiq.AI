@@ -70,6 +70,10 @@ internal static class AgentChatStreamEventMapper
         {
             RagSearch = CreateCompletedPayload(completed),
         },
+        RagSearchBlocked blocked => CreateRagSearchEvent("rag_search_blocked", blocked) with
+        {
+            RagSearch = CreateBlockedPayload(blocked),
+        },
         RagSearchFailed failed => CreateRagSearchEvent("rag_search_failed", failed) with
         {
             RagSearch = CreateFailedPayload(failed),
@@ -128,6 +132,8 @@ internal static class AgentChatStreamEventMapper
                     result.Metadata.Count == 0 ? null : result.Metadata))
                 .ToArray(),
             NoContextReason = completed.NoContextReason,
+            IndexReadiness = completed.IndexReadiness,
+            SafeFailureSummary = completed.SafeFailureSummary,
         };
 
     private static AgentChatRagSearchEvent CreateFailedPayload(RagSearchFailed failed) =>
@@ -142,6 +148,20 @@ internal static class AgentChatStreamEventMapper
         {
             Duration = failed.Duration,
             FailureClassification = failed.FailureClassification,
+        };
+
+    private static AgentChatRagSearchEvent CreateBlockedPayload(RagSearchBlocked blocked) =>
+        new(blocked.AgentId, blocked.ConversationId, blocked.CorrelationId, blocked.IndexName,
+            blocked.OriginalQuery, blocked.EffectiveQuery, blocked.RequestedCandidateCount)
+        {
+            Readiness = blocked.Readiness,
+            BlockingReason = blocked.BlockingReason,
+            SuggestedAction = blocked.SuggestedAction,
+            LastUpdatedAt = blocked.LastUpdatedAt,
+            ActiveOperationState = blocked.ActiveOperationState,
+            ActiveOperationReason = blocked.ActiveOperationReason,
+            Progress = blocked.Progress,
+            SafeFailureSummary = blocked.SafeFailureSummary,
         };
 
     private static bool IsNormalizedRelevance(double? relevance) =>

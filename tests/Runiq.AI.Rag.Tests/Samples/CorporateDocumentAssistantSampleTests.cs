@@ -68,6 +68,27 @@ public sealed class CorporateDocumentAssistantSampleTests
         Assert.Equal(status.LastOperation?.Progress.ProducedChunks, status.LastOperation?.Progress.ProducedEmbeddings);
     }
 
+    // Verifies the sample's production runtime blocks Agent Chat before startup ingestion without querying the vector store or model.
+    [Fact]
+    public async Task AgentRuntime_BeforeStartupIngestion_ShouldReturnNotInitializedReadiness()
+    {
+        using var documents = TestDocuments.Create();
+        await using var provider = CreateProvider(documents.Path, startIngestion: false);
+        using var scope = provider.CreateScope();
+        var runtime = scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>();
+        var agent = Assert.Single(provider.GetServices<Agent>());
+
+        var events = await runtime.ExecuteStreamAsync(agent.Id, "How many remote work days are allowed?").ToListAsync();
+
+        Assert.IsType<RagSearchStarted>(events[0].RagSearch);
+        var blocked = Assert.IsType<RagSearchBlocked>(events[1].RagSearch);
+        Assert.Equal(RagIndexReadiness.NotInitialized, blocked.Readiness);
+        Assert.Equal(RagReadinessSuggestedAction.StartIngestion, blocked.SuggestedAction);
+        Assert.Equal(CorporateDocumentAssistantSetup.IndexName, blocked.IndexName);
+        Assert.DoesNotContain(events, item => item.RagSearch is RagSearchCompleted or RagSearchFailed);
+        Assert.DoesNotContain(events, item => item.Kind == AgentExecutionEventKind.AssistantDelta);
+    }
+
     // Verifies ingestion and query-time retrieval share the same in-memory store and select the known remote-work document.
     [Fact]
     public async Task Retrieval_ShouldUseStartupIndexAndReturnKnownDocument()

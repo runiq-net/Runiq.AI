@@ -147,7 +147,8 @@ export function parseStreamEventPayload(data: string): AgentChatStreamEvent | nu
     const isKnownRagEvent =
       parsed.type === 'rag_search_started' ||
       parsed.type === 'rag_search_completed' ||
-      parsed.type === 'rag_search_failed';
+      parsed.type === 'rag_search_failed' ||
+      parsed.type === 'rag_search_blocked';
 
     if (parsed.type.startsWith('rag_search_') && !isKnownRagEvent) {
       return null;
@@ -198,6 +199,10 @@ function isValidRagPayload(
 
   if (type === 'rag_search_failed') {
     return hasString(payload, 'duration') && hasString(payload, 'failureClassification');
+  }
+
+  if (type === 'rag_search_blocked') {
+    return hasString(payload, 'blockingReason') && hasString(payload, 'suggestedAction');
   }
 
   if (type === 'rag_search_completed') {

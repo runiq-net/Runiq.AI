@@ -1,11 +1,42 @@
 using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Rag.Models.Retrieval;
 using System.Reflection;
+using Runiq.AI.Rag.Runtime;
 
 namespace Runiq.AI.Agents.Tests.Models;
 
 public sealed class RagSearchEventTests
 {
+    // Ensures blocked readiness cannot represent usable states or a contradictory suggested action.
+    [Fact]
+    public void RagSearchBlocked_ShouldRejectUsableOrContradictoryStates()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => CreateBlocked(RagIndexReadiness.Ready, RagReadinessSuggestedAction.StartIngestion));
+        Assert.Throws<ArgumentOutOfRangeException>(() => CreateBlocked(RagIndexReadiness.Degraded, RagReadinessSuggestedAction.StartIngestion));
+        Assert.Throws<ArgumentException>(() => CreateBlocked(RagIndexReadiness.NotInitialized, RagReadinessSuggestedAction.RetryIngestion));
+        Assert.Throws<ArgumentException>(() => CreateBlocked(null, RagReadinessSuggestedAction.StartIngestion));
+    }
+
+    // Ensures readiness progress rejects negative and internally inconsistent count snapshots.
+    [Fact]
+    public void RagReadinessProgress_ShouldRejectInvalidCounts()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new RagReadinessProgress(-1, 0, 0));
+        Assert.Throws<ArgumentException>(() => new RagReadinessProgress(1, 2, 0));
+        Assert.Throws<ArgumentException>(() => new RagReadinessProgress(2, 1, 2));
+    }
+
+    // Ensures active operation and safe failure fields remain confined to their meaningful readiness states.
+    [Fact]
+    public void RagSearchBlocked_ShouldRejectContradictoryOptionalData()
+    {
+        Assert.Throws<ArgumentException>(() => new RagSearchBlocked("correlation", "agent", "conversation", "index", null, null, 1,
+            RagIndexReadiness.NotInitialized, "NotInitialized", RagReadinessSuggestedAction.StartIngestion,
+            activeOperationState: RagIngestionOperationState.Running));
+        Assert.Throws<ArgumentException>(() => new RagSearchBlocked("correlation", "agent", "conversation", "index", null, null, 1,
+            RagIndexReadiness.Initializing, "Initializing", RagReadinessSuggestedAction.WaitForIngestion,
+            safeFailureSummary: "failure"));
+    }
     [Fact]
     // Ensures RAG lifecycle payloads attach to the existing execution event stream through a type-safe composition point.
     public void ExecutionEvent_ShouldCarryTypedRagSearchPayload()
@@ -291,6 +322,9 @@ public sealed class RagSearchEventTests
 
     private static RagSearchStarted CreateStarted(string correlationId = "retrieval-1") =>
         new(correlationId, "agent-1", "conversation-1", "docs", "query", null, 20);
+
+    private static RagSearchBlocked CreateBlocked(RagIndexReadiness? readiness, RagReadinessSuggestedAction action) =>
+        new("correlation", "agent", "conversation", "index", null, null, 1, readiness, "blocked", action);
 
     private static RagSearchCompleted CreateNoContextCompleted(string correlationId = "retrieval-1") =>
         CreateCompleted(0, 0, 0, [], [], null, null, RagNoContextReason.NoResults, correlationId: correlationId);

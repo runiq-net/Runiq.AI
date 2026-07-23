@@ -72,6 +72,33 @@ test('failed event updates the matching lifecycle', () => {
   }
 });
 
+// Verifies readiness blocking replaces the running row without being classified as retrieval failure or no-context.
+test('readiness blocked event creates a structured action-required lifecycle', () => {
+  const started = applyRagStreamEvent([], startedEvent('retrieval-1'));
+  const parsed = parseStreamEventPayload(JSON.stringify({
+    type: 'rag_search_blocked',
+    ragSearch: {
+      ...basePayload,
+      readiness: 'Initializing',
+      blockingReason: 'Initializing',
+      suggestedAction: 'WaitForIngestion',
+      activeOperationState: 'Running',
+      progress: { discoveredDocuments: 8, processedDocuments: 3, failedDocuments: 0 },
+    },
+  }));
+
+  assert.ok(parsed);
+  const result = applyRagStreamEvent(started, parsed);
+  assert.equal(result.length, 1);
+  assert.equal(result[0]?.status, 'blocked');
+  if (result[0]?.status === 'blocked') {
+    assert.equal(result[0].payload.suggestedAction, 'WaitForIngestion');
+    assert.equal(result[0].payload.progress?.processedDocuments, 3);
+    assert.equal('failureClassification' in result[0].payload, false);
+    assert.equal('noContextReason' in result[0].payload, false);
+  }
+});
+
 // Verifies two retrieval correlations in one conversation remain distinct and preserve arrival order.
 test('separate correlations create separate lifecycle rows', () => {
   const first = applyRagStreamEvent([], startedEvent('retrieval-1'));

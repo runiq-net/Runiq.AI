@@ -37,7 +37,8 @@ function applyStreamEvent(
   if (
     event.type === 'rag_search_started' ||
     event.type === 'rag_search_completed' ||
-    event.type === 'rag_search_failed'
+    event.type === 'rag_search_failed' ||
+    event.type === 'rag_search_blocked'
   ) {
     return {
       ...message,
@@ -136,7 +137,10 @@ function createAssistantMessageFromResult(result: AgentChatResult): AgentChatMes
     ...createMessage('assistant', result.message ?? ''),
     isStreaming: false,
     toolCalls: mapResultStepsToToolCalls(result),
-    ragSearches: (result.groundingEvidence ?? []).map((payload) => ({ status: 'completed' as const, payload })),
+    ragSearches: [
+      ...(result.ragReadiness ? [{ status: 'blocked' as const, payload: result.ragReadiness }] : []),
+      ...(result.groundingEvidence ?? []).map((payload) => ({ status: 'completed' as const, payload })),
+    ],
     citations: result.citations ?? [],
   };
 }

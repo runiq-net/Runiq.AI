@@ -21,9 +21,11 @@ export function RagPage() {
     async function load() {
       try {
         const result = await listRagIndexes(controller.signal);
+        const requestedIndex = new URLSearchParams(window.location?.search ?? '').get('index');
+        const initialIndex = requestedIndex && result.some((item) => item.name === requestedIndex) ? requestedIndex : result[0]?.name ?? null;
         setIndexes(result);
         setDetailLoading(result.length > 0);
-        setSelectedName(result[0]?.name ?? null);
+        setSelectedName(initialIndex);
         setPageError(null);
       } catch (error) {
         if (!controller.signal.aborted) setPageError(safeError(error, 'Registered RAG indexes could not be loaded.'));
