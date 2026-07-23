@@ -4,7 +4,7 @@
 
 This sample is an OpenAI-backed RAG application built entirely on the production Runiq runtime. It registers the typed `corporate-documents` index, discovers Markdown files from a directory, selects `OpenAiEmbeddingModels.TextEmbedding3Small`, uses the DI-managed in-memory vector store, and ingests on startup. The same index then powers RAG Management, Agent Chat, the RAG lifecycle timeline, and grounding evidence.
 
-There is no seed endpoint, debug retrieval endpoint, or sample-only RAG path.
+The optional retrieval comparison endpoint also resolves the production `IRagRetriever`; it does not bypass the registered index or retrieval pipeline.
 
 ## Prerequisites
 
@@ -59,6 +59,23 @@ Starting ingestion again from this screen uses the same managed runtime. Unchang
 Open **Agents**, select **Corporate Document Assistant**, and open Agent Chat. A covered answer can cite the selected policy as `[1]` and shows a separate **Sources cited** section below the answer. These validated citations map only markers actually emitted by the assistant to selected model context. The **Grounded with N sources** card remains broader evidence: it identifies all selected and rejected retrieval results even when the assistant did not cite every selected source.
 
 The evidence represents the actual accepted model context. It is not a formal `[1]` citation system.
+
+## Compare retrieval modes
+
+After the index is ready, use the same production retriever through:
+
+```text
+/retrieval-demo/semantic?query=remote%20work
+/retrieval-demo/lexical?query=%22manager%20approval%22
+/retrieval-demo/hybrid?query=IRagRetriever
+/retrieval-demo/hybrid?query=CS1503
+/retrieval-demo/lexical?query=retrieval-policy.cs
+/retrieval-demo/lexical?query=%22retrieval%20compatibility%20review%22
+```
+
+The JSON response keeps semantic score fields separate from `provenance.lexicalRawScore` and
+`provenance.reciprocalRankFusionScore`, and reports semantic, lexical, and pre-limit fused candidate counts.
+Quoted input demonstrates exact-phrase lexical intent; identifier input demonstrates token-preserving lexical matching.
 
 ## Covered example questions
 

@@ -1,3 +1,5 @@
+using Runiq.AI.Rag.Models.Retrieval;
+
 namespace Runiq.AI.Agents;
 
 /// <summary>
@@ -14,9 +16,11 @@ public sealed class RagSearchRejectedResult
     /// <param name="contentPreview">An optional redacted and bounded content preview.</param>
     /// <param name="previewTruncated">Whether the preview was truncated.</param>
     /// <param name="metadata">The bounded application-approved metadata snapshot.</param>
-    public RagSearchRejectedResult(string documentId, string chunkId, double rawScore,
+    /// <param name="provenance">The structured retrieval provenance.</param>
+    public RagSearchRejectedResult(string documentId, string chunkId, double? rawScore,
         double? normalizedRelevance, RagResultRejectionReason reason, string? contentPreview = null,
-        bool previewTruncated = false, IReadOnlyDictionary<string, string>? metadata = null)
+        bool previewTruncated = false, IReadOnlyDictionary<string, string>? metadata = null,
+        RagRetrievalProvenance? provenance = null)
     {
         DocumentId = string.IsNullOrWhiteSpace(documentId)
             ? throw new ArgumentException("Document id cannot be null, empty, or whitespace.", nameof(documentId))
@@ -32,6 +36,7 @@ public sealed class RagSearchRejectedResult
         ContentPreview = contentPreview;
         PreviewTruncated = previewTruncated;
         Metadata = metadata is null ? new Dictionary<string, string>() : new Dictionary<string, string>(metadata);
+        Provenance = provenance;
     }
 
     /// <summary>Gets the source document identifier.</summary>
@@ -41,7 +46,7 @@ public sealed class RagSearchRejectedResult
     public string ChunkId { get; }
 
     /// <summary>Gets the raw provider score.</summary>
-    public double RawScore { get; }
+    public double? RawScore { get; }
 
     /// <summary>Gets the normalized relevance, when reliably available.</summary>
     public double? NormalizedRelevance { get; }
@@ -54,4 +59,6 @@ public sealed class RagSearchRejectedResult
     public bool PreviewTruncated { get; }
     /// <summary>Gets the bounded application-approved metadata snapshot.</summary>
     public IReadOnlyDictionary<string, string> Metadata { get; }
+    /// <summary>Gets the structured retrieval provenance.</summary>
+    public RagRetrievalProvenance? Provenance { get; }
 }

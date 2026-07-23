@@ -1,5 +1,6 @@
 using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Rag.Models.Search;
+using Runiq.AI.Rag.Models.Retrieval;
 
 namespace Runiq.AI.Agents.Runtime;
 
@@ -12,10 +13,11 @@ internal static class RagResultAcceptanceEvaluator
         ArgumentNullException.ThrowIfNull(candidates);
         ArgumentNullException.ThrowIfNull(options);
 
-        var normalized = candidates
-            .Select(Normalize)
-            .OrderBy(result => result, RagSearchResultComparer.Instance)
-            .ToArray();
+        var normalized = candidates.Select(Normalize).ToArray();
+        if (normalized.All(result => result?.Provenance?.Mode is not (RagRetrievalMode.Lexical or RagRetrievalMode.Hybrid)))
+        {
+            Array.Sort(normalized, RagSearchResultComparer.Instance);
+        }
         var accepted = new List<RagSearchResult>();
         var rejected = new List<RagRejectedResult>();
         var seenContent = new HashSet<string>(StringComparer.Ordinal);
@@ -36,6 +38,10 @@ internal static class RagResultAcceptanceEvaluator
                     rejected.Add(new RagRejectedResult(candidate, RagResultRejectionReason.BelowMinimumRelevance));
                     continue;
                 }
+            }
+            else if (candidate.Provenance?.LexicalRank is not null)
+            {
+                // Lexical and fusion ranks are valid signals but are intentionally not semantic relevance.
             }
             else if (options.ProviderSpecificAcceptance is null)
             {
@@ -72,7 +78,8 @@ internal static class RagResultAcceptanceEvaluator
 
     private static RagSearchResult Normalize(RagSearchResult candidate)
     {
-        if (candidate is null || !double.IsFinite(candidate.RawScore) || string.IsNullOrWhiteSpace(candidate.Metric))
+        if (candidate is null || candidate.RawScore is not double rawScore ||
+            !double.IsFinite(rawScore) || string.IsNullOrWhiteSpace(candidate.Metric))
         {
             return candidate!;
         }
@@ -81,8 +88,8 @@ internal static class RagResultAcceptanceEvaluator
         {
             return candidate with
             {
-                Relevance = candidate.HigherIsBetter && candidate.RawScore is >= -1.0 and <= 1.0
-                    ? (candidate.RawScore + 1.0) / 2.0
+                Relevance = candidate.HigherIsBetter == true && rawScore is >= -1.0 and <= 1.0
+                    ? (rawScore + 1.0) / 2.0
                     : double.NaN,
             };
         }
@@ -91,15 +98,15 @@ internal static class RagResultAcceptanceEvaluator
         {
             return candidate with
             {
-                Relevance = !candidate.HigherIsBetter && candidate.RawScore >= 0.0
-                    ? 1.0 / (1.0 + candidate.RawScore)
+                Relevance = candidate.HigherIsBetter == false && rawScore >= 0.0
+                    ? 1.0 / (1.0 + rawScore)
                     : double.NaN,
             };
         }
 
         if (StringComparer.OrdinalIgnoreCase.Equals(candidate.Metric, RagScoreMetrics.DotProduct))
         {
-            return candidate with { Relevance = candidate.HigherIsBetter ? null : double.NaN };
+            return candidate with { Relevance = candidate.HigherIsBetter == true ? null : double.NaN };
         }
 
         return candidate;
@@ -107,9 +114,11 @@ internal static class RagResultAcceptanceEvaluator
 
     private static bool TryValidateScore(RagSearchResult candidate)
     {
-        return candidate is not null &&
-            double.IsFinite(candidate.RawScore) &&
-            !string.IsNullOrWhiteSpace(candidate.Metric) &&
+        if (candidate is null) return false;
+        var hasLexicalContribution = candidate.Provenance?.LexicalRank is not null;
+        var hasCoherentSemanticScore = candidate.RawScore is double rawScore &&
+            double.IsFinite(rawScore) && !string.IsNullOrWhiteSpace(candidate.Metric);
+        return (hasLexicalContribution || hasCoherentSemanticScore) &&
             (candidate.Relevance is null ||
                 (double.IsFinite(candidate.Relevance.Value) && candidate.Relevance.Value is >= 0.0 and <= 1.0));
     }
@@ -143,11 +152,11 @@ internal static class RagResultAcceptanceEvaluator
             if (left.Relevance.HasValue) return -1;
             if (right.Relevance.HasValue) return 1;
 
-            if (left.HigherIsBetter == right.HigherIsBetter)
+            if (left.HigherIsBetter == right.HigherIsBetter && left.HigherIsBetter.HasValue)
             {
-                return left.HigherIsBetter
-                    ? right.RawScore.CompareTo(left.RawScore)
-                    : left.RawScore.CompareTo(right.RawScore);
+                return left.HigherIsBetter.Value
+                    ? Nullable.Compare(right.RawScore, left.RawScore)
+                    : Nullable.Compare(left.RawScore, right.RawScore);
             }
 
             return 0;

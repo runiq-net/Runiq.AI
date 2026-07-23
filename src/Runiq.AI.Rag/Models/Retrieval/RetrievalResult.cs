@@ -26,10 +26,12 @@ public sealed class RetrievalResult
     /// </summary>
     /// <param name="items">The retrieved matches ordered best match first, or null for an empty success.</param>
     /// <param name="metadata">Provider-independent metadata that describes the retrieval outcome.</param>
+    /// <param name="statistics">Source and fusion candidate counts captured before final limiting.</param>
     /// <returns>A successful retrieval result with <see cref="RetrievalErrorCode.None"/>.</returns>
     public static RetrievalResult Success(
         IReadOnlyList<RetrievalResultItem>? items = null,
-        RagMetadata? metadata = null)
+        RagMetadata? metadata = null,
+        RagRetrievalStatistics? statistics = null)
     {
         return new RetrievalResult
         {
@@ -38,6 +40,7 @@ public sealed class RetrievalResult
             Reason = string.Empty,
             Items = items ?? Array.Empty<RetrievalResultItem>(),
             Metadata = metadata ?? RagMetadata.Empty,
+            Statistics = statistics ?? RagRetrievalStatistics.Empty,
         };
     }
 
@@ -114,5 +117,8 @@ public sealed class RetrievalResult
         get => metadata;
         private init => metadata = value ?? throw new ArgumentNullException(nameof(value));
     }
+
+    /// <summary>Gets the source and fusion candidate counts captured before final limiting.</summary>
+    public RagRetrievalStatistics Statistics { get; private init; } = RagRetrievalStatistics.Empty;
 }
 

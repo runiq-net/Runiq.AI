@@ -8,6 +8,7 @@ using Runiq.AI.Core.AI.Chat;
 using Runiq.AI.Core.AI.Capabilities;
 using Runiq.AI.Core.AI.Embeddings;
 using Runiq.AI.Core.Configuration;
+using Runiq.AI.Core.Agents;
 using Runiq.AI.Core.Models;
 using Runiq.AI.Rag.Abstractions.Retrieval;
 using Runiq.AI.Rag.Models.Documents;
@@ -459,7 +460,7 @@ public sealed class AgentRagExecutionRuntimeTests
         Assert.Empty(client.Requests);
         var candidate = Assert.Single(result.Rag!.Candidates);
         Assert.Equal(RagScoreMetrics.CosineSimilarity, candidate.Metric);
-        Assert.Equal(0.0, candidate.RawScore, precision: 6);
+        Assert.Equal(0.0, candidate.RawScore!.Value, precision: 6);
         Assert.Equal(0.5, candidate.Relevance!.Value, precision: 6);
         Assert.Equal(RagResultRejectionReason.BelowMinimumRelevance, Assert.Single(result.Rag.RejectedResults).Reason);
         Assert.Equal(RagNoContextReason.BelowRelevanceThreshold, result.Rag.NoContextReason);
@@ -686,6 +687,234 @@ public sealed class AgentRagExecutionRuntimeTests
     }
 
     [Fact]
+    // Verifies runtime completion events use source and pre-limit fusion counts carried by retrieval metadata.
+    public async Task ExecuteStreamAsync_HybridMetadata_ReportsRealSourceAndFusionCounts()
+    {
+        var client = new ScriptedChatClient();
+        var agent = CreateAgent(RagExecutionMode.Grounded);
+        agent.Rag!.RetrievalMode = RagRetrievalMode.Hybrid;
+        var candidate = CreateCandidate("chunk", "document", "content", 0.8,
+            RagScoreMetrics.CosineSimilarity, true, 0.9) with
+        {
+            Provenance = new RagRetrievalProvenance
+            {
+                Mode = RagRetrievalMode.Hybrid,
+                SemanticRank = 1,
+                LexicalRank = 2,
+                FusedRank = 1,
+            },
+        };
+
+        var events = await CreateRuntime(agent, client, new MetadataRetriever([candidate]))
+            .ExecuteStreamAsync(agent.Id, "question").ToListAsync();
+
+        var completed = Assert.IsType<RagSearchCompleted>(events[1].RagSearch);
+        Assert.Equal(RagRetrievalMode.Hybrid, completed.RetrievalMode);
+        Assert.Equal(5, completed.SemanticCandidateCount);
+        Assert.Equal(4, completed.LexicalCandidateCount);
+        Assert.Equal(7, completed.FusedCandidateCount);
+        Assert.Equal(1, completed.ActualCandidateCount);
+    }
+
+    [Theory]
+    [InlineData(RagRetrievalMode.Semantic, 3, 0, 0)]
+    [InlineData(RagRetrievalMode.Lexical, 0, 4, 0)]
+    [InlineData(RagRetrievalMode.Hybrid, 3, 4, 5)]
+    // Verifies authoritative metadata and mode-specific provenance remain equivalent across non-streaming, streaming, and SSE paths.
+    public async Task ExecutePaths_AuthoritativeModeMetadata_RemainsEquivalent(
+        RagRetrievalMode mode, int semanticCount, int lexicalCount, int fusedCount)
+    {
+        var agent = CreateAgent(RagExecutionMode.Grounded);
+        agent.Rag!.RetrievalMode = mode;
+        var provenance = CreateModeProvenance(mode);
+        IReadOnlyList<RagSearchResult> candidates =
+        [
+            new()
+            {
+                Chunk = new RagChunk { Id = "selected", DocumentId = "document-a", Content = "shared content" },
+                RawScore = mode == RagRetrievalMode.Lexical ? null : 0.9,
+                Relevance = mode == RagRetrievalMode.Lexical ? null : 0.95,
+                Metric = mode == RagRetrievalMode.Lexical ? null : RagScoreMetrics.CosineSimilarity,
+                HigherIsBetter = mode == RagRetrievalMode.Lexical ? null : true,
+                Provenance = provenance,
+            },
+            new()
+            {
+                Chunk = new RagChunk { Id = "duplicate", DocumentId = "document-b", Content = "shared content" },
+                RawScore = mode == RagRetrievalMode.Lexical ? null : 0.8,
+                Relevance = mode == RagRetrievalMode.Lexical ? null : 0.9,
+                Metric = mode == RagRetrievalMode.Lexical ? null : RagScoreMetrics.CosineSimilarity,
+                HigherIsBetter = mode == RagRetrievalMode.Lexical ? null : true,
+                Provenance = provenance,
+            },
+        ];
+        var statistics = new RagRetrievalStatistics
+        {
+            SemanticCandidateCount = semanticCount,
+            LexicalCandidateCount = lexicalCount,
+            FusedCandidateCount = fusedCount,
+        };
+        var retriever = new MetadataRetriever(candidates, statistics);
+
+        var result = await CreateRuntime(agent, new ScriptedChatClient(), retriever).ExecuteAsync(agent, "question");
+        var events = await CreateRuntime(agent, new ScriptedChatClient(), retriever)
+            .ExecuteStreamAsync(agent.Id, "question").ToListAsync();
+
+        var completedEvent = events.Single(item => item.RagSearch is RagSearchCompleted);
+        var completed = Assert.IsType<RagSearchCompleted>(completedEvent.RagSearch);
+        var sse = AgentChatStreamEventMapper.FromExecutionEvent(completedEvent).RagSearch!;
+        Assert.Equal(mode, result.Rag!.RetrievalMode);
+        Assert.Equal(mode, completed.RetrievalMode);
+        Assert.Equal(mode, sse.RetrievalMode);
+        Assert.Equal(semanticCount, result.Rag.SemanticCandidateCount);
+        Assert.Equal(semanticCount, completed.SemanticCandidateCount);
+        Assert.Equal(semanticCount, sse.SemanticCandidateCount);
+        Assert.Equal(lexicalCount, result.Rag.LexicalCandidateCount);
+        Assert.Equal(lexicalCount, completed.LexicalCandidateCount);
+        Assert.Equal(lexicalCount, sse.LexicalCandidateCount);
+        Assert.Equal(fusedCount, result.Rag.FusedCandidateCount);
+        Assert.Equal(fusedCount, completed.FusedCandidateCount);
+        Assert.Equal(fusedCount, sse.FusedCandidateCount);
+        Assert.Equal(2, result.Rag.CandidateCount);
+        Assert.Equal(2, completed.ActualCandidateCount);
+        Assert.Equal(2, sse.ActualCandidateCount);
+        Assert.Equal(1, result.Rag.AcceptedCount);
+        Assert.Equal(1, result.Rag.RejectedCount);
+        Assert.Single(completed.SelectedResults);
+        Assert.Single(completed.RejectedResults);
+        Assert.Single(sse.SelectedResults!);
+        Assert.Single(sse.RejectedResults!);
+        Assert.Equal(provenance, result.Rag.AcceptedResults[0].Provenance);
+        Assert.Equal(provenance, completed.SelectedResults[0].Provenance);
+        Assert.Equal(provenance, sse.SelectedResults![0].Provenance);
+        if (mode == RagRetrievalMode.Lexical)
+        {
+            Assert.Null(sse.SelectedResults[0].RawScore);
+            Assert.Null(sse.SelectedResults[0].NormalizedRelevance);
+            Assert.Null(sse.SelectedResults[0].Metric);
+            Assert.Null(sse.SelectedResults[0].HigherIsBetter);
+        }
+    }
+
+    [Fact]
+    // Verifies hybrid runtime and SSE preserve semantic-only, lexical-only, and combined provenance from authoritative retrieval.
+    public async Task ExecutePaths_HybridMetadata_PreservesEveryContributionShape()
+    {
+        var agent = CreateAgent(RagExecutionMode.Grounded);
+        agent.Rag!.RetrievalMode = RagRetrievalMode.Hybrid;
+        IReadOnlyList<RagSearchResult> candidates =
+        [
+            HybridCandidate("semantic", "semantic content", new()
+            {
+                Mode = RagRetrievalMode.Hybrid,
+                SemanticRank = 1,
+                SemanticRawScore = 0.9,
+                ReciprocalRankFusionScore = 1d / 61d,
+                FusedRank = 1,
+            }, 0.9),
+            HybridCandidate("lexical", "lexical content", new()
+            {
+                Mode = RagRetrievalMode.Hybrid,
+                LexicalRank = 1,
+                LexicalRawScore = 1.3,
+                ReciprocalRankFusionScore = 1d / 61d,
+                FusedRank = 2,
+            }),
+            HybridCandidate("combined", "combined content", new()
+            {
+                Mode = RagRetrievalMode.Hybrid,
+                SemanticRank = 2,
+                LexicalRank = 2,
+                SemanticRawScore = 0.8,
+                LexicalRawScore = 1.1,
+                ReciprocalRankFusionScore = 2d / 62d,
+                FusedRank = 3,
+            }, 0.8),
+        ];
+        var retriever = new MetadataRetriever(candidates, new()
+        {
+            SemanticCandidateCount = 5,
+            LexicalCandidateCount = 4,
+            FusedCandidateCount = 7,
+        });
+
+        var result = await CreateRuntime(agent, new ScriptedChatClient(), retriever).ExecuteAsync(agent, "question");
+        var events = await CreateRuntime(agent, new ScriptedChatClient(), retriever)
+            .ExecuteStreamAsync(agent.Id, "question").ToListAsync();
+        var completedEvent = events.Single(item => item.RagSearch is RagSearchCompleted);
+        var completed = Assert.IsType<RagSearchCompleted>(completedEvent.RagSearch);
+        var sse = AgentChatStreamEventMapper.FromExecutionEvent(completedEvent).RagSearch!;
+
+        Assert.Contains(result.Rag!.AcceptedResults, item => item.Provenance is { SemanticRank: not null, LexicalRank: null });
+        Assert.Contains(result.Rag.AcceptedResults, item => item.Provenance is { SemanticRank: null, LexicalRank: not null });
+        Assert.Contains(result.Rag.AcceptedResults, item => item.Provenance is { SemanticRank: not null, LexicalRank: not null });
+        Assert.Contains(completed.SelectedResults, item => item.Provenance is { SemanticRank: not null, LexicalRank: null });
+        Assert.Contains(completed.SelectedResults, item => item.Provenance is { SemanticRank: null, LexicalRank: not null });
+        Assert.Contains(completed.SelectedResults, item => item.Provenance is { SemanticRank: not null, LexicalRank: not null });
+        Assert.Contains(sse.SelectedResults!, item => item.Provenance is { SemanticRank: not null, LexicalRank: null });
+        Assert.Contains(sse.SelectedResults!, item => item.Provenance is { SemanticRank: null, LexicalRank: not null });
+        Assert.Contains(sse.SelectedResults!, item => item.Provenance is { SemanticRank: not null, LexicalRank: not null });
+    }
+
+    [Fact]
+    // Verifies a legacy retriever keeps source counts unknown in both streaming and non-streaming outcomes.
+    public async Task ExecutePaths_LegacyRetriever_PreservesUnknownCandidateCounts()
+    {
+        var agent = CreateAgent(RagExecutionMode.Grounded);
+        agent.Rag!.RetrievalMode = RagRetrievalMode.Hybrid;
+        var retriever = new RecordingRetriever([]);
+
+        var result = await CreateRuntime(agent, new ScriptedChatClient(), retriever).ExecuteAsync(agent, "question");
+        var events = await CreateRuntime(agent, new ScriptedChatClient(), retriever)
+            .ExecuteStreamAsync(agent.Id, "question").ToListAsync();
+
+        Assert.Null(result.Rag!.SemanticCandidateCount);
+        Assert.Null(result.Rag.LexicalCandidateCount);
+        Assert.Null(result.Rag.FusedCandidateCount);
+        var completed = Assert.IsType<RagSearchCompleted>(events[1].RagSearch);
+        Assert.Null(completed.SemanticCandidateCount);
+        Assert.Null(completed.LexicalCandidateCount);
+        Assert.Null(completed.FusedCandidateCount);
+    }
+
+    [Fact]
+    // Verifies an undefined retrieval mode fails before retrieval, completion publication, or model execution.
+    public async Task ExecuteStreamAsync_UndefinedRetrievalMode_FailsBeforeExecution()
+    {
+        var client = new ScriptedChatClient();
+        var order = new List<string>();
+        var agent = CreateAgent();
+        agent.Rag!.RetrievalMode = (RagRetrievalMode)999;
+
+        var events = await CreateRuntime(agent, client, new RecordingRetriever(order))
+            .ExecuteStreamAsync(agent.Id, "question").ToListAsync();
+
+        Assert.Single(events);
+        Assert.Equal(AgentExecutionEventKind.Failed, events[0].Kind);
+        Assert.Equal("RagConfigurationInvalid", events[0].ErrorCode);
+        Assert.Empty(order);
+        Assert.Empty(client.Requests);
+        Assert.DoesNotContain(events, item => item.RagSearch is RagSearchCompleted);
+    }
+
+    [Fact]
+    // Verifies a hybrid retrieval failure publishes no successful completion and never starts model execution.
+    public async Task ExecuteStreamAsync_HybridFailure_DoesNotCompleteOrInvokeModel()
+    {
+        var client = new ScriptedChatClient();
+        var agent = CreateAgent();
+        agent.Rag!.RetrievalMode = RagRetrievalMode.Hybrid;
+
+        var events = await CreateRuntime(agent, client,
+                new ThrowingRetriever(new RagRetrievalExecutionException("hybrid failed")))
+            .ExecuteStreamAsync(agent.Id, "question").ToListAsync();
+
+        Assert.Contains(events, item => item.RagSearch is RagSearchFailed);
+        Assert.DoesNotContain(events, item => item.RagSearch is RagSearchCompleted);
+        Assert.Empty(client.Requests);
+    }
+
+    [Fact]
     // Verifies successful empty and fully rejected retrievals publish truthful completed outcomes.
     public async Task ExecuteStreamAsync_NoContext_PublishesCompletedOutcome()
     {
@@ -865,6 +1094,67 @@ public sealed class AgentRagExecutionRuntimeTests
         public Task<IReadOnlyList<RagSearchResult>> RetrieveAsync(RagQuery query, CancellationToken cancellationToken = default) =>
             Task.FromResult(results);
     }
+
+    private sealed class MetadataRetriever(
+        IReadOnlyList<RagSearchResult> results,
+        RagRetrievalStatistics? statistics = null) : IRagRetriever
+    {
+        public Task<IReadOnlyList<RagSearchResult>> RetrieveAsync(
+            RagQuery query,
+            CancellationToken cancellationToken = default) => Task.FromResult(results);
+
+        public Task<RagRetrievalExecutionResult> RetrieveWithMetadataAsync(
+            RagQuery query,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new RagRetrievalExecutionResult
+            {
+                Candidates = results,
+                Statistics = statistics ?? new RagRetrievalStatistics
+                {
+                    SemanticCandidateCount = 5,
+                    LexicalCandidateCount = 4,
+                    FusedCandidateCount = 7,
+                },
+            });
+    }
+
+    private static RagRetrievalProvenance CreateModeProvenance(RagRetrievalMode mode) => mode switch
+    {
+        RagRetrievalMode.Semantic => new()
+        {
+            Mode = mode,
+            SemanticRank = 1,
+            SemanticRawScore = 0.9,
+        },
+        RagRetrievalMode.Lexical => new()
+        {
+            Mode = mode,
+            LexicalRank = 1,
+            LexicalRawScore = 1.2,
+        },
+        RagRetrievalMode.Hybrid => new()
+        {
+            Mode = mode,
+            SemanticRank = 1,
+            LexicalRank = 2,
+            SemanticRawScore = 0.9,
+            LexicalRawScore = 1.2,
+            ReciprocalRankFusionScore = 0.03,
+            FusedRank = 1,
+        },
+        _ => throw new ArgumentOutOfRangeException(nameof(mode)),
+    };
+
+    private static RagSearchResult HybridCandidate(
+        string id, string content, RagRetrievalProvenance provenance, double? semanticScore = null) => new()
+    {
+        Chunk = new RagChunk { Id = id, DocumentId = $"document-{id}", Content = content },
+        RawScore = semanticScore,
+        Relevance = semanticScore,
+        Metric = semanticScore is null ? null : RagScoreMetrics.CosineSimilarity,
+        HigherIsBetter = semanticScore is null ? null : true,
+        Provenance = provenance,
+    };
 
     private sealed class FixedEmbeddingClient(IReadOnlyList<float> vector) : IEmbeddingClient
     {

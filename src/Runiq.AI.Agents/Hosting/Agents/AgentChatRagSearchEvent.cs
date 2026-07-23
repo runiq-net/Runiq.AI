@@ -51,6 +51,22 @@ public sealed class AgentChatRagSearchEvent
     /// <summary>Gets the maximum number of candidates requested from retrieval.</summary>
     public int RequestedCandidateCount { get; }
 
+    /// <summary>Gets the effective retrieval mode.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public RagRetrievalMode RetrievalMode { get; internal init; } = RagRetrievalMode.Semantic;
+
+    /// <summary>Gets the authoritative semantic source count; zero is known and null means unavailable metadata.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? SemanticCandidateCount { get; internal init; }
+
+    /// <summary>Gets the authoritative lexical source count; zero is known and null means unavailable metadata.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? LexicalCandidateCount { get; internal init; }
+
+    /// <summary>Gets the authoritative pre-limit fused count; zero is known and null means unavailable metadata.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? FusedCandidateCount { get; internal init; }
+
     /// <summary>Gets the actual number of candidates returned by a completed retrieval.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? ActualCandidateCount { get; internal init; }
@@ -144,7 +160,8 @@ public sealed class AgentChatRagSelectedResult
 {
     internal AgentChatRagSelectedResult(string documentId, string chunkId, int contextOrder,
         double? rawScore, double? normalizedRelevance, string? metric, bool? higherIsBetter,
-        string? contentPreview, bool previewTruncated, IReadOnlyDictionary<string, string>? metadata)
+        string? contentPreview, bool previewTruncated, IReadOnlyDictionary<string, string>? metadata,
+        RagRetrievalProvenance? provenance = null)
     {
         DocumentId = documentId;
         ChunkId = chunkId;
@@ -156,6 +173,7 @@ public sealed class AgentChatRagSelectedResult
         ContentPreview = contentPreview;
         PreviewTruncated = previewTruncated;
         Metadata = metadata;
+        Provenance = provenance;
     }
 
     /// <summary>Gets the selected document identifier.</summary>
@@ -179,6 +197,8 @@ public sealed class AgentChatRagSelectedResult
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public bool PreviewTruncated { get; }
     /// <summary>Gets the bounded application-approved metadata snapshot.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyDictionary<string, string>? Metadata { get; }
+    /// <summary>Gets structured retrieval provenance.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public RagRetrievalProvenance? Provenance { get; }
 }
 
 /// <summary>Describes a RAG candidate rejected by runtime policy without exposing its content.</summary>
@@ -190,7 +210,7 @@ public sealed class AgentChatRagRejectedResult
         double? rawScore,
         double? normalizedRelevance,
         RagResultRejectionReason reason, string? contentPreview, bool previewTruncated,
-        IReadOnlyDictionary<string, string>? metadata)
+        IReadOnlyDictionary<string, string>? metadata, RagRetrievalProvenance? provenance = null)
     {
         DocumentId = documentId;
         ChunkId = chunkId;
@@ -200,6 +220,7 @@ public sealed class AgentChatRagRejectedResult
         ContentPreview = contentPreview;
         PreviewTruncated = previewTruncated;
         Metadata = metadata;
+        Provenance = provenance;
     }
 
     /// <summary>Gets the rejected document identifier.</summary>
@@ -225,4 +246,6 @@ public sealed class AgentChatRagRejectedResult
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public bool PreviewTruncated { get; }
     /// <summary>Gets the bounded application-approved metadata snapshot.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyDictionary<string, string>? Metadata { get; }
+    /// <summary>Gets structured retrieval provenance.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public RagRetrievalProvenance? Provenance { get; }
 }

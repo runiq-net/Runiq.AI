@@ -1,5 +1,6 @@
 using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Rag.Models.Search;
+using Runiq.AI.Rag.Models.Retrieval;
 
 namespace Runiq.AI.Agents;
 
@@ -17,7 +18,9 @@ public sealed class AgentRagExecutionMetadata
         bool isAnswerGrounded,
         IReadOnlyList<RagSearchResult> candidates,
         IReadOnlyList<RagSearchResult> acceptedResults,
-        IReadOnlyList<RagRejectedResult> rejectedResults)
+        IReadOnlyList<RagRejectedResult> rejectedResults,
+        RagRetrievalMode retrievalMode,
+        RagRetrievalStatistics retrievalStatistics)
     {
         Mode = mode;
         HasAcceptedContext = hasAcceptedContext;
@@ -28,6 +31,10 @@ public sealed class AgentRagExecutionMetadata
         Candidates = candidates;
         AcceptedResults = acceptedResults;
         RejectedResults = rejectedResults;
+        RetrievalMode = retrievalMode;
+        SemanticCandidateCount = retrievalStatistics.SemanticCandidateCount;
+        LexicalCandidateCount = retrievalStatistics.LexicalCandidateCount;
+        FusedCandidateCount = retrievalStatistics.FusedCandidateCount;
     }
 
     /// <summary>
@@ -90,4 +97,16 @@ public sealed class AgentRagExecutionMetadata
     /// Gets the number of rejected retrieval candidates.
     /// </summary>
     public int RejectedCount => RejectedResults.Count;
+
+    /// <summary>Gets the effective retrieval mode.</summary>
+    public RagRetrievalMode RetrievalMode { get; }
+
+    /// <summary>Gets the authoritative semantic source count, where zero is known and null means it was not provided.</summary>
+    public int? SemanticCandidateCount { get; }
+
+    /// <summary>Gets the authoritative lexical source count, where zero is known and null means it was not provided.</summary>
+    public int? LexicalCandidateCount { get; }
+
+    /// <summary>Gets the authoritative pre-limit fused count, where zero is known and null means it was not provided.</summary>
+    public int? FusedCandidateCount { get; }
 }

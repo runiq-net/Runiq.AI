@@ -117,6 +117,86 @@ internal sealed class PostgreSqlRagVectorStore : IRagVectorStore
     }
 
     /// <inheritdoc />
+    public async Task<QueryLexicalResult> QueryLexicalAsync(QueryLexicalRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        await schema.EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(request.QueryText) || request.TopK <= 0)
+            return new QueryLexicalResult { Succeeded = false, Reason = "Lexical query is invalid." };
+        if (request.MetadataFilter.Criteria.Any(criterion =>
+                criterion.Operator != RetrievalMetadataFilterOperator.Equal))
+            return new QueryLexicalResult { Succeeded = false, Reason = "Metadata filter operator is not supported." };
+
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = CreateLexicalCommand(connection, schema.QuotedSchema, request);
+        var records = new List<VectorSearchResult>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var metadata = JsonSerializer.Deserialize<Dictionary<string, string>>(reader.GetString(2)) ?? [];
+            records.Add(new VectorSearchResult
+            {
+                Id = reader.GetString(0),
+                Content = reader.GetString(1),
+                Metadata = new RagMetadata(metadata),
+                RawScore = Convert.ToDouble(reader.GetValue(3), System.Globalization.CultureInfo.InvariantCulture),
+                Relevance = null,
+                Metric = RagScoreMetrics.LexicalRank,
+                HigherIsBetter = true,
+            });
+        }
+        return new QueryLexicalResult { Succeeded = true, Records = records };
+    }
+
+    internal static NpgsqlCommand CreateLexicalCommand(
+        NpgsqlConnection connection,
+        string quotedSchema,
+        QueryLexicalRequest request)
+    {
+        var text = request.QueryText.Trim();
+        var exact = text.Length >= 2 && text[0] == '"' && text[^1] == '"';
+        if (exact) text = text[1..^1].Trim();
+        var command = new NpgsqlCommand { Connection = connection };
+        var clauses = new List<string> { "index_name=@index" };
+        command.Parameters.AddWithValue("index", request.IndexName);
+        command.Parameters.AddWithValue("query", text);
+        command.Parameters.AddWithValue("pattern", $"%{EscapeLike(text)}%");
+        command.Parameters.AddWithValue("limit", request.TopK);
+        for (var i = 0; i < request.MetadataFilter.Criteria.Count; i++)
+        {
+            var criterion = request.MetadataFilter.Criteria[i];
+            clauses.Add($"metadata ->> @key{i} = @value{i}");
+            command.Parameters.AddWithValue($"key{i}", criterion.Key);
+            command.Parameters.AddWithValue($"value{i}", criterion.Value);
+        }
+        var queryFunction = exact ? "phraseto_tsquery" : "websearch_to_tsquery";
+        var baseFilter = string.Join(" AND ", clauses);
+        command.CommandText = $"""
+            WITH lexical_candidates AS (
+                SELECT chunk_id, content, metadata, document_id,
+                       ts_rank_cd(lexical_search, {queryFunction}('simple', @query))::double precision AS source_score
+                FROM {quotedSchema}.rag_chunks
+                WHERE {baseFilter} AND lexical_search @@ {queryFunction}('simple', @query)
+                UNION ALL
+                SELECT chunk_id, content, metadata, document_id, 1.0::double precision AS source_score
+                FROM {quotedSchema}.rag_chunks
+                WHERE {baseFilter} AND lower(content) LIKE lower(@pattern) ESCAPE '\'
+            )
+            SELECT chunk_id, content, metadata, sum(source_score) AS lexical_score
+            FROM lexical_candidates
+            GROUP BY chunk_id, content, metadata, document_id
+            ORDER BY lexical_score DESC, document_id ASC, chunk_id ASC
+            LIMIT @limit
+            """;
+        return command;
+    }
+
+    private static string EscapeLike(string value) =>
+        value.Replace(@"\", @"\\", StringComparison.Ordinal)
+            .Replace("%", @"\%", StringComparison.Ordinal)
+            .Replace("_", @"\_", StringComparison.Ordinal);
+
+    /// <inheritdoc />
     public async Task<UpsertVectorResult> UpsertAsync(string indexName, RagChunk chunk, RagEmbedding embedding, CancellationToken cancellationToken = default) => await ((IRagVectorStore)this).UpsertAsync(indexName, chunk, embedding, cancellationToken).ConfigureAwait(false);
     /// <inheritdoc />
     public async Task<IReadOnlyList<RagSearchResult>> SearchAsync(RagQuery query, RagEmbedding embedding, CancellationToken cancellationToken = default)

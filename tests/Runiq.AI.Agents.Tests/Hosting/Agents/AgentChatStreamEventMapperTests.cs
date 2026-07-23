@@ -1,6 +1,7 @@
 using Runiq.AI.Agents;
 using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Core.Agents;
+using Runiq.AI.Rag.Models.Retrieval;
 using System.Text.Json;
 
 namespace Runiq.AI.Core.Tests.Agents;
@@ -168,7 +169,9 @@ public sealed class AgentChatStreamEventMapperTests
             isAnswerGrounded: false,
             [],
             [],
-            []);
+            [],
+            RagRetrievalMode.Semantic,
+            RagRetrievalStatistics.Empty);
         var executionEvent = AgentExecutionEvent.Completed(metadata);
 
         var streamEvent = AgentChatStreamEventMapper.FromExecutionEvent(executionEvent);

@@ -78,6 +78,24 @@ public interface IRagVectorStore
     }
 
     /// <summary>
+    /// Queries indexed lexical content. Providers that do not support lexical retrieval return an explicit failure.
+    /// </summary>
+    /// <param name="request">The lexical query request.</param>
+    /// <param name="cancellationToken">A token that can cancel the operation.</param>
+    /// <returns>The lexical query result.</returns>
+    Task<QueryLexicalResult> QueryLexicalAsync(
+        QueryLexicalRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return Task.FromResult(new QueryLexicalResult
+        {
+            Succeeded = false,
+            Reason = "Lexical query operation is not implemented by this vector store provider.",
+        });
+    }
+
+    /// <summary>
     /// Inserts or updates a chunk and its embedding in the specified vector index.
     /// </summary>
     /// <param name="indexName">The vector index name that will receive the chunk vector.</param>

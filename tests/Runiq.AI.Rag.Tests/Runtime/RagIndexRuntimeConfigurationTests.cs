@@ -9,6 +9,7 @@ using Runiq.AI.Rag.Configuration;
 using Runiq.AI.Rag.DependencyInjection;
 using Runiq.AI.Rag.Models.Ingestion;
 using Runiq.AI.Rag.Models.Retrieval;
+using Runiq.AI.Rag.Models.VectorStores;
 using Runiq.AI.Rag.Runtime;
 using Runiq.AI.Rag.VectorStores.InMemory;
 
@@ -16,6 +17,84 @@ namespace Runiq.AI.Rag.Tests.Runtime;
 
 public sealed class RagIndexRuntimeConfigurationTests
 {
+    [Fact]
+    // Verifies lexical-only retrieval resolves the named store without requiring or falling back through embedding configuration.
+    public async Task LexicalRetrieval_ShouldUseNamedStoreWithoutEmbeddingClient()
+    {
+        var services = new ServiceCollection();
+        var globalStore = new InMemoryRagVectorStore();
+        var namedStore = new InMemoryRagVectorStore();
+        services.AddRuniqRag(rag => rag.AddIndex("documents",
+            index => index.AddSource(new TextSource("source")).UseEmbeddingModel("openai/not-registered").UseVectorStore("named")));
+        services.AddRagVectorStore(_ => globalStore);
+        services.AddRagVectorStore("named", _ => namedStore);
+        await namedStore.CreateIndexAsync(new() { IndexName = "documents", Dimensions = 2 });
+        await namedStore.UpsertAsync(new()
+        {
+            IndexName = "documents",
+            Records = [new() { Id = "named", Content = "IRagRetriever named store", Values = [1f, 0f] }],
+        });
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var result = await scope.ServiceProvider.GetRequiredService<IRagRetrievalPipeline>().RetrieveAsync(new()
+        {
+            IndexName = "documents",
+            QueryText = "IRagRetriever",
+            Mode = RagRetrievalMode.Lexical,
+        });
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("named", Assert.Single(result.Items).RecordId);
+    }
+
+    [Fact]
+    // Verifies a named store without lexical capability fails explicitly instead of using the global store.
+    public async Task LexicalRetrieval_ShouldFailWhenNamedStoreHasNoLexicalCapability()
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag(rag => rag.AddIndex("documents",
+            index => index.AddSource(new TextSource("source")).UseEmbeddingModel("openai/not-registered").UseVectorStore("semantic-only")));
+        services.AddRagVectorStore(_ => new InMemoryRagVectorStore());
+        services.AddRagVectorStore("semantic-only", _ => new SemanticOnlyStore());
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var result = await scope.ServiceProvider.GetRequiredService<IRagRetrievalPipeline>().RetrieveAsync(new()
+        {
+            IndexName = "documents",
+            QueryText = "query",
+            Mode = RagRetrievalMode.Lexical,
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(RetrievalErrorCode.VectorStoreQueryFailed, result.ErrorCode);
+    }
+
+    [Theory]
+    [InlineData(RagRetrievalMode.Semantic)]
+    [InlineData(RagRetrievalMode.Hybrid)]
+    // Verifies named semantic and hybrid modes still require their configured embedding dependency.
+    public async Task SemanticModes_ShouldRejectMissingNamedEmbedding(RagRetrievalMode mode)
+    {
+        var services = new ServiceCollection();
+        services.AddRuniqRag(rag => rag.AddIndex("documents",
+            index => index.AddSource(new TextSource("source")).UseEmbeddingModel("openai/missing").UseVectorStore("semantic-only")));
+        services.AddRagVectorStore("semantic-only", _ => new SemanticOnlyStore());
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            scope.ServiceProvider.GetRequiredService<IRagRetrievalPipeline>().RetrieveAsync(new()
+            {
+                IndexName = "documents",
+                QueryText = "query",
+                Mode = mode,
+            }));
+
+        Assert.Contains("unregistered embedding", exception.Message, StringComparison.Ordinal);
+    }
+
     // Verifies two indexes concurrently use isolated chunking, embedding models, clients, and vector stores through the production pipeline.
     [Fact]
     public async Task DifferentIndexes_ShouldUseIsolatedEffectiveRuntimeConfiguration()
@@ -140,5 +219,25 @@ public sealed class RagIndexRuntimeConfigurationTests
             InputCounts.Add(request.Inputs.Count);
             return Task.FromResult(new EmbeddingResponse(request.Inputs.Select((_, index) => new EmbeddingResult(index, [1f, 0f, 0f], 3)).ToArray()));
         }
+    }
+
+    private sealed class SemanticOnlyStore : IRagVectorStore
+    {
+        public Task<CreateVectorIndexResult> CreateIndexAsync(
+            CreateVectorIndexRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<UpsertVectorResult> UpsertAsync(
+            UpsertVectorRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<Runiq.AI.Rag.Models.Search.RagSearchResult>> SearchAsync(
+            Runiq.AI.Rag.Models.Queries.RagQuery query,
+            Runiq.AI.Rag.Models.Embeddings.RagEmbedding embedding,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<QueryVectorResult> QueryAsync(
+            QueryVectorRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new QueryVectorResult { Succeeded = true, Records = [] });
     }
 }

@@ -365,7 +365,7 @@ public sealed class AgentExecutionRuntime
             var safeQueries = observability.ProjectQueries(query.Message, effective: null);
             yield return AgentExecutionEvent.FromRagSearch(new RagSearchStarted(
                 correlationId, agent.Id, query.ConversationId, indexName, safeQueries.Original, safeQueries.Effective,
-                activeRag.Acceptance.CandidateCount));
+                activeRag.Acceptance.CandidateCount, activeRag.RetrievalMode));
 
             var readinessBlock = ResolveReadinessBlock(
                 correlationId, agent.Id, query.ConversationId, indexName, safeQueries,
@@ -679,14 +679,16 @@ public sealed class AgentExecutionRuntime
         string query,
         CancellationToken cancellationToken)
     {
-        var candidates = await ragRetriever!.RetrieveAsync(
+        var retrieval = await ragRetriever!.RetrieveWithMetadataAsync(
             new RagQuery
             {
                 Text = query,
                 IndexName = indexName,
                 TopK = ragOptions.Acceptance.CandidateCount,
+                Mode = ragOptions.RetrievalMode,
             },
             cancellationToken).ConfigureAwait(false);
+        var candidates = retrieval.Candidates;
 
         if (candidates is null)
         {
@@ -707,7 +709,8 @@ public sealed class AgentExecutionRuntime
             evaluation.AcceptedResults,
             evaluation.Candidates,
             evaluation.RejectedResults,
-            noContextReason);
+            noContextReason,
+            retrieval.Statistics);
     }
 
     private static RetrievalErrorCode ClassifyRetrievalFailure(Exception exception) =>
@@ -728,7 +731,7 @@ public sealed class AgentExecutionRuntime
     {
         var topCandidate = runtimeContext.RetrievedRagCandidates.FirstOrDefault(candidate =>
             candidate is not null &&
-            double.IsFinite(candidate.RawScore) &&
+            candidate.RawScore is double rawScore && double.IsFinite(rawScore) &&
             !string.IsNullOrWhiteSpace(candidate.Metric) &&
             (candidate.Relevance is null ||
                 double.IsFinite(candidate.Relevance.Value) && candidate.Relevance.Value is >= 0 and <= 1));
@@ -751,7 +754,8 @@ public sealed class AgentExecutionRuntime
                     return new RagSearchSelectedResult(result.Chunk.DocumentId, result.Chunk.Id,
                         result.RawScore, result.Relevance, result.Metric, result.HigherIsBetter,
                         preview.Value, preview.Truncated,
-                        observability.ProjectMetadata(new Dictionary<string, string>(result.Metadata.Values)));
+                        observability.ProjectMetadata(new Dictionary<string, string>(result.Metadata.Values)),
+                        result.Provenance);
                 })
                 .ToArray(),
             runtimeContext.RejectedRagCandidates
@@ -761,7 +765,8 @@ public sealed class AgentExecutionRuntime
                     return new RagSearchRejectedResult(result.Result.Chunk.DocumentId, result.Result.Chunk.Id,
                         result.Result.RawScore, result.Result.Relevance, result.Reason,
                         preview.Value, preview.Truncated,
-                        observability.ProjectMetadata(new Dictionary<string, string>(result.Result.Metadata.Values)));
+                        observability.ProjectMetadata(new Dictionary<string, string>(result.Result.Metadata.Values)),
+                        result.Result.Provenance);
                 })
                 .ToArray(),
             options.Acceptance.MaximumAcceptedResults,
@@ -770,7 +775,11 @@ public sealed class AgentExecutionRuntime
             topCandidate?.Relevance,
             runtimeContext.NoContextReason,
             readinessStatus?.Readiness == RagIndexReadiness.Degraded ? RagIndexReadiness.Degraded : null,
-            readinessStatus?.Readiness == RagIndexReadiness.Degraded ? readinessStatus.LastOperation?.Progress.LastFailure?.Message : null);
+            readinessStatus?.Readiness == RagIndexReadiness.Degraded ? readinessStatus.LastOperation?.Progress.LastFailure?.Message : null,
+            options.RetrievalMode,
+            runtimeContext.RetrievalStatistics.SemanticCandidateCount,
+            runtimeContext.RetrievalStatistics.LexicalCandidateCount,
+            runtimeContext.RetrievalStatistics.FusedCandidateCount);
     }
 
     private static AgentRagExecutionMetadata? CreateRagMetadata(
@@ -795,7 +804,9 @@ public sealed class AgentExecutionRuntime
                 options.Mode is RagExecutionMode.Grounded or RagExecutionMode.Required,
             runtimeContext.RetrievedRagCandidates,
             runtimeContext.RetrievedRagContext,
-            runtimeContext.RejectedRagCandidates);
+            runtimeContext.RejectedRagCandidates,
+            options.RetrievalMode,
+            runtimeContext.RetrievalStatistics);
     }
 
 }

@@ -111,6 +111,41 @@ public sealed class CorporateDocumentAssistantSampleTests
         Assert.Same(provider.GetRequiredService<IRagVectorStore>(), scope.ServiceProvider.GetRequiredService<IRagVectorStore>());
     }
 
+    [Fact]
+    // Verifies bundled sample content is deterministically retrievable through the real semantic, lexical, hybrid, identifier, and exact-phrase paths.
+    public async Task BundledEngineeringHandbook_ShouldBeRetrievableAcrossAllModes()
+    {
+        var documentsPath = Path.Combine(AppContext.BaseDirectory, "SampleDocuments");
+        await using var provider = CreateProvider(documentsPath, startIngestion: false);
+        await StartHostedServicesAsync(provider);
+        using var scope = provider.CreateScope();
+        var retriever = scope.ServiceProvider.GetRequiredService<IRagRetriever>();
+
+        var semantic = await RetrieveAsync("IRagRetriever", RagRetrievalMode.Semantic);
+        var hybrid = await RetrieveAsync("CS1503", RagRetrievalMode.Hybrid);
+        var exactPhrase = await RetrieveAsync("\"retrieval compatibility review\"", RagRetrievalMode.Lexical);
+        var lexicalQueries = new[] { "IRagRetriever", "CS1503", "RagSearchCompleted", "retrieval-policy.cs" };
+        var lexical = new List<RagRetrievalExecutionResult>();
+        foreach (var query in lexicalQueries)
+            lexical.Add(await RetrieveAsync(query, RagRetrievalMode.Lexical));
+
+        AssertHandbookResult(semantic, RagRetrievalMode.Semantic);
+        AssertHandbookResult(hybrid, RagRetrievalMode.Hybrid);
+        AssertHandbookResult(exactPhrase, RagRetrievalMode.Lexical);
+        Assert.All(lexical, result => AssertHandbookResult(result, RagRetrievalMode.Lexical));
+        Assert.Contains(hybrid.Candidates, candidate =>
+            candidate.Provenance is { SemanticRank: not null, LexicalRank: not null, ReciprocalRankFusionScore: not null });
+
+        Task<RagRetrievalExecutionResult> RetrieveAsync(string query, RagRetrievalMode mode) =>
+            retriever.RetrieveWithMetadataAsync(new()
+            {
+                IndexName = CorporateDocumentAssistantSetup.IndexName,
+                Text = query,
+                TopK = 5,
+                Mode = mode,
+            });
+    }
+
     // Verifies the sample composition ingests on startup and grounds the real Agent runtime without promoting document instructions.
     [Fact]
     public async Task AgentRuntime_ShouldGroundCoveredQuestion_AndReturnNotFoundForUncoveredQuestion()
@@ -277,7 +312,34 @@ public sealed class CorporateDocumentAssistantSampleTests
         private static IReadOnlyList<float> Vector(string text)
         {
             var normalized = text.ToLowerInvariant();
-            return [normalized.Contains("remote") || normalized.Contains("work days") ? 1 : 0, normalized.Contains("expense") || normalized.Contains("manager approval") ? 1 : 0, normalized.Contains("security") || normalized.Contains("incident") ? 1 : 0, 0.01f];
+            return
+            [
+                normalized.Contains("remote") || normalized.Contains("work days") ? 1 : 0,
+                normalized.Contains("expense") || normalized.Contains("manager approval") ? 1 : 0,
+                normalized.Contains("security") || normalized.Contains("incident") ? 1 : 0,
+                normalized.Contains("iragretriever") ||
+                normalized.Contains("cs1503") ||
+                normalized.Contains("ragsearchcompleted") ||
+                normalized.Contains("retrieval-policy.cs") ||
+                normalized.Contains("retrieval compatibility review") ? 1 : 0.01f,
+            ];
+        }
+    }
+
+    private static void AssertHandbookResult(RagRetrievalExecutionResult result, RagRetrievalMode mode)
+    {
+        Assert.Contains(result.Candidates, item =>
+            item.Chunk.DocumentId.Contains("engineering-support-handbook", StringComparison.Ordinal));
+        var candidate = result.Candidates.First(item =>
+            item.Chunk.DocumentId.Contains("engineering-support-handbook", StringComparison.Ordinal));
+        Assert.Equal(mode, candidate.Provenance?.Mode);
+        if (mode == RagRetrievalMode.Lexical)
+        {
+            Assert.Null(candidate.RawScore);
+            Assert.Null(candidate.Relevance);
+            Assert.Null(candidate.Metric);
+            Assert.Null(candidate.HigherIsBetter);
+            Assert.NotNull(candidate.Provenance?.LexicalRawScore);
         }
     }
 

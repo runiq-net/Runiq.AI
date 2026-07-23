@@ -98,6 +98,14 @@ public sealed class ValidatingRagVectorStore : IRagVectorStore
     }
 
     /// <inheritdoc />
+    public Task<QueryLexicalResult> QueryLexicalAsync(
+        QueryLexicalRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return innerVectorStore.QueryLexicalAsync(request, cancellationToken);
+    }
+
+    /// <inheritdoc />
     public Task<UpsertVectorResult> UpsertAsync(
         string indexName,
         RagChunk chunk,

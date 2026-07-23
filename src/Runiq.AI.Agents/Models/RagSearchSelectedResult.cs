@@ -1,3 +1,5 @@
+using Runiq.AI.Rag.Models.Retrieval;
+
 namespace Runiq.AI.Agents;
 
 /// <summary>Identifies one document and chunk pair selected as runtime context.</summary>
@@ -13,10 +15,11 @@ public sealed class RagSearchSelectedResult
     /// <param name="contentPreview">An optional redacted and bounded content preview.</param>
     /// <param name="previewTruncated">Whether the preview was truncated.</param>
     /// <param name="metadata">The bounded application-approved metadata snapshot.</param>
-    public RagSearchSelectedResult(string documentId, string chunkId, double rawScore = double.NaN,
+    /// <param name="provenance">The structured retrieval provenance.</param>
+    public RagSearchSelectedResult(string documentId, string chunkId, double? rawScore = null,
         double? normalizedRelevance = null, string? metric = null, bool? higherIsBetter = null,
         string? contentPreview = null, bool previewTruncated = false,
-        IReadOnlyDictionary<string, string>? metadata = null)
+        IReadOnlyDictionary<string, string>? metadata = null, RagRetrievalProvenance? provenance = null)
     {
         DocumentId = string.IsNullOrWhiteSpace(documentId) ? throw new ArgumentException("Document id cannot be empty.", nameof(documentId)) : documentId;
         ChunkId = string.IsNullOrWhiteSpace(chunkId) ? throw new ArgumentException("Chunk id cannot be empty.", nameof(chunkId)) : chunkId;
@@ -27,13 +30,14 @@ public sealed class RagSearchSelectedResult
         ContentPreview = contentPreview;
         PreviewTruncated = previewTruncated;
         Metadata = metadata is null ? new Dictionary<string, string>() : new Dictionary<string, string>(metadata);
+        Provenance = provenance;
     }
     /// <summary>Gets the source document identifier.</summary>
     public string DocumentId { get; }
     /// <summary>Gets the selected chunk identifier.</summary>
     public string ChunkId { get; }
     /// <summary>Gets the raw provider score for this candidate.</summary>
-    public double RawScore { get; }
+    public double? RawScore { get; }
     /// <summary>Gets normalized relevance when reliably available.</summary>
     public double? NormalizedRelevance { get; }
     /// <summary>Gets the score metric when available.</summary>
@@ -46,4 +50,6 @@ public sealed class RagSearchSelectedResult
     public bool PreviewTruncated { get; }
     /// <summary>Gets the bounded application-approved metadata snapshot.</summary>
     public IReadOnlyDictionary<string, string> Metadata { get; }
+    /// <summary>Gets the structured retrieval provenance.</summary>
+    public RagRetrievalProvenance? Provenance { get; }
 }

@@ -65,7 +65,10 @@ internal static class AgentChatStreamEventMapper
 
     private static AgentChatStreamEvent FromRagSearchEvent(RagSearchEvent ragSearch) => ragSearch switch
     {
-        RagSearchStarted started => CreateRagSearchEvent("rag_search_started", started),
+        RagSearchStarted started => CreateRagSearchEvent("rag_search_started", started) with
+        {
+            RagSearch = CreateStartedPayload(started),
+        },
         RagSearchCompleted completed => CreateRagSearchEvent("rag_search_completed", completed) with
         {
             RagSearch = CreateCompletedPayload(completed),
@@ -97,6 +100,13 @@ internal static class AgentChatStreamEventMapper
             ragSearch.EffectiveQuery,
             ragSearch.RequestedCandidateCount);
 
+    private static AgentChatRagSearchEvent CreateStartedPayload(RagSearchStarted started) =>
+        new(started.AgentId, started.ConversationId, started.CorrelationId, started.IndexName,
+            started.OriginalQuery, started.EffectiveQuery, started.RequestedCandidateCount)
+        {
+            RetrievalMode = started.RetrievalMode,
+        };
+
     private static AgentChatRagSearchEvent CreateCompletedPayload(RagSearchCompleted completed) =>
         new(
             completed.AgentId,
@@ -107,6 +117,10 @@ internal static class AgentChatStreamEventMapper
             completed.EffectiveQuery,
             completed.RequestedCandidateCount)
         {
+            RetrievalMode = completed.RetrievalMode,
+            SemanticCandidateCount = completed.SemanticCandidateCount,
+            LexicalCandidateCount = completed.LexicalCandidateCount,
+            FusedCandidateCount = completed.FusedCandidateCount,
             ActualCandidateCount = completed.ActualCandidateCount,
             AcceptedCount = completed.AcceptedCount,
             RejectedCount = completed.RejectedCount,
@@ -116,20 +130,21 @@ internal static class AgentChatStreamEventMapper
             Duration = completed.Duration,
             SelectedResults = completed.SelectedResults.Select((result, index) => new AgentChatRagSelectedResult(
                     result.DocumentId, result.ChunkId, index,
-                    double.IsFinite(result.RawScore) ? result.RawScore : null,
+                    result.RawScore is double rawScore && double.IsFinite(rawScore) ? rawScore : null,
                     IsNormalizedRelevance(result.NormalizedRelevance) ? result.NormalizedRelevance : null,
                     string.IsNullOrWhiteSpace(result.Metric) ? null : result.Metric,
                     string.IsNullOrWhiteSpace(result.Metric) ? null : result.HigherIsBetter,
-                    result.ContentPreview, result.PreviewTruncated, result.Metadata.Count == 0 ? null : result.Metadata))
+                    result.ContentPreview, result.PreviewTruncated, result.Metadata.Count == 0 ? null : result.Metadata,
+                    result.Provenance))
                 .ToArray(),
             RejectedResults = completed.RejectedResults
                 .Select(result => new AgentChatRagRejectedResult(
                     result.DocumentId,
                     result.ChunkId,
-                    double.IsFinite(result.RawScore) ? result.RawScore : null,
+                    result.RawScore is double rawScore && double.IsFinite(rawScore) ? rawScore : null,
                     IsNormalizedRelevance(result.NormalizedRelevance) ? result.NormalizedRelevance : null,
                     result.Reason, result.ContentPreview, result.PreviewTruncated,
-                    result.Metadata.Count == 0 ? null : result.Metadata))
+                    result.Metadata.Count == 0 ? null : result.Metadata, result.Provenance))
                 .ToArray(),
             NoContextReason = completed.NoContextReason,
             IndexReadiness = completed.IndexReadiness,

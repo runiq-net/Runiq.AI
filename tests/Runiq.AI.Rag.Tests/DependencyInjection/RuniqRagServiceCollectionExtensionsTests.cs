@@ -84,17 +84,15 @@ public sealed class RuniqRagServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddRuniqRag_ShouldFailClearly_WhenEmbeddingConsumerResolvesWithoutCoreClient()
+    // Verifies that lexical-capable retrieval can resolve without globally registering an embedding client.
+    public void AddRuniqRag_ShouldResolveRetrieverWithoutCoreClient()
     {
         var services = new ServiceCollection();
         services.AddRuniqRag();
 
         using var serviceProvider = services.BuildServiceProvider();
 
-        var exception = Assert.Throws<InvalidOperationException>(() =>
-            serviceProvider.GetRequiredService<IRagRetriever>());
-
-        Assert.Contains(typeof(IEmbeddingClient).FullName!, exception.Message, StringComparison.Ordinal);
+        Assert.NotNull(serviceProvider.GetRequiredService<IRagRetriever>());
     }
 
     [Fact]

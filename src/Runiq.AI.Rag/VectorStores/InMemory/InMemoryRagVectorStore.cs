@@ -299,6 +299,62 @@ public sealed class InMemoryRagVectorStore : IRagVectorStore
     }
 
     /// <inheritdoc />
+    public Task<QueryLexicalResult> QueryLexicalAsync(
+        QueryLexicalRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (string.IsNullOrWhiteSpace(request.IndexName) ||
+            string.IsNullOrWhiteSpace(request.QueryText) ||
+            request.TopK <= 0 ||
+            HasUnsupportedFilterOperator(request.MetadataFilter))
+        {
+            return Task.FromResult(new QueryLexicalResult { Succeeded = false, Reason = "Lexical query is invalid." });
+        }
+
+        lock (gate)
+        {
+            if (!indexes.TryGetValue(request.IndexName, out var index))
+                return Task.FromResult(new QueryLexicalResult { Succeeded = false, Reason = IndexNotFoundReason });
+
+            var query = request.QueryText.Trim();
+            var exact = query.Length >= 2 && query[0] == '"' && query[^1] == '"';
+            if (exact) query = query[1..^1].Trim();
+            var terms = query.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var records = index.Records.Values
+                .Where(record => MatchesMetadataFilter(record, request.MetadataFilter))
+                .Select(record => (Record: record, Score: LexicalScore(record.Content, query, terms, exact)))
+                .Where(match => match.Score > 0)
+                .OrderByDescending(match => match.Score)
+                .ThenBy(match => match.Record.Metadata.Values.TryGetValue("documentId", out var id) ? id : string.Empty, StringComparer.Ordinal)
+                .ThenBy(match => match.Record.Id, StringComparer.Ordinal)
+                .Take(request.TopK)
+                .Select(match => new VectorSearchResult
+                {
+                    Id = match.Record.Id,
+                    Content = match.Record.Content,
+                    Metadata = CopyMetadata(match.Record.Metadata),
+                    RawScore = match.Score,
+                    Relevance = null,
+                    Metric = RagScoreMetrics.LexicalRank,
+                    HigherIsBetter = true,
+                })
+                .ToArray();
+            return Task.FromResult(new QueryLexicalResult { Succeeded = true, Records = records });
+        }
+    }
+
+    private static double LexicalScore(string content, string query, IReadOnlyList<string> terms, bool exact)
+    {
+        if (exact)
+            return content.Contains(query, StringComparison.OrdinalIgnoreCase) ? 1d : 0d;
+        var score = terms.Count(term => content.Contains(term, StringComparison.OrdinalIgnoreCase));
+        if (score != terms.Count) return 0d;
+        return score + (content.Contains(query, StringComparison.OrdinalIgnoreCase) ? 1d : 0d);
+    }
+
+    /// <inheritdoc />
     /// <remarks>
     /// The cancellation token is observed before the chunk is converted into an upsert request and again by the
     /// request-based overload before any record is written, so a cancelled token never mutates store state.

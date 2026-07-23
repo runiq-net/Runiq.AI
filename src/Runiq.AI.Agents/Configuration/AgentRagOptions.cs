@@ -1,3 +1,5 @@
+using Runiq.AI.Rag.Models.Retrieval;
+
 namespace Runiq.AI.Agents.Configuration;
 
 /// <summary>
@@ -22,6 +24,9 @@ public sealed class AgentRagOptions
     /// <see cref="RagExecutionMode.Open"/> to preserve normal agent behavior when no context is accepted.
     /// </summary>
     public RagExecutionMode Mode { get; set; } = RagExecutionMode.Open;
+
+    /// <summary>Gets or sets the retrieval sources used for RAG. The default remains semantic.</summary>
+    public RagRetrievalMode RetrievalMode { get; set; } = RagRetrievalMode.Semantic;
 
     /// <summary>
     /// Gets or sets how a successful retrieval with no accepted context affects execution. The default is

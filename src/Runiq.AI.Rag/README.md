@@ -1,5 +1,34 @@
 # Runiq.AI.Rag
 
+## Retrieval modes
+
+`RagQuery.Mode` selects `Semantic`, `Lexical`, or `Hybrid`; omitting it preserves the existing semantic
+default. Semantic mode generates a query embedding and performs only vector retrieval. Lexical mode performs
+only indexed lexical retrieval and therefore works without an `IEmbeddingClient`. Hybrid mode requires both
+sources and fails if either source fails.
+
+```csharp
+var identifiers = await retriever.RetrieveAsync(new RagQuery
+{
+    IndexName = "engineering",
+    Text = "CS1503",
+    Mode = RagRetrievalMode.Lexical,
+});
+
+var phrase = await retriever.RetrieveAsync(new RagQuery
+{
+    IndexName = "engineering",
+    Text = "\"dependency injection\"",
+    Mode = RagRetrievalMode.Hybrid,
+});
+```
+
+Surrounding double quotes express exact phrase intent. PostgreSQL uses the `simple` text-search configuration
+plus a trigram index so punctuation-sensitive identifiers such as `POL-HR-014`, `IRagRetriever`, and
+`filename.cs` remain searchable. Hybrid results are merged by `(documentId, chunkId)` and ranked with
+reciprocal rank fusion, `1 / (60 + sourceRank)`, using one-based ranks. Provider semantic and lexical scores
+are retained in `RagRetrievalProvenance` but are never added, averaged, normalized, or compared to each other.
+
 Runiq.AI.Rag provides retrieval-augmented generation primitives for Runiq AI applications.
 
 It includes abstractions and default implementations for document chunking, embedding generation, vector storage, retrieval, and search result mapping.

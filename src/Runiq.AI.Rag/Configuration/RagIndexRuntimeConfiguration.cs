@@ -25,4 +25,9 @@ public interface IRagIndexRuntimeConfigurationResolver
     /// <param name="indexName">The registered index name, or a legacy unregistered index using global defaults.</param>
     /// <returns>The operation-local effective configuration.</returns>
     RagIndexRuntimeConfiguration Resolve(string indexName);
+
+    /// <summary>Resolves only the vector store for an index without requiring semantic dependencies.</summary>
+    /// <param name="indexName">The registered index name, or a legacy unregistered index using global defaults.</param>
+    /// <returns>The effective vector store.</returns>
+    IRagVectorStore ResolveVectorStore(string indexName) => Resolve(indexName).VectorStore;
 }
