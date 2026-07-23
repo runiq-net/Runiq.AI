@@ -18,6 +18,7 @@ using Runiq.AI.Rag.Models.Retrieval;
 using Runiq.AI.Rag.Models.Search;
 using Runiq.AI.Rag.Models.Tools;
 using Runiq.AI.Rag.Configuration;
+using Runiq.AI.Rag.Runtime;
 
 namespace Runiq.AI.Agents.Runtime;
 
@@ -33,6 +34,8 @@ public sealed class AgentExecutionRuntime
     private readonly AgentToolInvoker toolInvoker;
     private readonly IRagRetriever? ragRetriever;
     private readonly RagObservabilityProjection observability;
+    private readonly IRagIndexRegistry? ragIndexRegistry;
+    private readonly IRagIngestionManager? ragIngestionManager;
 
     /// <summary>
     /// Initializes the runtime with two provider-neutral clients for compatibility with existing manual construction.
@@ -79,13 +82,16 @@ public sealed class AgentExecutionRuntime
     }
 
     internal AgentExecutionRuntime(IEnumerable<Agent> agents, IChatClientResolver chatClientResolver,
-        AgentToolInvoker toolInvoker, IRagRetriever? ragRetriever, RagObservabilityProjection observability)
+        AgentToolInvoker toolInvoker, IRagRetriever? ragRetriever, RagObservabilityProjection observability,
+        IRagIndexRegistry? ragIndexRegistry = null, IRagIngestionManager? ragIngestionManager = null)
     {
         this.agents = agents ?? throw new ArgumentNullException(nameof(agents));
         this.chatClientResolver = chatClientResolver ?? throw new ArgumentNullException(nameof(chatClientResolver));
         this.toolInvoker = toolInvoker ?? throw new ArgumentNullException(nameof(toolInvoker));
         this.ragRetriever = ragRetriever;
         this.observability = observability ?? throw new ArgumentNullException(nameof(observability));
+        this.ragIndexRegistry = ragIndexRegistry;
+        this.ragIngestionManager = ragIngestionManager;
     }
 
     /// <summary>
@@ -361,6 +367,19 @@ public sealed class AgentExecutionRuntime
                 correlationId, agent.Id, query.ConversationId, indexName, safeQueries.Original, safeQueries.Effective,
                 activeRag.Acceptance.CandidateCount));
 
+            var readinessBlock = ResolveReadinessBlock(
+                correlationId, agent.Id, query.ConversationId, indexName, safeQueries,
+                activeRag.Acceptance.CandidateCount, out var readinessStatus);
+            if (readinessBlock is not null)
+            {
+                yield return AgentExecutionEvent.FromRagSearch(readinessBlock);
+                yield return AgentExecutionEvent.Failed(
+                    $"RAG index '{indexName}' is not ready; retrieval and model execution were not invoked.",
+                    "RagIndexNotReady",
+                    CreateRagMetadata(activeRag, runtimeContext, modelInvocationSkipped: true, noContextBehaviorApplied: false));
+                yield break;
+            }
+
             if (ragRetriever is null)
             {
                 yield return AgentExecutionEvent.FromRagSearch(new RagSearchFailed(
@@ -402,7 +421,7 @@ public sealed class AgentExecutionRuntime
 
             yield return AgentExecutionEvent.FromRagSearch(CreateRagSearchCompleted(
                 correlationId, query.ConversationId, agent, activeRag, indexName, safeQueries, runtimeContext,
-                retrievalStopwatch.Elapsed));
+                retrievalStopwatch.Elapsed, readinessStatus));
         }
 
         if (agent.Rag is { Enabled: true } policy && !runtimeContext.HasContext)
@@ -557,6 +576,38 @@ public sealed class AgentExecutionRuntime
         }
     }
 
+    private RagSearchBlocked? ResolveReadinessBlock(string correlationId, string agentId, string conversationId,
+        string indexName, (string? Original, string? Effective) safeQueries, int requestedCandidateCount,
+        out RagIndexRuntimeStatus? readinessStatus)
+    {
+        readinessStatus = null;
+        if (ragIndexRegistry is null || ragIngestionManager is null) return null;
+        if (!ragIndexRegistry.Registrations.Any(item => string.Equals(item.Name, indexName, StringComparison.Ordinal)))
+        {
+            return new RagSearchBlocked(correlationId, agentId, conversationId, indexName, safeQueries.Original,
+                safeQueries.Effective, requestedCandidateCount, null, "IndexNotRegistered",
+                RagReadinessSuggestedAction.CheckConfiguration);
+        }
+
+        var status = ragIngestionManager.GetStatus(indexName);
+        readinessStatus = status;
+        if (status.Readiness is RagIndexReadiness.Ready or RagIndexReadiness.Degraded) return null;
+        var action = status.Readiness switch
+        {
+            RagIndexReadiness.NotInitialized => RagReadinessSuggestedAction.StartIngestion,
+            RagIndexReadiness.Initializing => RagReadinessSuggestedAction.WaitForIngestion,
+            RagIndexReadiness.Failed => RagReadinessSuggestedAction.RetryIngestion,
+            _ => throw new ArgumentOutOfRangeException(nameof(status.Readiness), status.Readiness, "Unsupported RAG readiness state.")
+        };
+        var operation = status.ActiveOperation;
+        var failure = status.LastOperation?.Progress.LastFailure?.Message;
+        return new RagSearchBlocked(correlationId, agentId, conversationId, indexName, safeQueries.Original,
+            safeQueries.Effective, requestedCandidateCount, status.Readiness, status.Readiness.ToString(), action,
+            status.LastUpdatedAt, operation?.State, operation?.Reason,
+            operation is null ? null : new RagReadinessProgress(operation.Progress.DiscoveredDocuments,
+                operation.Progress.ProcessedDocuments, operation.Progress.FailedDocuments), failure);
+    }
+
     private static ChatToolDefinition MapToolDefinition(AgentToolRegistration tool) => new(
         tool.Name,
         string.IsNullOrWhiteSpace(tool.Description) ? $"Executes the {tool.Name} tool." : tool.Description,
@@ -672,7 +723,8 @@ public sealed class AgentExecutionRuntime
         string indexName,
         (string? Original, string? Effective) queries,
         AgentRuntimeContext runtimeContext,
-        TimeSpan duration)
+        TimeSpan duration,
+        RagIndexRuntimeStatus? readinessStatus)
     {
         var topCandidate = runtimeContext.RetrievedRagCandidates.FirstOrDefault(candidate =>
             candidate is not null &&
@@ -716,7 +768,9 @@ public sealed class AgentExecutionRuntime
             duration,
             topCandidate?.RawScore,
             topCandidate?.Relevance,
-            runtimeContext.NoContextReason);
+            runtimeContext.NoContextReason,
+            readinessStatus?.Readiness == RagIndexReadiness.Degraded ? RagIndexReadiness.Degraded : null,
+            readinessStatus?.Readiness == RagIndexReadiness.Degraded ? readinessStatus.LastOperation?.Progress.LastFailure?.Message : null);
     }
 
     private static AgentRagExecutionMetadata? CreateRagMetadata(

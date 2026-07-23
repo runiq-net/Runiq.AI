@@ -17,6 +17,7 @@ public sealed class AgentExecutionResultBuilder
     private string? failureMessage;
     private AgentRagExecutionMetadata? rag;
     private IReadOnlyList<AgentCitation> citations = [];
+    private RagSearchBlocked? ragReadiness;
 
     /// <summary>
     /// Tek bir execution event'ini result state'ine uygular.
@@ -25,6 +26,7 @@ public sealed class AgentExecutionResultBuilder
     {
         ArgumentNullException.ThrowIfNull(executionEvent);
         rag = executionEvent.Rag ?? rag;
+        ragReadiness = executionEvent.RagSearch as RagSearchBlocked ?? ragReadiness;
         if (executionEvent.Kind == AgentExecutionEventKind.Completed) citations = executionEvent.Citations;
 
         switch (executionEvent.Kind)
@@ -64,11 +66,16 @@ public sealed class AgentExecutionResultBuilder
 
         return failureCode is null
             ? AgentExecutionResult.Success(messageBuilder.ToString(), steps, rag, citations)
-            : AgentExecutionResult.Failure(
+            : ragReadiness is null ? AgentExecutionResult.Failure(
                 failureCode,
                 failureMessage ?? "Agent execution failed.",
                 steps,
-                rag);
+                rag) : AgentExecutionResult.ReadinessFailure(
+                failureCode,
+                failureMessage ?? "Agent execution failed.",
+                steps,
+                rag,
+                ragReadiness);
     }
 
     private void AppendAssistantDelta(AgentExecutionEvent executionEvent)

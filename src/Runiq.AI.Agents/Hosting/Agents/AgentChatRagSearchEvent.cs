@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using Runiq.AI.Agents;
 using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Rag.Models.Retrieval;
+using Runiq.AI.Rag.Runtime;
 
 namespace Runiq.AI.Core.Agents;
 
@@ -95,6 +96,47 @@ public sealed class AgentChatRagSearchEvent
     [JsonConverter(typeof(JsonStringEnumConverter))]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public RetrievalErrorCode? FailureClassification { get; internal init; }
+
+    /// <summary>Gets the readiness, or null when the effective index is not registered.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RagIndexReadiness? Readiness { get; internal init; }
+
+    /// <summary>Gets the provider-independent readiness blocking reason.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? BlockingReason { get; internal init; }
+
+    /// <summary>Gets the suggested developer action.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RagReadinessSuggestedAction? SuggestedAction { get; internal init; }
+
+    /// <summary>Gets the last readiness update time.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? LastUpdatedAt { get; internal init; }
+
+    /// <summary>Gets the active ingestion state.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RagIngestionOperationState? ActiveOperationState { get; internal init; }
+
+    /// <summary>Gets the active ingestion reason.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RagIngestionOperationReason? ActiveOperationReason { get; internal init; }
+
+    /// <summary>Gets the active ingestion progress.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RagReadinessProgress? Progress { get; internal init; }
+
+    /// <summary>Gets a bounded safe failure summary.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SafeFailureSummary { get; internal init; }
+
+    /// <summary>Gets degraded readiness when retrieval continued on a usable previous index state.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RagIndexReadiness? IndexReadiness { get; internal init; }
 }
 
 /// <summary>Identifies a document and chunk selected as model context.</summary>

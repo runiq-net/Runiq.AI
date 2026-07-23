@@ -18,6 +18,7 @@ using Microsoft.Extensions.Logging;
 using Runiq.AI.Rag.Abstractions.Observability;
 using Runiq.AI.Rag.Configuration;
 using Runiq.AI.Rag.Abstractions.Retrieval;
+using Runiq.AI.Rag.Runtime;
 
 namespace Runiq.AI.Core;
 
@@ -89,7 +90,9 @@ public static class RuniqAgentServerServiceCollectionExtensions
             provider.GetRequiredService<IChatClientResolver>(),
             provider.GetRequiredService<AgentToolInvoker>(),
             provider.GetService<IRagRetriever>(),
-            provider.GetRequiredService<RagObservabilityProjection>()));
+            provider.GetRequiredService<RagObservabilityProjection>(),
+            provider.GetService<IRagIndexRegistry>(),
+            provider.GetService<IRagIngestionManager>()));
         services.AddScoped<AgentChatApiHandler>();
 
         return services;

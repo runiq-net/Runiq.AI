@@ -13,11 +13,50 @@ using Runiq.AI.Rag.Models.Retrieval;
 using Runiq.AI.Rag.Models.Search;
 using Runiq.AI.Rag.Models.Documents;
 using Runiq.AI.Rag.Models.Metadata;
+using Runiq.AI.Rag.Configuration;
+using Runiq.AI.Rag.Runtime;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace Runiq.AI.Core.Tests.Agents;
 
 public sealed class RagAgentChatStreamingRegressionTests
 {
+    // Ensures blocked readiness is equivalent across real SSE serialization and the non-streaming Agent Chat response.
+    [Fact]
+    public async Task ChatAsync_NotInitialized_ShouldSerializeStructuredReadinessInBothModes()
+    {
+        var agent = new Agent("rag-agent", "RAG Agent", "Help.", "ollama/llama3").UseRag(options => options.IndexName = "documents");
+        var services = new ServiceCollection().BuildServiceProvider();
+        var runtime = CreateReadinessRuntime(agent, services, new RagIndexRuntimeStatus { IndexName = "documents", Readiness = RagIndexReadiness.NotInitialized, LastUpdatedAt = DateTimeOffset.UtcNow });
+        var handler = new AgentChatApiHandler(runtime);
+        var streamContext = new DefaultHttpContext { RequestServices = services, Response = { Body = new MemoryStream() } };
+
+        await handler.ChatAsync(agent.Id, new AgentChatRequest("Find notes.", AgentChatResponseMode.Stream), streamContext, CancellationToken.None);
+        streamContext.Response.Body.Position = 0;
+        var sse = await new StreamReader(streamContext.Response.Body, Encoding.UTF8).ReadToEndAsync();
+        var startedIndex = sse.IndexOf("\"type\":\"rag_search_started\"", StringComparison.Ordinal);
+        var blockedIndex = sse.IndexOf("\"type\":\"rag_search_blocked\"", StringComparison.Ordinal);
+        var terminalIndex = sse.IndexOf("\"type\":\"failed\"", StringComparison.Ordinal);
+
+        Assert.True(startedIndex >= 0 && blockedIndex > startedIndex && terminalIndex > blockedIndex);
+        Assert.Contains("\"readiness\":\"NotInitialized\"", sse);
+        Assert.Contains("\"suggestedAction\":\"StartIngestion\"", sse);
+        Assert.DoesNotContain("rag_search_failed", sse);
+        Assert.DoesNotContain("rag_search_completed", sse);
+        Assert.DoesNotContain("assistant_delta", sse);
+        Assert.DoesNotContain("citations", sse);
+        Assert.Contains("data: [DONE]", sse);
+
+        var result = await handler.ChatAsync(agent.Id, new AgentChatRequest("Find notes.", AgentChatResponseMode.Result),
+            new DefaultHttpContext { RequestServices = services }, CancellationToken.None);
+        var response = Assert.IsType<AgentChatResponse>(Assert.IsAssignableFrom<IValueHttpResult>(result).Value);
+        Assert.Equal("documents", response.RagReadiness?.IndexName);
+        Assert.Equal(RagIndexReadiness.NotInitialized, response.RagReadiness?.Readiness);
+        Assert.Equal(RagReadinessSuggestedAction.StartIngestion, response.RagReadiness?.SuggestedAction);
+        Assert.Null(response.GroundingEvidence);
+        Assert.Null(response.Citations);
+    }
     // Ensures result-mode responses reuse the completed lifecycle projection without serializing raw RAG metadata or chunk content.
     [Fact]
     public async Task ChatAsync_RagEnabledResult_ShouldProjectContentFreeGroundingEvidence()
@@ -229,6 +268,29 @@ public sealed class RagAgentChatStreamingRegressionTests
             RagQuery query,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<RagSearchResult>>([]);
+    }
+
+    private static AgentExecutionRuntime CreateReadinessRuntime(Agent agent, IServiceProvider services, RagIndexRuntimeStatus status)
+    {
+        var builder = (RagIndexBuilder)Activator.CreateInstance(typeof(RagIndexBuilder), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, [status.IndexName], null)!;
+        builder.UseDirectory("documents").UseVectorStore("store").UseEmbeddingModel("model");
+        var registration = (RagIndexRegistration)typeof(RagIndexBuilder).GetMethod("Build", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(builder, null)!;
+        return new AgentExecutionRuntime([agent], new TestChatClientResolver(), new AgentToolInvoker(services), new EmptyRetriever(),
+            new RagObservabilityProjection(Options.Create(new RagObservabilityOptions()), null, null, NullLogger<RagObservabilityProjection>.Instance),
+            new TestRegistry(registration), new TestIngestionManager(status));
+    }
+
+    private sealed class TestRegistry(RagIndexRegistration registration) : IRagIndexRegistry
+    {
+        public IReadOnlyList<RagIndexRegistration> Registrations { get; } = [registration];
+        public IReadOnlyList<RagIndexMetadata> GetMetadata() => [];
+    }
+
+    private sealed class TestIngestionManager(RagIndexRuntimeStatus status) : IRagIngestionManager
+    {
+        public Task<RagIngestionOperation> StartAsync(string indexName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public RagIndexRuntimeStatus GetStatus(string indexName) => status;
+        public Task CancelAsync(string indexName, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class ThrowingRetriever : IRagRetriever

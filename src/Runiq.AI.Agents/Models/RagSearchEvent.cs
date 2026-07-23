@@ -1,5 +1,6 @@
 using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Rag.Models.Retrieval;
+using Runiq.AI.Rag.Runtime;
 
 namespace Runiq.AI.Agents;
 
@@ -62,6 +63,122 @@ public sealed class RagSearchStarted : RagSearchEvent
         : base(correlationId, agentId, conversationId, indexName, originalQuery, effectiveQuery, requestedCandidateCount) { }
 }
 
+/// <summary>Identifies the safe action suggested when RAG retrieval cannot start.</summary>
+public enum RagReadinessSuggestedAction
+{
+    /// <summary>Start the first ingestion operation.</summary>
+    StartIngestion,
+    /// <summary>Wait for the active ingestion operation.</summary>
+    WaitForIngestion,
+    /// <summary>Retry ingestion after a failed operation.</summary>
+    RetryIngestion,
+    /// <summary>Check the effective index configuration.</summary>
+    CheckConfiguration
+}
+
+/// <summary>Provides a safe count-only ingestion progress snapshot for Agent Chat readiness.</summary>
+public sealed record RagReadinessProgress
+{
+    /// <summary>Gets the number of discovered documents.</summary>
+    public int DiscoveredDocuments { get; }
+    /// <summary>Gets the number of processed documents.</summary>
+    public int ProcessedDocuments { get; }
+    /// <summary>Gets the number of failed documents.</summary>
+    public int FailedDocuments { get; }
+
+    /// <summary>Initializes a validated count-only progress snapshot.</summary>
+    /// <param name="discoveredDocuments">The discovered document count.</param>
+    /// <param name="processedDocuments">The processed document count.</param>
+    /// <param name="failedDocuments">The failed document count.</param>
+    public RagReadinessProgress(int discoveredDocuments, int processedDocuments, int failedDocuments)
+    {
+        if (discoveredDocuments < 0) throw new ArgumentOutOfRangeException(nameof(discoveredDocuments));
+        if (processedDocuments < 0) throw new ArgumentOutOfRangeException(nameof(processedDocuments));
+        if (failedDocuments < 0) throw new ArgumentOutOfRangeException(nameof(failedDocuments));
+        if (processedDocuments > discoveredDocuments) throw new ArgumentException("Processed documents cannot exceed discovered documents.", nameof(processedDocuments));
+        if (failedDocuments > processedDocuments) throw new ArgumentException("Failed documents cannot exceed processed documents.", nameof(failedDocuments));
+        DiscoveredDocuments = discoveredDocuments;
+        ProcessedDocuments = processedDocuments;
+        FailedDocuments = failedDocuments;
+    }
+}
+
+/// <summary>Indicates that retrieval was blocked by the effective index readiness state.</summary>
+public sealed class RagSearchBlocked : RagSearchEvent
+{
+    /// <summary>Initializes a structured readiness-blocked lifecycle payload.</summary>
+    /// <param name="correlationId">The identifier shared by the retrieval lifecycle.</param>
+    /// <param name="agentId">The agent identifier.</param>
+    /// <param name="conversationId">The conversation identifier.</param>
+    /// <param name="indexName">The effective index name.</param>
+    /// <param name="originalQuery">The safely projected original query.</param>
+    /// <param name="effectiveQuery">The safely projected effective query.</param>
+    /// <param name="requestedCandidateCount">The requested candidate count.</param>
+    /// <param name="readiness">The index readiness, or null when the index is not registered.</param>
+    /// <param name="blockingReason">The provider-independent blocking reason.</param>
+    /// <param name="suggestedAction">The suggested developer action.</param>
+    /// <param name="lastUpdatedAt">The last runtime status update, when available.</param>
+    /// <param name="activeOperationState">The active ingestion state, when available.</param>
+    /// <param name="activeOperationReason">The active ingestion reason, when available.</param>
+    /// <param name="progress">The active ingestion progress, when available.</param>
+    /// <param name="safeFailureSummary">A bounded safe failure summary, when available.</param>
+    public RagSearchBlocked(string correlationId, string agentId, string conversationId, string indexName,
+        string? originalQuery, string? effectiveQuery, int requestedCandidateCount, RagIndexReadiness? readiness,
+        string blockingReason, RagReadinessSuggestedAction suggestedAction, DateTimeOffset? lastUpdatedAt = null,
+        RagIngestionOperationState? activeOperationState = null, RagIngestionOperationReason? activeOperationReason = null,
+        RagReadinessProgress? progress = null, string? safeFailureSummary = null)
+        : base(correlationId, agentId, conversationId, indexName, originalQuery, effectiveQuery, requestedCandidateCount)
+    {
+        if (readiness is not null && (!Enum.IsDefined(readiness.Value) || readiness is RagIndexReadiness.Ready or RagIndexReadiness.Degraded)) throw new ArgumentOutOfRangeException(nameof(readiness));
+        if (!Enum.IsDefined(suggestedAction)) throw new ArgumentOutOfRangeException(nameof(suggestedAction));
+        var expectedAction = readiness switch
+        {
+            null => RagReadinessSuggestedAction.CheckConfiguration,
+            RagIndexReadiness.NotInitialized => RagReadinessSuggestedAction.StartIngestion,
+            RagIndexReadiness.Initializing => RagReadinessSuggestedAction.WaitForIngestion,
+            RagIndexReadiness.Failed => RagReadinessSuggestedAction.RetryIngestion,
+            _ => throw new ArgumentOutOfRangeException(nameof(readiness))
+        };
+        if (suggestedAction != expectedAction) throw new ArgumentException("The suggested action does not match the readiness state.", nameof(suggestedAction));
+        if (readiness != RagIndexReadiness.Initializing && (activeOperationState is not null || activeOperationReason is not null || progress is not null))
+            throw new ArgumentException("Active operation data is valid only while the index is initializing.", nameof(activeOperationState));
+        if (readiness != RagIndexReadiness.Failed && !string.IsNullOrWhiteSpace(safeFailureSummary))
+            throw new ArgumentException("A safe failure summary is valid only for failed readiness.", nameof(safeFailureSummary));
+        Readiness = readiness;
+        BlockingReason = string.IsNullOrWhiteSpace(blockingReason) ? throw new ArgumentException("A blocking reason is required.", nameof(blockingReason)) : blockingReason;
+        SuggestedAction = suggestedAction;
+        LastUpdatedAt = lastUpdatedAt;
+        ActiveOperationState = activeOperationState;
+        ActiveOperationReason = activeOperationReason;
+        Progress = progress;
+        SafeFailureSummary = ValidateSafeFailureSummary(safeFailureSummary);
+    }
+
+    /// <summary>Gets the readiness, or null when the index is not registered.</summary>
+    public RagIndexReadiness? Readiness { get; }
+    /// <summary>Gets the provider-independent blocking reason.</summary>
+    public string BlockingReason { get; }
+    /// <summary>Gets the suggested developer action.</summary>
+    public RagReadinessSuggestedAction SuggestedAction { get; }
+    /// <summary>Gets the last runtime status update, when available.</summary>
+    public DateTimeOffset? LastUpdatedAt { get; }
+    /// <summary>Gets the active ingestion state, when available.</summary>
+    public RagIngestionOperationState? ActiveOperationState { get; }
+    /// <summary>Gets the active ingestion reason, when available.</summary>
+    public RagIngestionOperationReason? ActiveOperationReason { get; }
+    /// <summary>Gets safe active ingestion progress, when available.</summary>
+    public RagReadinessProgress? Progress { get; }
+    /// <summary>Gets the bounded safe failure summary, when available.</summary>
+    public string? SafeFailureSummary { get; }
+
+    private static string? ValidateSafeFailureSummary(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var normalized = value.Trim();
+        return normalized.Length <= 256 ? normalized : normalized[..256];
+    }
+}
+
 /// <summary>Indicates that a RAG retrieval operation completed successfully, with or without accepted context.</summary>
 public sealed class RagSearchCompleted : RagSearchEvent
 {
@@ -83,18 +200,21 @@ public sealed class RagSearchCompleted : RagSearchEvent
     /// <param name="topRawScore">The finite raw score of the highest-ranked valid candidate, when available.</param>
     /// <param name="topNormalizedRelevance">The normalized relevance of the highest-ranked candidate, when reliably available.</param>
     /// <param name="noContextReason">The verifiable reason no context was accepted, or null when context was accepted.</param>
+    /// <param name="indexReadiness">Degraded readiness when retrieval continues on a usable previous state.</param>
+    /// <param name="safeFailureSummary">A bounded safe ingestion failure summary for degraded readiness.</param>
     public RagSearchCompleted(string correlationId, string agentId, string conversationId, string indexName,
         string? originalQuery, string? effectiveQuery, int requestedCandidateCount, int actualCandidateCount,
         int acceptedCount, int rejectedCount, IReadOnlyList<RagSearchSelectedResult> selectedResults,
         IReadOnlyList<RagSearchRejectedResult> rejectedResults, int maximumAcceptedResultCount, TimeSpan duration,
-        double? topRawScore, double? topNormalizedRelevance, RagNoContextReason? noContextReason)
+        double? topRawScore, double? topNormalizedRelevance, RagNoContextReason? noContextReason,
+        RagIndexReadiness? indexReadiness = null, string? safeFailureSummary = null)
         : base(correlationId, agentId, conversationId, indexName, originalQuery, effectiveQuery, requestedCandidateCount)
     {
         ActualCandidateCount = RequireNonNegative(actualCandidateCount, nameof(actualCandidateCount));
         AcceptedCount = RequireNonNegative(acceptedCount, nameof(acceptedCount));
         RejectedCount = RequireNonNegative(rejectedCount, nameof(rejectedCount));
-        SelectedResults = selectedResults ?? throw new ArgumentNullException(nameof(selectedResults));
-        RejectedResults = rejectedResults ?? throw new ArgumentNullException(nameof(rejectedResults));
+        SelectedResults = selectedResults?.ToArray() ?? throw new ArgumentNullException(nameof(selectedResults));
+        RejectedResults = rejectedResults?.ToArray() ?? throw new ArgumentNullException(nameof(rejectedResults));
         MaximumAcceptedResultCount = RequirePositive(maximumAcceptedResultCount, nameof(maximumAcceptedResultCount));
         Duration = duration < TimeSpan.Zero ? throw new ArgumentOutOfRangeException(nameof(duration)) : duration;
         ValidateCounts();
@@ -103,6 +223,13 @@ public sealed class RagSearchCompleted : RagSearchEvent
         TopRawScore = topRawScore;
         TopNormalizedRelevance = topNormalizedRelevance;
         NoContextReason = noContextReason;
+        if (indexReadiness is not null && indexReadiness != RagIndexReadiness.Degraded)
+            throw new ArgumentOutOfRangeException(nameof(indexReadiness), "Only degraded readiness can be attached to a completed retrieval.");
+        IndexReadiness = indexReadiness;
+        if (indexReadiness != RagIndexReadiness.Degraded && !string.IsNullOrWhiteSpace(safeFailureSummary))
+            throw new ArgumentException("A safe failure summary requires degraded readiness.", nameof(safeFailureSummary));
+        var normalizedFailure = string.IsNullOrWhiteSpace(safeFailureSummary) ? null : safeFailureSummary.Trim();
+        SafeFailureSummary = normalizedFailure is { Length: > 256 } ? normalizedFailure[..256] : normalizedFailure;
     }
 
     /// <summary>Gets the number of candidates returned by retrieval.</summary>
@@ -125,6 +252,10 @@ public sealed class RagSearchCompleted : RagSearchEvent
     public IReadOnlyList<RagSearchRejectedResult> RejectedResults { get; }
     /// <summary>Gets the verifiable reason no context was accepted, or null when context was accepted.</summary>
     public RagNoContextReason? NoContextReason { get; }
+    /// <summary>Gets degraded readiness when retrieval continued on a usable previous index state.</summary>
+    public RagIndexReadiness? IndexReadiness { get; }
+    /// <summary>Gets the bounded safe ingestion failure summary associated with degraded readiness.</summary>
+    public string? SafeFailureSummary { get; }
 
     private void ValidateCounts()
     {

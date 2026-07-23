@@ -12,7 +12,8 @@ namespace Runiq.AI.Agents
             string? errorMessage,
             IReadOnlyList<AgentExecutionStep> steps,
             AgentRagExecutionMetadata? rag,
-            IReadOnlyList<AgentCitation>? citations = null)
+            IReadOnlyList<AgentCitation>? citations = null,
+            RagSearchBlocked? ragReadiness = null)
         {
             IsSuccess = isSuccess;
             Message = message;
@@ -21,6 +22,7 @@ namespace Runiq.AI.Agents
             Steps = steps;
             Rag = rag;
             Citations = citations?.ToArray() ?? [];
+            RagReadiness = ragReadiness;
         }
 
         /// <summary>
@@ -54,6 +56,9 @@ namespace Runiq.AI.Agents
         public AgentRagExecutionMetadata? Rag { get; }
         /// <summary>Gets citations validated against selected context.</summary>
         public IReadOnlyList<AgentCitation> Citations { get; }
+
+        /// <summary>Gets the structured readiness outcome when RAG execution was blocked before retrieval.</summary>
+        public RagSearchBlocked? RagReadiness { get; }
 
         /// <summary>
         /// Basarili agent çalistirma sonucu olusturur.
@@ -143,6 +148,10 @@ namespace Runiq.AI.Agents
                 steps: steps,
                 rag: rag);
         }
+
+        internal static AgentExecutionResult ReadinessFailure(string errorCode, string errorMessage,
+            IReadOnlyList<AgentExecutionStep> steps, AgentRagExecutionMetadata? rag, RagSearchBlocked readiness) =>
+            new(false, null, errorCode, errorMessage, steps, rag, ragReadiness: readiness);
     }
 
     /// <summary>
