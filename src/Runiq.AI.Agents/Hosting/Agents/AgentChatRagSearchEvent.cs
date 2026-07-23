@@ -103,6 +103,14 @@ public sealed class AgentChatRagSearchEvent
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<AgentChatRagRejectedResult>? RejectedResults { get; internal init; }
 
+    /// <summary>Gets accepted results excluded from model context without document content.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<RagSearchContextExcludedResult>? ContextExcludedResults { get; internal init; }
+
+    /// <summary>Gets safe token-budget counts for context assembly.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RagContextBudgetMetadata? ContextBudget { get; internal init; }
+
     /// <summary>Gets the verifiable reason a completed retrieval produced no accepted context.</summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

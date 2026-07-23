@@ -1008,6 +1008,46 @@ public sealed class AgentRagExecutionRuntimeTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await enumerator.MoveNextAsync());
     }
 
+    // Proves mandatory prompt overflow produces a structured failure and never invokes the model.
+    [Fact]
+    public async Task ExecuteStreamAsync_MandatoryPromptOverflow_SkipsModel()
+    {
+        var agent = CreateAgent(RagExecutionMode.Required, RagNoContextBehavior.FailExecution);
+        agent.Rag!.ContextBudget.MaximumContextTokens = 10;
+        agent.Rag.ContextBudget.ResponseTokenReserve = 1;
+        var client = new ScriptedChatClient();
+
+        var events = await CreateRuntime(agent, client, new RecordingRetriever([]))
+            .ExecuteStreamAsync(agent.Id, "question").ToListAsync();
+
+        var failure = Assert.Single(events, item => item.Kind == AgentExecutionEventKind.Failed);
+        Assert.Equal("RagContextBudgetExceeded", failure.ErrorCode);
+        Assert.True(failure.Rag!.ModelInvocationSkipped);
+        Assert.NotNull(failure.Rag.ContextBudget);
+        Assert.Empty(client.Requests);
+    }
+
+    // Proves required grounding applies its configured no-context behavior when accepted chunks do not fit.
+    [Fact]
+    public async Task ExecuteStreamAsync_RequiredWhenNoChunkFits_DoesNotInvokeModel()
+    {
+        var agent = CreateAgent(RagExecutionMode.Required, RagNoContextBehavior.ReturnNotFound);
+        agent.Rag!.ContextBudget.MaximumContextTokens = 500;
+        agent.Rag.ContextBudget.ResponseTokenReserve = 1;
+        var huge = CreateCandidate("large", "document", string.Join(' ', Enumerable.Repeat("content", 1_000)),
+            0.9, RagScoreMetrics.CosineSimilarity, true);
+        var client = new ScriptedChatClient();
+
+        var events = await CreateRuntime(agent, client, new StaticRetriever([huge]))
+            .ExecuteStreamAsync(agent.Id, "question").ToListAsync();
+
+        var completed = Assert.Single(events, item => item.Kind == AgentExecutionEventKind.Completed);
+        Assert.Equal(RagNoContextReason.ContextBudgetExhausted, completed.Rag!.NoContextReason);
+        Assert.Equal(RagContextSelectionExclusionReason.TokenBudgetExceeded,
+            Assert.Single(completed.Rag.ContextExcludedResults).Reason);
+        Assert.Empty(client.Requests);
+    }
+
     private static Agent CreateAgent(
         RagExecutionMode mode = RagExecutionMode.Open,
         RagNoContextBehavior noContextBehavior = RagNoContextBehavior.AnswerNormally,

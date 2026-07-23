@@ -103,6 +103,10 @@ var agent = new Agent(
         rag.Acceptance.MinimumRelevance = 0.75;
         rag.Acceptance.CandidateCount = 20;
         rag.Acceptance.MaximumAcceptedResults = 5;
+        rag.ContextBudget.MaximumContextTokens = 32_768;
+        rag.ContextBudget.ResponseTokenReserve = 4_096;
+        rag.ContextBudget.MaximumChunksPerSource = 2;
+        rag.ContextBudget.PreferSourceDiversity = true;
     });
 ```
 
@@ -126,6 +130,23 @@ No-context behavior is selected independently for every valid combination:
 results outside the limit remain visible as `ResultLimitExceeded` rejections. `MinimumRelevance` is an optional
 threshold in the inclusive provider-independent `[0,1]` range. The default null threshold does not manufacture
 relevance for an unsupported metric.
+
+Context selection is a separate stage after acceptance. The runtime calculates
+`MaximumContextTokens - instructions - conversation history - user query - response reserve - other required prompt`
+and selects only complete chunks whose final serialized external-context message fits. The deterministic fallback
+estimator counts contiguous Unicode letter/digit runs and individual punctuation marks; it does not call a model
+and is explicitly an estimate rather than an exact provider token count. The defaults are 32,768 maximum context
+tokens and a 4,096-token response reserve. `MaximumChunksPerSource` defaults to `int.MaxValue` for compatibility;
+set a bounded value to prevent one document from monopolizing context. `PreferSourceDiversity` performs stable
+source rounds while retaining retrieval order within each source. Chunks are never silently truncated.
+
+Accepted results omitted from model context remain available through `ContextExcludedResults` with
+`TokenBudgetExceeded`, `OverlappingContent`, or `SourceLimitExceeded`. Overlap reduction uses character boundaries
+from stable same-document chunk metadata and keeps the earlier retrieval result when at least half of the shorter
+span overlaps. `ContextBudget` exposes count-only estimates and totals without exposing prompt or document text.
+If mandatory prompt content plus the response reserve exceeds the maximum, execution fails with
+`RagContextBudgetExceeded` before model invocation. When accepted results exist but none fit, the no-context reason
+is `ContextBudgetExhausted`, and the configured grounding/no-context policy remains authoritative.
 
 The framework keeps raw provider score semantics separate from normalized relevance. Cosine similarity in
 `[-1,1]` is normalized with `(raw + 1) / 2`; non-negative Euclidean distance is normalized with `1 / (1 + raw)`.

@@ -57,6 +57,10 @@ internal static class CorporateDocumentAssistantSetup
                     rag.Acceptance.MinimumRelevance = 0.55;
                     rag.Acceptance.CandidateCount = 12;
                     rag.Acceptance.MaximumAcceptedResults = 4;
+                    rag.ContextBudget.MaximumContextTokens = 32_768;
+                    rag.ContextBudget.ResponseTokenReserve = 2_048;
+                    rag.ContextBudget.MaximumChunksPerSource = 2;
+                    rag.ContextBudget.PreferSourceDiversity = true;
                 }));
         });
 

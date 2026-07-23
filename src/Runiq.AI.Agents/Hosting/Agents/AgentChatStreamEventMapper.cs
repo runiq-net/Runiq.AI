@@ -146,6 +146,8 @@ internal static class AgentChatStreamEventMapper
                     result.Reason, result.ContentPreview, result.PreviewTruncated,
                     result.Metadata.Count == 0 ? null : result.Metadata, result.Provenance))
                 .ToArray(),
+            ContextExcludedResults = completed.ContextExcludedResults.Count == 0 ? null : completed.ContextExcludedResults,
+            ContextBudget = completed.ContextBudget,
             NoContextReason = completed.NoContextReason,
             IndexReadiness = completed.IndexReadiness,
             SafeFailureSummary = completed.SafeFailureSummary,

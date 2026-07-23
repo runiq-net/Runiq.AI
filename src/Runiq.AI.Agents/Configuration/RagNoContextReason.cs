@@ -20,4 +20,9 @@ public enum RagNoContextReason
     /// Retrieval returned candidates, but every candidate was rejected for one or more explicit acceptance reasons.
     /// </summary>
     CandidatesRejected = 2,
+
+    /// <summary>
+    /// Retrieval produced accepted results, but context-selection rules could not select any complete chunk.
+    /// </summary>
+    ContextBudgetExhausted = 3,
 }

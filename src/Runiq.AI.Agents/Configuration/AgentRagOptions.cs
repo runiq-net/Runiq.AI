@@ -8,6 +8,7 @@ namespace Runiq.AI.Agents.Configuration;
 public sealed class AgentRagOptions
 {
     private RagResultAcceptanceOptions acceptance = new();
+    private RagContextBudgetOptions contextBudget = new();
 
     /// <summary>
     /// Gets or sets a value indicating whether agent RAG retrieval is enabled.
@@ -42,6 +43,15 @@ public sealed class AgentRagOptions
     {
         get => acceptance;
         set => acceptance = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    /// <summary>
+    /// Gets or sets the token budget and deterministic source-selection policy applied after retrieval acceptance.
+    /// </summary>
+    public RagContextBudgetOptions ContextBudget
+    {
+        get => contextBudget;
+        set => contextBudget = value ?? throw new ArgumentNullException(nameof(value));
     }
 }
 

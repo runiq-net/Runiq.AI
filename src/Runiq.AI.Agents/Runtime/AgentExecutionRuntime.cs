@@ -394,11 +394,15 @@ public sealed class AgentExecutionRuntime
 
             var retrievalStopwatch = Stopwatch.StartNew();
             Exception? retrievalFailure = null;
+            var mandatoryPromptOverflow = false;
             try
             {
                 runtimeContext = await SearchRagContextAsync(
                     activeRag, indexName, query.Message, cancellationToken);
+                var assembly = AssembleRagContext(agent, query, activeRag, runtimeContext);
+                runtimeContext = assembly.Context;
                 runtimeContext = runtimeContext with { RetrievalCorrelationId = correlationId };
+                mandatoryPromptOverflow = assembly.MandatoryPromptOverflow;
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -415,6 +419,18 @@ public sealed class AgentExecutionRuntime
                 yield return AgentExecutionEvent.Failed(
                     $"RAG retrieval failed for agent '{agent.Id}'; the model was not invoked.",
                     "RagRetrievalFailed",
+                    CreateRagMetadata(activeRag, runtimeContext, modelInvocationSkipped: true, noContextBehaviorApplied: false));
+                yield break;
+            }
+
+            if (mandatoryPromptOverflow)
+            {
+                yield return AgentExecutionEvent.FromRagSearch(CreateRagSearchCompleted(
+                    correlationId, query.ConversationId, agent, activeRag, indexName, safeQueries, runtimeContext,
+                    retrievalStopwatch.Elapsed, readinessStatus));
+                yield return AgentExecutionEvent.Failed(
+                    $"The mandatory prompt and response reserve exceed the configured context budget for agent '{agent.Id}'; the model was not invoked.",
+                    "RagContextBudgetExceeded",
                     CreateRagMetadata(activeRag, runtimeContext, modelInvocationSkipped: true, noContextBehaviorApplied: false));
                 yield break;
             }
@@ -713,6 +729,39 @@ public sealed class AgentExecutionRuntime
             retrieval.Statistics);
     }
 
+    private static (AgentRuntimeContext Context, bool MandatoryPromptOverflow) AssembleRagContext(
+        Agent agent,
+        AgentQuery query,
+        AgentRagOptions options,
+        AgentRuntimeContext retrievalContext)
+    {
+        var policy = AgentInstructionsBuilder.BuildPolicy(options.Mode, retrievalContext.AcceptedRagResults.Count > 0);
+        var toolDefinitions = JsonSerializer.Serialize(agent.Tools.Select(MapToolDefinition).ToArray());
+        var assembly = RagContextAssembler.Assemble(
+            retrievalContext.AcceptedRagResults,
+            options.ContextBudget,
+            options.ContextBudget.MaximumContextTokens,
+            options.ContextBudget.ResponseTokenReserve,
+            RagContextAssembler.EstimateTokens(agent.Instructions),
+            conversationHistoryTokens: 0,
+            RagContextAssembler.EstimateTokens(query.Message),
+            RagContextAssembler.EstimateTokens(policy) + RagContextAssembler.EstimateTokens(toolDefinitions));
+
+        var noContextReason = assembly.SelectedResults.Count == 0 && retrievalContext.AcceptedRagResults.Count > 0
+            ? RagNoContextReason.ContextBudgetExhausted
+            : retrievalContext.NoContextReason;
+        var context = new AgentRuntimeContext(
+            assembly.SelectedResults,
+            retrievalContext.RetrievedRagCandidates,
+            retrievalContext.RejectedRagCandidates,
+            noContextReason,
+            retrievalContext.RetrievalStatistics,
+            retrievalContext.AcceptedRagResults,
+            assembly.ExcludedResults,
+            assembly.Budget);
+        return (context, assembly.MandatoryPromptOverflow);
+    }
+
     private static RetrievalErrorCode ClassifyRetrievalFailure(Exception exception) =>
         exception is RagRetrievalExecutionException retrievalException
             ? retrievalException.ErrorCode
@@ -745,7 +794,7 @@ public sealed class AgentExecutionRuntime
             queries.Effective,
             options.Acceptance.CandidateCount,
             runtimeContext.RetrievedRagCandidates.Count,
-            runtimeContext.RetrievedRagContext.Count,
+            runtimeContext.AcceptedRagResults.Count,
             runtimeContext.RejectedRagCandidates.Count,
             runtimeContext.RetrievedRagContext
                 .Select(result =>
@@ -779,7 +828,15 @@ public sealed class AgentExecutionRuntime
             options.RetrievalMode,
             runtimeContext.RetrievalStatistics.SemanticCandidateCount,
             runtimeContext.RetrievalStatistics.LexicalCandidateCount,
-            runtimeContext.RetrievalStatistics.FusedCandidateCount);
+            runtimeContext.RetrievalStatistics.FusedCandidateCount,
+            runtimeContext.ContextExcludedResults.Select(result =>
+                new RagSearchContextExcludedResult(
+                    result.Result.Chunk.DocumentId,
+                    result.Result.Chunk.Id,
+                    result.Reason,
+                    result.EstimatedTokens,
+                    result.Result.Provenance)).ToArray(),
+            runtimeContext.ContextBudget);
     }
 
     private static AgentRagExecutionMetadata? CreateRagMetadata(
@@ -795,7 +852,7 @@ public sealed class AgentExecutionRuntime
 
         return new AgentRagExecutionMetadata(
             options.Mode,
-            runtimeContext.HasContext,
+            runtimeContext.AcceptedRagResults.Count > 0,
             noContextBehaviorApplied ? options.NoContextBehavior : null,
             runtimeContext.NoContextReason,
             modelInvocationSkipped,
@@ -803,10 +860,13 @@ public sealed class AgentExecutionRuntime
                 runtimeContext.HasContext &&
                 options.Mode is RagExecutionMode.Grounded or RagExecutionMode.Required,
             runtimeContext.RetrievedRagCandidates,
-            runtimeContext.RetrievedRagContext,
+            runtimeContext.AcceptedRagResults,
             runtimeContext.RejectedRagCandidates,
             options.RetrievalMode,
-            runtimeContext.RetrievalStatistics);
+            runtimeContext.RetrievalStatistics,
+            runtimeContext.RetrievedRagContext,
+            runtimeContext.ContextExcludedResults,
+            runtimeContext.ContextBudget);
     }
 
 }

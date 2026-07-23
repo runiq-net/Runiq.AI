@@ -57,7 +57,12 @@ internal static class AgentInstructionsBuilder
     {
         ArgumentNullException.ThrowIfNull(runtimeContext);
 
-        if (!runtimeContext.HasContext)
+        return BuildExternalContext(runtimeContext.RetrievedRagContext);
+    }
+
+    internal static string? BuildExternalContext(IReadOnlyList<Runiq.AI.Rag.Models.Search.RagSearchResult> results)
+    {
+        if (results.Count == 0)
         {
             return null;
         }
@@ -65,7 +70,7 @@ internal static class AgentInstructionsBuilder
         var builder = new StringBuilder();
         builder.AppendLine("<untrusted-external-context>");
 
-        foreach (var item in runtimeContext.RetrievedRagContext.Select((result, index) => new { Result = result, Number = index + 1 }))
+        foreach (var item in results.Select((result, index) => new { Result = result, Number = index + 1 }))
         {
             var result = item.Result;
             builder.AppendLine(JsonSerializer.Serialize(new

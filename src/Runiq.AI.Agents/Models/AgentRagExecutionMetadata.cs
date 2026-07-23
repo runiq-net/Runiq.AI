@@ -20,7 +20,10 @@ public sealed class AgentRagExecutionMetadata
         IReadOnlyList<RagSearchResult> acceptedResults,
         IReadOnlyList<RagRejectedResult> rejectedResults,
         RagRetrievalMode retrievalMode,
-        RagRetrievalStatistics retrievalStatistics)
+        RagRetrievalStatistics retrievalStatistics,
+        IReadOnlyList<RagSearchResult>? contextSelectedResults = null,
+        IReadOnlyList<RagContextExcludedResult>? contextExcludedResults = null,
+        RagContextBudgetMetadata? contextBudget = null)
     {
         Mode = mode;
         HasAcceptedContext = hasAcceptedContext;
@@ -35,6 +38,9 @@ public sealed class AgentRagExecutionMetadata
         SemanticCandidateCount = retrievalStatistics.SemanticCandidateCount;
         LexicalCandidateCount = retrievalStatistics.LexicalCandidateCount;
         FusedCandidateCount = retrievalStatistics.FusedCandidateCount;
+        ContextSelectedResults = contextSelectedResults ?? acceptedResults;
+        ContextExcludedResults = contextExcludedResults ?? [];
+        ContextBudget = contextBudget;
     }
 
     /// <summary>
@@ -97,6 +103,21 @@ public sealed class AgentRagExecutionMetadata
     /// Gets the number of rejected retrieval candidates.
     /// </summary>
     public int RejectedCount => RejectedResults.Count;
+
+    /// <summary>Gets the accepted retrieval results selected into the final model context.</summary>
+    public IReadOnlyList<RagSearchResult> ContextSelectedResults { get; }
+
+    /// <summary>Gets accepted retrieval results excluded during deterministic context selection.</summary>
+    public IReadOnlyList<RagContextExcludedResult> ContextExcludedResults { get; }
+
+    /// <summary>Gets safe token-budget counts for context assembly, or null when assembly did not run.</summary>
+    public RagContextBudgetMetadata? ContextBudget { get; }
+
+    /// <summary>Gets the number of accepted results selected into model context.</summary>
+    public int ContextSelectedCount => ContextSelectedResults.Count;
+
+    /// <summary>Gets the number of accepted results excluded from model context.</summary>
+    public int ContextExcludedCount => ContextExcludedResults.Count;
 
     /// <summary>Gets the effective retrieval mode.</summary>
     public RagRetrievalMode RetrievalMode { get; }

@@ -28,6 +28,32 @@ internal static class AgentRagPolicyValidator
         }
 
         var acceptance = options.Acceptance;
+        var contextBudget = options.ContextBudget;
+
+        if (contextBudget.MaximumContextTokens <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(contextBudget.MaximumContextTokens),
+                contextBudget.MaximumContextTokens,
+                "The maximum context token count must be greater than zero.");
+        }
+
+        if (contextBudget.ResponseTokenReserve < 0 ||
+            contextBudget.ResponseTokenReserve >= contextBudget.MaximumContextTokens)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(contextBudget.ResponseTokenReserve),
+                contextBudget.ResponseTokenReserve,
+                "The response token reserve cannot be negative and must be smaller than the maximum context token count.");
+        }
+
+        if (contextBudget.MaximumChunksPerSource <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(contextBudget.MaximumChunksPerSource),
+                contextBudget.MaximumChunksPerSource,
+                "The maximum chunks per source must be greater than zero.");
+        }
 
         if (acceptance.MinimumRelevance is double minimumRelevance &&
             (!double.IsFinite(minimumRelevance) || minimumRelevance is < 0.0 or > 1.0))

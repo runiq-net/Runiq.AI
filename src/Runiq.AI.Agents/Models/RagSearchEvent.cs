@@ -214,6 +214,8 @@ public sealed class RagSearchCompleted : RagSearchEvent
     /// <param name="semanticCandidateCount">The authoritative semantic source count; zero is known and null means unavailable metadata.</param>
     /// <param name="lexicalCandidateCount">The authoritative lexical source count; zero is known and null means unavailable metadata.</param>
     /// <param name="fusedCandidateCount">The authoritative pre-limit fused count; zero is known and null means unavailable metadata.</param>
+    /// <param name="contextExcludedResults">Accepted results excluded from the assembled model context.</param>
+    /// <param name="contextBudget">Safe token counts for context assembly.</param>
     public RagSearchCompleted(string correlationId, string agentId, string conversationId, string indexName,
         string? originalQuery, string? effectiveQuery, int requestedCandidateCount, int actualCandidateCount,
         int acceptedCount, int rejectedCount, IReadOnlyList<RagSearchSelectedResult> selectedResults,
@@ -221,7 +223,9 @@ public sealed class RagSearchCompleted : RagSearchEvent
         double? topRawScore, double? topNormalizedRelevance, RagNoContextReason? noContextReason,
         RagIndexReadiness? indexReadiness = null, string? safeFailureSummary = null,
         RagRetrievalMode retrievalMode = RagRetrievalMode.Semantic,
-        int? semanticCandidateCount = null, int? lexicalCandidateCount = null, int? fusedCandidateCount = null)
+        int? semanticCandidateCount = null, int? lexicalCandidateCount = null, int? fusedCandidateCount = null,
+        IReadOnlyList<RagSearchContextExcludedResult>? contextExcludedResults = null,
+        RagContextBudgetMetadata? contextBudget = null)
         : base(correlationId, agentId, conversationId, indexName, originalQuery, effectiveQuery, requestedCandidateCount)
     {
         ActualCandidateCount = RequireNonNegative(actualCandidateCount, nameof(actualCandidateCount));
@@ -229,6 +233,8 @@ public sealed class RagSearchCompleted : RagSearchEvent
         RejectedCount = RequireNonNegative(rejectedCount, nameof(rejectedCount));
         SelectedResults = selectedResults?.ToArray() ?? throw new ArgumentNullException(nameof(selectedResults));
         RejectedResults = rejectedResults?.ToArray() ?? throw new ArgumentNullException(nameof(rejectedResults));
+        ContextExcludedResults = contextExcludedResults?.ToArray() ?? [];
+        ContextBudget = contextBudget;
         MaximumAcceptedResultCount = RequirePositive(maximumAcceptedResultCount, nameof(maximumAcceptedResultCount));
         Duration = duration < TimeSpan.Zero ? throw new ArgumentOutOfRangeException(nameof(duration)) : duration;
         ValidateCounts();
@@ -283,6 +289,10 @@ public sealed class RagSearchCompleted : RagSearchEvent
     public int? LexicalCandidateCount { get; }
     /// <summary>Gets the authoritative pre-limit fused count; zero is known and null means unavailable metadata.</summary>
     public int? FusedCandidateCount { get; }
+    /// <summary>Gets accepted results excluded from model context by deterministic selection rules.</summary>
+    public IReadOnlyList<RagSearchContextExcludedResult> ContextExcludedResults { get; }
+    /// <summary>Gets safe token-budget counts for context assembly.</summary>
+    public RagContextBudgetMetadata? ContextBudget { get; }
 
     private static int? RequireOptionalNonNegative(int? value, string parameterName) =>
         value is < 0 ? throw new ArgumentOutOfRangeException(parameterName, value, "The count cannot be negative.") : value;
@@ -291,20 +301,20 @@ public sealed class RagSearchCompleted : RagSearchEvent
     {
         if (AcceptedCount + RejectedCount != ActualCandidateCount)
             throw new ArgumentException("Accepted and rejected counts must equal the actual candidate count.");
-        if (SelectedResults.Count != AcceptedCount)
-            throw new ArgumentException("Selected result count must equal the accepted count.", nameof(SelectedResults));
         if (RejectedResults.Count != RejectedCount)
             throw new ArgumentException("Rejected result count must equal the rejected count.", nameof(RejectedResults));
+        if (SelectedResults.Count + ContextExcludedResults.Count != AcceptedCount)
+            throw new ArgumentException("Selected and context-excluded result counts must equal the accepted count.");
         if (AcceptedCount > MaximumAcceptedResultCount)
             throw new ArgumentOutOfRangeException(nameof(AcceptedCount), AcceptedCount, "Accepted count cannot exceed the configured maximum.");
     }
 
     private void ValidateOutcome(RagNoContextReason? noContextReason)
     {
-        if (AcceptedCount > 0 && noContextReason is not null)
-            throw new ArgumentException("A no-context reason cannot be supplied when context was accepted.", nameof(noContextReason));
-        if (AcceptedCount == 0 && noContextReason is null)
-            throw new ArgumentNullException(nameof(noContextReason), "A successful retrieval without accepted context requires a no-context reason.");
+        if (SelectedResults.Count > 0 && noContextReason is not null)
+            throw new ArgumentException("A no-context reason cannot be supplied when model context was selected.", nameof(noContextReason));
+        if (SelectedResults.Count == 0 && noContextReason is null)
+            throw new ArgumentNullException(nameof(noContextReason), "A successful retrieval without selected model context requires a no-context reason.");
         if (noContextReason is not null && !Enum.IsDefined(noContextReason.Value))
             throw new ArgumentOutOfRangeException(nameof(noContextReason), noContextReason, "The no-context reason is not defined.");
     }

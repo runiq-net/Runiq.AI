@@ -13,13 +13,19 @@ public sealed record AgentRuntimeContext(
         IReadOnlyList<RagSearchResult> candidates,
         IReadOnlyList<RagRejectedResult> rejectedResults,
         Configuration.RagNoContextReason? noContextReason,
-        Runiq.AI.Rag.Models.Retrieval.RagRetrievalStatistics? retrievalStatistics = null)
+        Runiq.AI.Rag.Models.Retrieval.RagRetrievalStatistics? retrievalStatistics = null,
+        IReadOnlyList<RagSearchResult>? acceptedResultsBeforeSelection = null,
+        IReadOnlyList<RagContextExcludedResult>? contextExcludedResults = null,
+        RagContextBudgetMetadata? contextBudget = null)
         : this(acceptedResults)
     {
         RetrievedRagCandidates = candidates;
         RejectedRagCandidates = rejectedResults;
         NoContextReason = noContextReason;
         RetrievalStatistics = retrievalStatistics ?? Runiq.AI.Rag.Models.Retrieval.RagRetrievalStatistics.Empty;
+        AcceptedRagResults = acceptedResultsBeforeSelection ?? acceptedResults;
+        ContextExcludedResults = contextExcludedResults ?? [];
+        ContextBudget = contextBudget;
     }
 
     /// <summary>
@@ -35,6 +41,9 @@ public sealed record AgentRuntimeContext(
         RagSearchResults ?? [];
 
     internal IReadOnlyList<RagRejectedResult> RejectedRagCandidates { get; } = [];
+    internal IReadOnlyList<RagSearchResult> AcceptedRagResults { get; } = RagSearchResults ?? [];
+    internal IReadOnlyList<RagContextExcludedResult> ContextExcludedResults { get; } = [];
+    internal RagContextBudgetMetadata? ContextBudget { get; }
 
     internal Configuration.RagNoContextReason? NoContextReason { get; }
 
