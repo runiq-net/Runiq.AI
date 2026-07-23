@@ -59,8 +59,16 @@ public sealed class RagSearchStarted : RagSearchEvent
     /// <summary>Initializes a RAG retrieval started payload.</summary>
     /// <inheritdoc cref="RagSearchEvent(string, string, string, string, string, string?, int)"/>
     public RagSearchStarted(string correlationId, string agentId, string conversationId, string indexName,
-        string? originalQuery, string? effectiveQuery, int requestedCandidateCount)
-        : base(correlationId, agentId, conversationId, indexName, originalQuery, effectiveQuery, requestedCandidateCount) { }
+        string? originalQuery, string? effectiveQuery, int requestedCandidateCount,
+        RagRetrievalMode retrievalMode = RagRetrievalMode.Semantic)
+        : base(correlationId, agentId, conversationId, indexName, originalQuery, effectiveQuery, requestedCandidateCount)
+    {
+        if (!Enum.IsDefined(retrievalMode)) throw new ArgumentOutOfRangeException(nameof(retrievalMode));
+        RetrievalMode = retrievalMode;
+    }
+
+    /// <summary>Gets the effective retrieval mode.</summary>
+    public RagRetrievalMode RetrievalMode { get; }
 }
 
 /// <summary>Identifies the safe action suggested when RAG retrieval cannot start.</summary>
@@ -202,12 +210,18 @@ public sealed class RagSearchCompleted : RagSearchEvent
     /// <param name="noContextReason">The verifiable reason no context was accepted, or null when context was accepted.</param>
     /// <param name="indexReadiness">Degraded readiness when retrieval continues on a usable previous state.</param>
     /// <param name="safeFailureSummary">A bounded safe ingestion failure summary for degraded readiness.</param>
+    /// <param name="retrievalMode">The effective retrieval mode.</param>
+    /// <param name="semanticCandidateCount">The authoritative semantic source count; zero is known and null means unavailable metadata.</param>
+    /// <param name="lexicalCandidateCount">The authoritative lexical source count; zero is known and null means unavailable metadata.</param>
+    /// <param name="fusedCandidateCount">The authoritative pre-limit fused count; zero is known and null means unavailable metadata.</param>
     public RagSearchCompleted(string correlationId, string agentId, string conversationId, string indexName,
         string? originalQuery, string? effectiveQuery, int requestedCandidateCount, int actualCandidateCount,
         int acceptedCount, int rejectedCount, IReadOnlyList<RagSearchSelectedResult> selectedResults,
         IReadOnlyList<RagSearchRejectedResult> rejectedResults, int maximumAcceptedResultCount, TimeSpan duration,
         double? topRawScore, double? topNormalizedRelevance, RagNoContextReason? noContextReason,
-        RagIndexReadiness? indexReadiness = null, string? safeFailureSummary = null)
+        RagIndexReadiness? indexReadiness = null, string? safeFailureSummary = null,
+        RagRetrievalMode retrievalMode = RagRetrievalMode.Semantic,
+        int? semanticCandidateCount = null, int? lexicalCandidateCount = null, int? fusedCandidateCount = null)
         : base(correlationId, agentId, conversationId, indexName, originalQuery, effectiveQuery, requestedCandidateCount)
     {
         ActualCandidateCount = RequireNonNegative(actualCandidateCount, nameof(actualCandidateCount));
@@ -230,6 +244,11 @@ public sealed class RagSearchCompleted : RagSearchEvent
             throw new ArgumentException("A safe failure summary requires degraded readiness.", nameof(safeFailureSummary));
         var normalizedFailure = string.IsNullOrWhiteSpace(safeFailureSummary) ? null : safeFailureSummary.Trim();
         SafeFailureSummary = normalizedFailure is { Length: > 256 } ? normalizedFailure[..256] : normalizedFailure;
+        if (!Enum.IsDefined(retrievalMode)) throw new ArgumentOutOfRangeException(nameof(retrievalMode));
+        RetrievalMode = retrievalMode;
+        SemanticCandidateCount = RequireOptionalNonNegative(semanticCandidateCount, nameof(semanticCandidateCount));
+        LexicalCandidateCount = RequireOptionalNonNegative(lexicalCandidateCount, nameof(lexicalCandidateCount));
+        FusedCandidateCount = RequireOptionalNonNegative(fusedCandidateCount, nameof(fusedCandidateCount));
     }
 
     /// <summary>Gets the number of candidates returned by retrieval.</summary>
@@ -256,6 +275,17 @@ public sealed class RagSearchCompleted : RagSearchEvent
     public RagIndexReadiness? IndexReadiness { get; }
     /// <summary>Gets the bounded safe ingestion failure summary associated with degraded readiness.</summary>
     public string? SafeFailureSummary { get; }
+    /// <summary>Gets the effective retrieval mode.</summary>
+    public RagRetrievalMode RetrievalMode { get; }
+    /// <summary>Gets the authoritative semantic source count; zero is known and null means unavailable metadata.</summary>
+    public int? SemanticCandidateCount { get; }
+    /// <summary>Gets the authoritative lexical source count; zero is known and null means unavailable metadata.</summary>
+    public int? LexicalCandidateCount { get; }
+    /// <summary>Gets the authoritative pre-limit fused count; zero is known and null means unavailable metadata.</summary>
+    public int? FusedCandidateCount { get; }
+
+    private static int? RequireOptionalNonNegative(int? value, string parameterName) =>
+        value is < 0 ? throw new ArgumentOutOfRangeException(parameterName, value, "The count cannot be negative.") : value;
 
     private void ValidateCounts()
     {

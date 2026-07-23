@@ -41,11 +41,11 @@ internal static class RagSearchResultMapper
 
         return records.Select(record => Create(
             record.RecordId, record.Content, record.Metadata, record.RawScore,
-            record.Relevance, record.Metric, record.HigherIsBetter)).ToList();
+            record.Relevance, record.Metric, record.HigherIsBetter, record.Provenance)).ToList();
     }
 
-    private static RagSearchResult Create(string id, string content, RagMetadata metadata, double rawScore,
-        double? relevance, string? metric, bool higherIsBetter) => new()
+    private static RagSearchResult Create(string id, string content, RagMetadata metadata, double? rawScore,
+        double? relevance, string? metric, bool? higherIsBetter, RagRetrievalProvenance? provenance) => new()
     {
         Chunk = new RagChunk
         {
@@ -59,6 +59,7 @@ internal static class RagSearchResultMapper
         Relevance = relevance,
         Metric = metric,
         HigherIsBetter = higherIsBetter,
+        Provenance = provenance,
         Metadata = CopyMetadata(metadata),
     };
 

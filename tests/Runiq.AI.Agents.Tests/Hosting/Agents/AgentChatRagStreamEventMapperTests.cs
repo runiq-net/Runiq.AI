@@ -36,9 +36,19 @@ public sealed class AgentChatRagStreamEventMapperTests
         var completed = new RagSearchCompleted(
             "correlation-1", "agent-1", "conversation-1", "documents", "question", null,
             20, 2, 1, 1,
-            [new RagSearchSelectedResult("document-1", "chunk-1")],
+            [new RagSearchSelectedResult("document-1", "chunk-1", 0.9, 0.95, "cosine-similarity", true,
+                provenance: new RagRetrievalProvenance
+                {
+                    Mode = RagRetrievalMode.Hybrid,
+                    SemanticRank = 1,
+                    LexicalRank = 2,
+                    ReciprocalRankFusionScore = 0.03,
+                    FusedRank = 1,
+                })],
             [new RagSearchRejectedResult("document-2", "chunk-2", 0.4, 0.3, RagResultRejectionReason.BelowMinimumRelevance)],
-            5, TimeSpan.FromMilliseconds(125), 0.9, 0.95, null);
+            5, TimeSpan.FromMilliseconds(125), 0.9, 0.95, null,
+            retrievalMode: RagRetrievalMode.Hybrid,
+            semanticCandidateCount: 5, lexicalCandidateCount: 4, fusedCandidateCount: 7);
 
         var streamEvent = AgentChatStreamEventMapper.FromExecutionEvent(AgentExecutionEvent.FromRagSearch(completed));
 
@@ -59,6 +69,11 @@ public sealed class AgentChatRagStreamEventMapperTests
         Assert.Equal(0.3, rejected.NormalizedRelevance);
         Assert.Null(payload.NoContextReason);
         Assert.Null(payload.FailureClassification);
+        Assert.Equal(RagRetrievalMode.Hybrid, payload.RetrievalMode);
+        Assert.Equal(5, payload.SemanticCandidateCount);
+        Assert.Equal(4, payload.LexicalCandidateCount);
+        Assert.Equal(7, payload.FusedCandidateCount);
+        Assert.Equal(1, Assert.Single(payload.SelectedResults!).Provenance?.SemanticRank);
     }
 
     [Fact]
@@ -103,5 +118,54 @@ public sealed class AgentChatRagStreamEventMapperTests
         Assert.DoesNotContain("content preview", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("exception", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("stackTrace", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    // Verifies lexical-only SSE omits semantic score meanings while retaining lexical and RRF provenance.
+    public void FromExecutionEvent_ShouldPreserveLexicalOnlyScoreDistinction()
+    {
+        var completed = new RagSearchCompleted(
+            "correlation", "agent", "conversation", "documents", "query", null,
+            1, 1, 1, 0,
+            [new RagSearchSelectedResult("document", "chunk", provenance: new RagRetrievalProvenance
+            {
+                Mode = RagRetrievalMode.Hybrid,
+                LexicalRank = 1,
+                LexicalRawScore = 1.2,
+                ReciprocalRankFusionScore = 1d / 61d,
+                FusedRank = 1,
+            })],
+            [], 1, TimeSpan.Zero, null, null, null,
+            retrievalMode: RagRetrievalMode.Hybrid,
+            semanticCandidateCount: 0, lexicalCandidateCount: 1, fusedCandidateCount: 1);
+
+        var payload = AgentChatStreamEventMapper
+            .FromExecutionEvent(AgentExecutionEvent.FromRagSearch(completed)).RagSearch!;
+        var selected = Assert.Single(payload.SelectedResults!);
+        Assert.Null(selected.RawScore);
+        Assert.Null(selected.NormalizedRelevance);
+        Assert.Null(selected.Metric);
+        Assert.Null(selected.HigherIsBetter);
+        Assert.Equal(1.2, selected.Provenance?.LexicalRawScore);
+        Assert.NotNull(selected.Provenance?.ReciprocalRankFusionScore);
+    }
+
+    [Fact]
+    // Verifies unknown legacy counts are omitted from serialized SSE instead of appearing as factual zeros.
+    public void FromExecutionEvent_ShouldOmitUnknownCandidateCounts()
+    {
+        var completed = new RagSearchCompleted(
+            "correlation", "agent", "conversation", "documents", "query", null,
+            1, 1, 1, 0,
+            [new RagSearchSelectedResult("document", "chunk", 0.8, 0.9, "cosine-similarity", true)],
+            [], 1, TimeSpan.Zero, 0.8, 0.9, null);
+
+        var json = JsonSerializer.Serialize(
+            AgentChatStreamEventMapper.FromExecutionEvent(AgentExecutionEvent.FromRagSearch(completed)),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.DoesNotContain("semanticCandidateCount", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("lexicalCandidateCount", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("fusedCandidateCount", json, StringComparison.Ordinal);
     }
 }

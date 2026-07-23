@@ -13,6 +13,27 @@ namespace Runiq.AI.Rag.Tests.Retrieval;
 public sealed class DefaultRagRetrievalPipelineTests
 {
     [Fact]
+    // Verifies an undefined retrieval mode fails before embedding or vector-store execution.
+    public async Task RetrieveAsync_ShouldRejectUndefinedModeBeforeProviderInvocation()
+    {
+        var embeddingClient = new TrackingEmbeddingClient();
+        var vectorStore = new TrackingVectorStore();
+        var pipeline = CreatePipeline(embeddingClient, vectorStore);
+
+        var result = await pipeline.RetrieveAsync(new RetrievalRequest
+        {
+            IndexName = "documents",
+            QueryText = "query",
+            Mode = (RagRetrievalMode)999,
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(RetrievalErrorCode.InvalidRequest, result.ErrorCode);
+        Assert.False(embeddingClient.WasCalled);
+        Assert.False(vectorStore.QueryWasCalled);
+    }
+
+    [Fact]
     public void Constructor_ShouldThrow_WhenEmbeddingProviderIsNull()
     {
         // Verifies that the pipeline rejects a null embedding provider as a programming error.

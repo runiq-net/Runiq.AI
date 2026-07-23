@@ -9,6 +9,7 @@ using Runiq.AI.Rag.Embeddings;
 using Runiq.AI.Rag.Abstractions.Telemetry;
 using Runiq.AI.Rag.Abstractions.VectorStores;
 using Runiq.AI.Rag.Models.Retrieval;
+using Runiq.AI.Rag.Models.Search;
 using Runiq.AI.Rag.Models.VectorStores;
 
 namespace Runiq.AI.Rag.Retrieval;
@@ -37,11 +38,15 @@ public sealed class DefaultRagRetrievalPipeline : IRagRetrievalPipeline
     private const string NullRequestReason = "Retrieval request is required.";
     private const string MissingIndexNameReason = "Retrieval request index name must be a non-empty, non-whitespace value.";
     private const string InvalidTopKReason = "Retrieval request TopK must be greater than zero.";
+    private const string InvalidModeReason = "Retrieval request mode must be a defined retrieval mode.";
     private const string MissingQueryReason = "Retrieval request must carry non-empty query text or a non-empty query vector.";
     private const string EmbeddingFailedReason = "Query embedding generation failed.";
     private const string VectorStoreQueryFailedReason = "Vector store query failed.";
 
-    private readonly IEmbeddingClient embeddingClient;
+    /// <summary>The default RRF constant used by hybrid retrieval.</summary>
+    public const int DefaultReciprocalRankFusionConstant = 60;
+
+    private readonly IEmbeddingClient? embeddingClient;
     private readonly IRagVectorStore vectorStore;
     private readonly IRagOperationTelemetryRecorder? telemetryRecorder;
     private readonly TimeProvider timeProvider;
@@ -83,6 +88,32 @@ public sealed class DefaultRagRetrievalPipeline : IRagRetrievalPipeline
         this.runtimeResolver = runtimeResolver;
     }
 
+    /// <summary>
+    /// Initializes a lexical-capable pipeline without requiring an embedding client registration.
+    /// Semantic and hybrid requests fail explicitly when no per-index embedding client is available.
+    /// </summary>
+    /// <param name="vectorStore">The provider-independent store.</param>
+    /// <param name="telemetryRecorder">The optional telemetry recorder.</param>
+    /// <param name="timeProvider">The optional time source.</param>
+    /// <param name="options">The optional RAG options.</param>
+    /// <param name="indexRegistry">The optional index registry.</param>
+    /// <param name="runtimeResolver">The optional per-index runtime resolver.</param>
+    public DefaultRagRetrievalPipeline(
+        IRagVectorStore vectorStore,
+        IRagOperationTelemetryRecorder? telemetryRecorder = null,
+        TimeProvider? timeProvider = null,
+        IOptions<RagOptions>? options = null,
+        IRagIndexRegistry? indexRegistry = null,
+        IRagIndexRuntimeConfigurationResolver? runtimeResolver = null)
+    {
+        this.vectorStore = vectorStore ?? throw new ArgumentNullException(nameof(vectorStore));
+        this.telemetryRecorder = telemetryRecorder;
+        this.timeProvider = timeProvider ?? TimeProvider.System;
+        this.options = options?.Value ?? new RagOptions();
+        this.indexRegistry = indexRegistry;
+        this.runtimeResolver = runtimeResolver;
+    }
+
     /// <inheritdoc />
     public async Task<RetrievalResult> RetrieveAsync(
         RetrievalRequest request,
@@ -114,20 +145,27 @@ public sealed class DefaultRagRetrievalPipeline : IRagRetrievalPipeline
             return validationFailure;
         }
 
-        var runtime = ResolveRuntime(request.IndexName);
-        var queryVector = request.QueryVector is { Count: > 0 }
-            ? request.QueryVector
-            : await ResolveQueryVectorAsync(request.QueryText!, runtime.EmbeddingClient, runtime.EmbeddingModel, cancellationToken).ConfigureAwait(false);
+        var runtime = ResolveRuntime(request.IndexName, request.Mode);
+        if (request.Mode == RagRetrievalMode.Lexical)
+        {
+            return await RetrieveLexicalAsync(runtime.VectorStore, request, cancellationToken).ConfigureAwait(false);
+        }
 
-        if (queryVector is null || queryVector.Count == 0)
+        if (runtime.EmbeddingClient is null && request.QueryVector is not { Count: > 0 })
         {
             return RetrievalResult.Failure(RetrievalErrorCode.EmbeddingFailed, EmbeddingFailedReason);
         }
 
-        QueryVectorResult queryResult;
+        var queryVector = request.QueryVector is { Count: > 0 }
+            ? request.QueryVector
+            : await ResolveQueryVectorAsync(request.QueryText!, runtime.EmbeddingClient!, runtime.EmbeddingModel, cancellationToken).ConfigureAwait(false);
+        if (queryVector is null || queryVector.Count == 0)
+            return RetrievalResult.Failure(RetrievalErrorCode.EmbeddingFailed, EmbeddingFailedReason);
+
+        RetrievalResult semantic;
         try
         {
-            queryResult = await runtime.VectorStore.QueryAsync(
+            var queryResult = await runtime.VectorStore.QueryAsync(
                 new QueryVectorRequest
                 {
                     IndexName = request.IndexName,
@@ -136,18 +174,31 @@ public sealed class DefaultRagRetrievalPipeline : IRagRetrievalPipeline
                     MetadataFilter = request.MetadataFilter,
                 },
                 cancellationToken).ConfigureAwait(false);
+            semantic = queryResult is null || !queryResult.Succeeded
+                ? RetrievalResult.Failure(RetrievalErrorCode.VectorStoreQueryFailed, VectorStoreQueryFailedReason)
+                : RetrievalResult.Success(MapItems(queryResult, RagRetrievalMode.Semantic), queryResult.Metadata,
+                    new RagRetrievalStatistics
+                    {
+                        SemanticCandidateCount = queryResult.Records.Count,
+                        LexicalCandidateCount = 0,
+                        FusedCandidateCount = 0,
+                    });
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             return RetrievalResult.Failure(RetrievalErrorCode.VectorStoreQueryFailed, VectorStoreQueryFailedReason);
         }
+        if (!semantic.Succeeded || request.Mode == RagRetrievalMode.Semantic) return semantic;
 
-        if (queryResult is null || !queryResult.Succeeded)
+        var lexical = await RetrieveLexicalAsync(runtime.VectorStore, request, cancellationToken).ConfigureAwait(false);
+        if (!lexical.Succeeded) return lexical;
+        var fused = Fuse(semantic.Items, lexical.Items);
+        return RetrievalResult.Success(fused.Take(request.TopK).ToArray(), statistics: new RagRetrievalStatistics
         {
-            return RetrievalResult.Failure(RetrievalErrorCode.VectorStoreQueryFailed, VectorStoreQueryFailedReason);
-        }
-
-        return RetrievalResult.Success(MapItems(queryResult), queryResult.Metadata);
+            SemanticCandidateCount = semantic.Items.Count,
+            LexicalCandidateCount = lexical.Items.Count,
+            FusedCandidateCount = fused.Count,
+        });
     }
 
     /// <summary>
@@ -195,7 +246,12 @@ public sealed class DefaultRagRetrievalPipeline : IRagRetrievalPipeline
             return RetrievalResult.Failure(RetrievalErrorCode.InvalidRequest, InvalidTopKReason);
         }
 
-        if (!request.HasRetrievableQuery)
+        if (!Enum.IsDefined(request.Mode))
+        {
+            return RetrievalResult.Failure(RetrievalErrorCode.InvalidRequest, InvalidModeReason);
+        }
+
+        if (!request.HasRetrievableQuery || request.Mode == RagRetrievalMode.Lexical && string.IsNullOrWhiteSpace(request.QueryText))
         {
             return RetrievalResult.Failure(RetrievalErrorCode.InvalidRequest, MissingQueryReason);
         }
@@ -232,10 +288,15 @@ public sealed class DefaultRagRetrievalPipeline : IRagRetrievalPipeline
         return ProviderModelReferenceResolver.Resolve(ModelReference.Parse(options.EmbeddingModel), options.EmbeddingProvider);
     }
 
-    private (IEmbeddingClient EmbeddingClient, ModelReference EmbeddingModel, IRagVectorStore VectorStore) ResolveRuntime(string indexName)
+    private (IEmbeddingClient? EmbeddingClient, ModelReference EmbeddingModel, IRagVectorStore VectorStore) ResolveRuntime(
+        string indexName, RagRetrievalMode mode)
     {
         if (runtimeResolver is not null && indexRegistry?.Registrations.Any(index => string.Equals(index.Name, indexName, StringComparison.Ordinal)) == true)
         {
+            if (mode == RagRetrievalMode.Lexical)
+            {
+                return (null, ResolveEmbeddingModel(), runtimeResolver.ResolveVectorStore(indexName));
+            }
             var runtime = runtimeResolver.Resolve(indexName);
             return (runtime.EmbeddingClient, runtime.EmbeddingModel, runtime.VectorStore);
         }
@@ -246,10 +307,10 @@ public sealed class DefaultRagRetrievalPipeline : IRagRetrievalPipeline
     /// Maps the vector store's matches into standard retrieval result items, carrying over the record id,
     /// stored chunk content, metadata, raw score, metric direction, and normalized relevance reported by the store.
     /// </summary>
-    private static IReadOnlyList<RetrievalResultItem> MapItems(QueryVectorResult queryResult)
+    private static IReadOnlyList<RetrievalResultItem> MapItems(QueryVectorResult queryResult, RagRetrievalMode mode)
     {
         return queryResult.Records
-            .Select(record => new RetrievalResultItem
+            .Select((record, rank) => new RetrievalResultItem
             {
                 RecordId = record.Id,
                 Content = record.Content,
@@ -258,8 +319,122 @@ public sealed class DefaultRagRetrievalPipeline : IRagRetrievalPipeline
                 Relevance = record.Relevance,
                 Metric = record.Metric,
                 HigherIsBetter = record.HigherIsBetter,
+                Provenance = new RagRetrievalProvenance
+                {
+                    Mode = mode,
+                    SemanticRank = mode == RagRetrievalMode.Semantic ? rank + 1 : null,
+                    SemanticRawScore = mode == RagRetrievalMode.Semantic ? record.RawScore : null,
+                },
             })
             .ToList();
+    }
+
+    private static async Task<RetrievalResult> RetrieveLexicalAsync(
+        IRagVectorStore store, RetrievalRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await store.QueryLexicalAsync(new QueryLexicalRequest
+            {
+                IndexName = request.IndexName,
+                QueryText = request.QueryText!,
+                TopK = request.TopK,
+                MetadataFilter = request.MetadataFilter,
+            }, cancellationToken).ConfigureAwait(false);
+            if (result is null || !result.Succeeded)
+                return RetrievalResult.Failure(RetrievalErrorCode.VectorStoreQueryFailed, "Lexical store query failed.");
+            return RetrievalResult.Success(result.Records.Select((record, rank) => new RetrievalResultItem
+            {
+                RecordId = record.Id,
+                Content = record.Content,
+                Metadata = record.Metadata,
+                RawScore = null,
+                Relevance = null,
+                Metric = null,
+                HigherIsBetter = null,
+                Provenance = new RagRetrievalProvenance
+                {
+                    Mode = RagRetrievalMode.Lexical,
+                    LexicalRank = rank + 1,
+                    LexicalRawScore = record.RawScore,
+                },
+            }).ToArray(), result.Metadata, new RagRetrievalStatistics
+            {
+                SemanticCandidateCount = 0,
+                LexicalCandidateCount = result.Records.Count,
+                FusedCandidateCount = 0,
+            });
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return RetrievalResult.Failure(RetrievalErrorCode.VectorStoreQueryFailed, "Lexical store query failed.");
+        }
+    }
+
+    private static IReadOnlyList<RetrievalResultItem> Fuse(
+        IReadOnlyList<RetrievalResultItem> semantic,
+        IReadOnlyList<RetrievalResultItem> lexical)
+    {
+        var candidates = new Dictionary<(string DocumentId, string ChunkId), FusionCandidate>();
+        Add(semantic, semanticSource: true);
+        Add(lexical, semanticSource: false);
+        var ordered = candidates.Values
+            .OrderByDescending(item => item.Score)
+            .ThenBy(item => Math.Min(item.SemanticRank ?? int.MaxValue, item.LexicalRank ?? int.MaxValue))
+            .ThenBy(item => item.SemanticRank ?? int.MaxValue)
+            .ThenBy(item => item.LexicalRank ?? int.MaxValue)
+            .ThenBy(item => item.DocumentId, StringComparer.Ordinal)
+            .ThenBy(item => item.Item.RecordId, StringComparer.Ordinal)
+            .ToArray();
+        return ordered.Select((candidate, rank) => new RetrievalResultItem
+        {
+            RecordId = candidate.Item.RecordId,
+            Content = candidate.Item.Content,
+            Metadata = candidate.Item.Metadata,
+            RawScore = candidate.Item.RawScore,
+            Relevance = candidate.Item.Relevance,
+            Metric = candidate.Item.Metric,
+            HigherIsBetter = candidate.Item.HigherIsBetter,
+            Provenance = new RagRetrievalProvenance
+            {
+                Mode = RagRetrievalMode.Hybrid,
+                SemanticRank = candidate.SemanticRank,
+                LexicalRank = candidate.LexicalRank,
+                SemanticRawScore = candidate.SemanticRank is not null
+                    ? candidate.Item.Provenance?.SemanticRawScore
+                    : null,
+                LexicalRawScore = candidate.LexicalRank is not null
+                    ? lexical[candidate.LexicalRank.Value - 1].Provenance?.LexicalRawScore
+                    : null,
+                ReciprocalRankFusionScore = candidate.Score,
+                FusedRank = rank + 1,
+            },
+        }).ToArray();
+
+        void Add(IReadOnlyList<RetrievalResultItem> source, bool semanticSource)
+        {
+            for (var index = 0; index < source.Count; index++)
+            {
+                var item = source[index];
+                var documentId = item.Metadata.Values.TryGetValue("documentId", out var value) ? value : string.Empty;
+                var key = (documentId, item.RecordId);
+                if (!candidates.TryGetValue(key, out var candidate))
+                    candidate = new FusionCandidate(item, documentId);
+                if (semanticSource) candidate.SemanticRank = index + 1;
+                else candidate.LexicalRank = index + 1;
+                candidates[key] = candidate;
+            }
+        }
+    }
+
+    private sealed class FusionCandidate(RetrievalResultItem item, string documentId)
+    {
+        public RetrievalResultItem Item { get; } = item;
+        public string DocumentId { get; } = documentId;
+        public int? SemanticRank { get; set; }
+        public int? LexicalRank { get; set; }
+        public double Score => (SemanticRank is int semantic ? 1d / (DefaultReciprocalRankFusionConstant + semantic) : 0d) +
+            (LexicalRank is int lexical ? 1d / (DefaultReciprocalRankFusionConstant + lexical) : 0d);
     }
 }
 

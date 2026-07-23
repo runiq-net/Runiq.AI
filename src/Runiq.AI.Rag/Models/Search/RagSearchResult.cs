@@ -1,5 +1,6 @@
 using Runiq.AI.Rag.Models.Documents;
 using Runiq.AI.Rag.Models.Metadata;
+using Runiq.AI.Rag.Models.Retrieval;
 
 namespace Runiq.AI.Rag.Models.Search;
 
@@ -23,11 +24,13 @@ public sealed record RagSearchResult
     public required RagChunk Chunk { get; init; }
 
     /// <summary>
-    /// Gets or initializes the raw score returned by the vector store provider.
+    /// Gets or initializes the raw semantic score returned by the vector store provider, or null when no
+    /// semantic provider score exists. Lexical and reciprocal-rank-fusion values are exposed through
+    /// <see cref="Provenance"/>.
     /// The meaning and direction of this value are described by <see cref="Metric"/> and
     /// <see cref="HigherIsBetter"/>; it is not a provider-independent confidence value.
     /// </summary>
-    public double RawScore { get; init; }
+    public double? RawScore { get; init; }
 
     /// <summary>
     /// Gets or initializes the provider-independent relevance in the inclusive range from zero to one, or
@@ -36,15 +39,19 @@ public sealed record RagSearchResult
     public double? Relevance { get; init; }
 
     /// <summary>
-    /// Gets or initializes the metric identifier that defines the raw score semantics. Framework-defined
-    /// identifiers are available from <see cref="RagScoreMetrics"/>. A missing metric is invalid.
+    /// Gets or initializes the metric identifier that defines the raw semantic score semantics. Framework-defined
+    /// identifiers are available from <see cref="RagScoreMetrics"/>. Null is valid for a lexical-only result.
     /// </summary>
     public string? Metric { get; init; }
 
     /// <summary>
-    /// Gets or initializes a value indicating whether larger raw scores represent better matches.
+    /// Gets or initializes the semantic metric direction. True means larger values are better, false means a
+    /// semantic metric exists and lower values are better, and null means no semantic metric exists.
     /// </summary>
-    public bool HigherIsBetter { get; init; }
+    public bool? HigherIsBetter { get; init; }
+
+    /// <summary>Gets or initializes structured retrieval-source and rank provenance.</summary>
+    public RagRetrievalProvenance? Provenance { get; init; }
 
     /// <summary>
     /// Gets or initializes search result metadata.

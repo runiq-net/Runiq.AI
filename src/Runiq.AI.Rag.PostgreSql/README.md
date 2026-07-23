@@ -1,5 +1,11 @@
 # Runiq.AI.Rag.PostgreSql
 
+The provider initializes idempotent lexical-search migrations alongside the existing pgvector schema.
+Lexical retrieval uses a stored `tsvector` with a GIN index and a trigram GIN index over lower-cased original
+content. The latter preserves identifier and punctuation matching for codes, symbols, namespaces, and file
+names. Schema initialization requires permission to install `pg_trgm` in addition to the existing `vector`
+extension.
+
 This package adds durable PostgreSQL persistence and server-side pgvector search to `Runiq.AI.Rag`. Npgsql and
 pgvector remain confined to this integration package; the core RAG package continues to work without it.
 

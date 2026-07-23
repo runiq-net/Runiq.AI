@@ -20,7 +20,7 @@ public sealed class DefaultRetriever : IRagRetriever
 {
     private const string MissingIndexNameMessage = "RAG retrieval requires a non-empty vector index name. Set RagQuery.IndexName or RagOptions.DefaultIndexName.";
 
-    private readonly IEmbeddingClient embeddingClient;
+    private readonly IEmbeddingClient? embeddingClient;
     private readonly IRagVectorStore vectorStore;
     private readonly RagOptions options;
     private readonly IRagRetrievalPipeline? retrievalPipeline;
@@ -44,6 +44,20 @@ public sealed class DefaultRetriever : IRagRetriever
         this.retrievalPipeline = retrievalPipeline;
     }
 
+    /// <summary>Initializes a retriever that can execute lexical queries without an embedding client.</summary>
+    /// <param name="vectorStore">The active retrieval store.</param>
+    /// <param name="options">The optional RAG options.</param>
+    /// <param name="retrievalPipeline">The shared retrieval pipeline.</param>
+    public DefaultRetriever(
+        IRagVectorStore vectorStore,
+        IOptions<RagOptions>? options = null,
+        IRagRetrievalPipeline? retrievalPipeline = null)
+    {
+        this.vectorStore = vectorStore ?? throw new ArgumentNullException(nameof(vectorStore));
+        this.options = options?.Value ?? new RagOptions();
+        this.retrievalPipeline = retrievalPipeline;
+    }
+
     /// <summary>
     /// Retrieves relevant RAG search results by embedding the query text and searching the vector store.
     /// </summary>
@@ -51,6 +65,14 @@ public sealed class DefaultRetriever : IRagRetriever
     /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
     /// <returns>The retrieved RAG search results.</returns>
     public async Task<IReadOnlyList<RagSearchResult>> RetrieveAsync(
+        RagQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        return (await RetrieveWithMetadataAsync(query, cancellationToken).ConfigureAwait(false)).Candidates;
+    }
+
+    /// <inheritdoc />
+    public async Task<RagRetrievalExecutionResult> RetrieveWithMetadataAsync(
         RagQuery query,
         CancellationToken cancellationToken = default)
     {
@@ -64,13 +86,24 @@ public sealed class DefaultRetriever : IRagRetriever
                 IndexName = indexName,
                 QueryText = query.Text,
                 TopK = query.TopK,
+                Mode = query.Mode,
                 MetadataFilter = new RetrievalMetadataFilter(query.Metadata.Values),
             }, cancellationToken).ConfigureAwait(false);
             if (!result.Succeeded)
             {
                 throw new RagRetrievalExecutionException(result.Reason, result.ErrorCode);
             }
-            return RagSearchResultMapper.Map(result.Items);
+            return new RagRetrievalExecutionResult
+            {
+                Candidates = RagSearchResultMapper.Map(result.Items),
+                Statistics = result.Statistics,
+            };
+        }
+        if (query.Mode != RagRetrievalMode.Semantic || embeddingClient is null)
+        {
+            throw new RagRetrievalExecutionException(
+                $"RAG retrieval mode '{query.Mode}' requires the shared retrieval pipeline.",
+                RetrievalErrorCode.InvalidRequest);
         }
         var model = ResolveEmbeddingModel();
         Models.Embeddings.RagEmbedding embedding;
@@ -101,7 +134,17 @@ public sealed class DefaultRetriever : IRagRetriever
 
         try
         {
-            return await vectorStore.SearchAsync(resolvedQuery, embedding, cancellationToken).ConfigureAwait(false);
+            var candidates = await vectorStore.SearchAsync(resolvedQuery, embedding, cancellationToken).ConfigureAwait(false);
+            return new RagRetrievalExecutionResult
+            {
+                Candidates = candidates,
+                Statistics = new RagRetrievalStatistics
+                {
+                    SemanticCandidateCount = candidates.Count,
+                    LexicalCandidateCount = 0,
+                    FusedCandidateCount = 0,
+                },
+            };
         }
         catch (OperationCanceledException)
         {

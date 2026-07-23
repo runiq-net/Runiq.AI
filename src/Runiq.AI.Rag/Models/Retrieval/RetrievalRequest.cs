@@ -60,6 +60,11 @@ public sealed class RetrievalRequest
     public int TopK { get; init; } = 5;
 
     /// <summary>
+    /// Gets or initializes the retrieval mode. The default remains semantic for backward compatibility.
+    /// </summary>
+    public RagRetrievalMode Mode { get; init; } = RagRetrievalMode.Semantic;
+
+    /// <summary>
     /// Gets or initializes the provider-independent metadata filter applied to candidate matches. A null value
     /// is rejected so the retrieval pipeline can always rely on a non-null filter; use
     /// <see cref="RetrievalMetadataFilter.Empty"/> to express "no filtering".

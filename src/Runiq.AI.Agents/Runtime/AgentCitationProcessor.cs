@@ -25,7 +25,7 @@ internal static class AgentCitationProcessor
                 context.RetrievalCorrelationId ?? string.Empty,
                 item.Index,
                 counts[item.Number],
-                double.IsFinite(item.Source.RawScore) ? item.Source.RawScore : null,
+                item.Source.RawScore is double rawScore && double.IsFinite(rawScore) ? rawScore : null,
                 item.Source.Relevance is double relevance && double.IsFinite(relevance) && relevance is >= 0 and <= 1 ? relevance : null,
                 string.IsNullOrWhiteSpace(item.Source.Metric) ? null : item.Source.Metric,
                 string.IsNullOrWhiteSpace(item.Source.Metric) ? null : item.Source.HigherIsBetter))

@@ -1,4 +1,5 @@
 using Runiq.AI.Rag.Models.Metadata;
+using Runiq.AI.Rag.Models.Retrieval;
 
 namespace Runiq.AI.Rag.Models.Queries;
 
@@ -31,6 +32,9 @@ public sealed class RagQuery
     /// relevance or acceptance as Agent Chat context.
     /// </summary>
     public int TopK { get; init; } = 5;
+
+    /// <summary>Gets or initializes the retrieval mode. The default is semantic.</summary>
+    public RagRetrievalMode Mode { get; init; } = RagRetrievalMode.Semantic;
 
     /// <summary>
     /// Gets or initializes query metadata.

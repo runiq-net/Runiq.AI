@@ -20,4 +20,10 @@ public static class RagScoreMetrics
     /// provider-independent normalization because its bounds depend on the indexed vectors.
     /// </summary>
     public const string DotProduct = "dot-product";
+
+    /// <summary>
+    /// Identifies a provider-specific lexical ranking signal, where higher values are better.
+    /// It is not comparable with semantic relevance.
+    /// </summary>
+    public const string LexicalRank = "lexical-rank";
 }

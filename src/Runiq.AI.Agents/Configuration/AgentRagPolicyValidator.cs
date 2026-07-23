@@ -11,6 +11,14 @@ internal static class AgentRagPolicyValidator
             throw new ArgumentOutOfRangeException(nameof(options.Mode), options.Mode, "The RAG execution mode is not defined.");
         }
 
+        if (!Enum.IsDefined(options.RetrievalMode))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(options.RetrievalMode),
+                options.RetrievalMode,
+                "The RAG retrieval mode is not defined.");
+        }
+
         if (!Enum.IsDefined(options.NoContextBehavior))
         {
             throw new ArgumentOutOfRangeException(

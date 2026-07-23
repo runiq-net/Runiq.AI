@@ -40,4 +40,14 @@ internal sealed class RagIndexRuntimeConfigurationResolver(
             Chunking = new() { MaxChunkLength = chunking.MaxChunkLength, ChunkOverlap = chunking.ChunkOverlap }
         };
     }
+
+    public IRagVectorStore ResolveVectorStore(string indexName)
+    {
+        if (string.IsNullOrWhiteSpace(indexName)) throw new ArgumentException("An index name is required.", nameof(indexName));
+        var registration = registry.Registrations.SingleOrDefault(index => string.Equals(index.Name, indexName, StringComparison.Ordinal));
+        var vectorStoreReference = registration?.VectorStoreReference ?? "default";
+        if (!providers.VectorStores.TryGetValue(vectorStoreReference, out var storeFactory))
+            throw new InvalidOperationException($"RAG index '{indexName}' references unregistered vector store '{vectorStoreReference}'.");
+        return storeFactory(services);
+    }
 }

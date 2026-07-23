@@ -12,12 +12,14 @@ public sealed record AgentRuntimeContext(
         IReadOnlyList<RagSearchResult> acceptedResults,
         IReadOnlyList<RagSearchResult> candidates,
         IReadOnlyList<RagRejectedResult> rejectedResults,
-        Configuration.RagNoContextReason? noContextReason)
+        Configuration.RagNoContextReason? noContextReason,
+        Runiq.AI.Rag.Models.Retrieval.RagRetrievalStatistics? retrievalStatistics = null)
         : this(acceptedResults)
     {
         RetrievedRagCandidates = candidates;
         RejectedRagCandidates = rejectedResults;
         NoContextReason = noContextReason;
+        RetrievalStatistics = retrievalStatistics ?? Runiq.AI.Rag.Models.Retrieval.RagRetrievalStatistics.Empty;
     }
 
     /// <summary>
@@ -35,6 +37,9 @@ public sealed record AgentRuntimeContext(
     internal IReadOnlyList<RagRejectedResult> RejectedRagCandidates { get; } = [];
 
     internal Configuration.RagNoContextReason? NoContextReason { get; }
+
+    internal Runiq.AI.Rag.Models.Retrieval.RagRetrievalStatistics RetrievalStatistics { get; } =
+        Runiq.AI.Rag.Models.Retrieval.RagRetrievalStatistics.Empty;
 
     /// <summary>
     /// Identifies the single retrieval lifecycle supported by one agent execution.
