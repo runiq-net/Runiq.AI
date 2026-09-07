@@ -69,6 +69,8 @@ internal static class AgentChatStreamEventMapper
         {
             RunId = executionEvent.RunId,
             AgentId = executionEvent.AgentId,
+            StartedAt = executionEvent.StartedAt,
+            EndedAt = executionEvent.EndedAt,
             Status = executionEvent.RunId is null ? null : executionEvent.Status,
             SequenceNumber = executionEvent.SequenceNumber,
             Timestamp = executionEvent.Timestamp,

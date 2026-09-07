@@ -43,6 +43,18 @@ public sealed class AgentChatExecutionContractTests
             Assert.Equal(wire.GetProperty("status").GetString(), restored.Status?.ToString());
             Assert.Equal(index + 1L, restored.SequenceNumber);
             Assert.Equal(wire.GetProperty("timestamp").GetDateTimeOffset(), restored.Timestamp);
+            Assert.Equal(executor.Runs[0].StartedAt, restored.StartedAt);
+            Assert.Equal(wire.GetProperty("startedAt").GetDateTimeOffset(), restored.StartedAt);
+            if (index == frames.Length - 1)
+            {
+                Assert.Equal(executor.Runs[0].EndedAt, restored.EndedAt);
+                Assert.Equal(wire.GetProperty("endedAt").GetDateTimeOffset(), restored.EndedAt);
+            }
+            else
+            {
+                Assert.Null(restored.EndedAt);
+                Assert.False(wire.TryGetProperty("endedAt", out _));
+            }
         }
         var terminal = JsonSerializer.Deserialize<AgentChatStreamEvent>(frames[^1])!;
         Assert.Equal(outcome == "failed" ? AgentRunStatus.Failed : AgentRunStatus.Completed, terminal.Status);
@@ -52,6 +64,8 @@ public sealed class AgentChatExecutionContractTests
         var httpResult = await handler.ChatAsync("agent", new("question", AgentChatResponseMode.Result),
             CreateContext(scope.ServiceProvider), CancellationToken.None);
         var response = Assert.IsType<AgentChatResponse>(Assert.IsAssignableFrom<IValueHttpResult>(httpResult).Value);
+        Assert.Equal(executor.Runs[1].StartedAt, response.StartedAt);
+        Assert.Equal(executor.Runs[1].EndedAt, response.EndedAt);
         // Cover both default round-tripping and the web options used by HTTP clients.
         foreach (var options in new JsonSerializerOptions?[] { null, WebJson })
         {
@@ -59,6 +73,8 @@ public sealed class AgentChatExecutionContractTests
                 JsonSerializer.Serialize(response, options), options));
             Assert.Equal(response.RunId, restored.RunId);
             Assert.Equal(response.AgentId, restored.AgentId);
+            Assert.Equal(response.StartedAt, restored.StartedAt);
+            Assert.Equal(response.EndedAt, restored.EndedAt);
             Assert.Equal(response.Status, restored.Status);
             Assert.Equal(response.IsSuccess, restored.IsSuccess);
             Assert.Equal(response.Message, restored.Message);
@@ -86,6 +102,8 @@ public sealed class AgentChatExecutionContractTests
         var json = JsonSerializer.SerializeToElement(response, WebJson);
         Assert.False(json.TryGetProperty("runId", out _));
         Assert.False(json.TryGetProperty("status", out _));
+        Assert.False(json.TryGetProperty("startedAt", out _));
+        Assert.False(json.TryGetProperty("endedAt", out _));
         Assert.False(json.TryGetProperty("structuredOutput", out _));
         Assert.Equal(0, executor.Invocations);
     }
@@ -222,12 +240,14 @@ public sealed class AgentChatExecutionContractTests
         using var provider = CreateServices(executor).BuildServiceProvider();
         using var scope = provider.CreateScope();
         var context = CreateContext(scope.ServiceProvider);
-        context.Response.Body = new DisconnectedStream();
+        var disconnected = new DisconnectedStream();
+        context.Response.Body = disconnected;
         await Assert.ThrowsAsync<IOException>(() => scope.ServiceProvider.GetRequiredService<AgentChatApiHandler>()
             .ChatAsync("agent", new("question", AgentChatResponseMode.Stream), context, CancellationToken.None));
         Assert.Equal(AgentRunStatus.Cancelled, Assert.Single(executor.Runs).Status);
         Assert.Equal(1, executor.Disposals);
         Assert.Equal(1, executor.EventsProduced);
+        Assert.Equal(1, disconnected.WriteAttempts);
     }
 
     [Theory]
@@ -275,8 +295,12 @@ public sealed class AgentChatExecutionContractTests
 
     private sealed class DisconnectedStream : MemoryStream
     {
-        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
-            ValueTask.FromException(new IOException("Client disconnected."));
+        internal int WriteAttempts;
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            WriteAttempts++;
+            return ValueTask.FromException(new IOException("Client disconnected."));
+        }
     }
 
     private sealed class ControlledExecutor(string outcome, CancellationTokenSource? cancellation = null) : IAgentExecutor

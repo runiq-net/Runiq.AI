@@ -143,8 +143,8 @@ Runtime results carry `StartedAt` and `EndedAt` copied from the run context thro
 the published events. All events share the run start time; only terminal events have
 an end time. These are UTC wall-clock values, separate from event publication
 `Timestamp`. A builder reconstructs the same timestamps without generating new
-ones. Standalone legacy factories leave these fields null. These additions apply
-to the core execution models; HTTP/SSE transport DTO fields are unchanged here.
+ones. Standalone legacy factories leave these fields null. HTTP/SSE DTOs preserve
+these values through their explicit mappings and omit unavailable timestamps.
 
 On failure, `Message` remains null and existing tool/RAG/error steps are retained.
 Partial assistant text remains in a FinalAnswer step with Failed status rather than
@@ -251,8 +251,8 @@ contract; clients do not select a separate endpoint for each executor kind.
 
 | Surface | Additive fields | Existing behavior retained |
 | --- | --- | --- |
-| Result JSON | `runId`, `agentId`, `status`, optional `structuredOutput` | `isSuccess`, `message`, error fields, steps, citations, grounding evidence and readiness |
-| Every runtime SSE event | `runId`, `agentId`, `status`, `sequenceNumber`, `timestamp` | Existing `type`, `content` and tool/RAG payloads |
+| Result JSON | `runId`, `agentId`, `status`, `startedAt`, `endedAt`, optional `structuredOutput` | `isSuccess`, `message`, error fields, steps, citations, grounding evidence and readiness |
+| Every runtime SSE event | `runId`, `agentId`, `status`, `sequenceNumber`, `timestamp`, `startedAt`; terminal events also include `endedAt` | Existing `type`, `content` and tool/RAG payloads |
 | Successful terminal SSE event | `message`, optional `structuredOutput` | `type: "completed"`, `content: null`, optional citations |
 
 Run status is serialized as `Running`, `Completed` or `Failed`, independently of
