@@ -135,15 +135,9 @@ public static class RuniqAgentServerServiceCollectionExtensions
             provider.GetService<IRagObservabilityRedactor>(),
             provider.GetService<IRagObservabilityMetadataProjector>(),
             provider.GetRequiredService<ILogger<RagObservabilityProjection>>()));
-        services.AddScoped<ModelAgentExecutor>(provider => new ModelAgentExecutor(
-            provider.GetRequiredService<IChatClientResolver>(),
-            provider.GetService<IRagRetriever>(),
-            provider.GetRequiredService<RagObservabilityProjection>(),
-            provider.GetService<IRagIndexRegistry>(),
-            provider.GetService<IRagIngestionManager>(),
-            provider.GetService<Runiq.AI.Rag.Abstractions.Reranking.IRagReranker>()));
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IAgentExecutor, ModelAgentExecutor>());
         services.AddScoped<AgentExecutorResolver>(provider => new AgentExecutorResolver(
-            provider.GetRequiredService<ModelAgentExecutor>()));
+            provider.GetServices<IAgentExecutor>()));
         services.AddScoped<AgentExecutionRuntime>(provider => new AgentExecutionRuntime(
             provider.GetServices<Agent>(),
             provider.GetRequiredService<AgentExecutorResolver>(),

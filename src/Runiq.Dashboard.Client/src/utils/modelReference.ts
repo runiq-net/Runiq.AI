@@ -4,7 +4,7 @@ export type ParsedModelReference = {
 };
 
 export function parseModelReference(
-  modelReference: string | undefined,
+  modelReference: string | null | undefined,
 ): ParsedModelReference {
   if (!modelReference) {
     return {

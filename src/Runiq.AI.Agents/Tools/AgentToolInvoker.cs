@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -9,6 +10,11 @@ namespace Runiq.AI.Agents.Tools;
 /// <summary>
 /// Invokes typed tools registered for an agent at runtime.
 /// </summary>
+/// <remarks>
+/// Each invocation owns its activated tool instance and disposes it after execution.
+/// Dependencies resolved from the supplied service provider remain owned by that provider.
+/// Caller cancellation is propagated without retrying tool operations.
+/// </remarks>
 public sealed class AgentToolInvoker
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -42,6 +48,7 @@ public sealed class AgentToolInvoker
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(agent);
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (string.IsNullOrWhiteSpace(toolName))
         {
@@ -79,6 +86,7 @@ public sealed class AgentToolInvoker
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(tool);
+        cancellationToken.ThrowIfCancellationRequested();
 
         try
         {
@@ -87,7 +95,19 @@ public sealed class AgentToolInvoker
                 string.IsNullOrWhiteSpace(argumentsJson) ? "{}" : argumentsJson,
                 cancellationToken);
 
+            cancellationToken.ThrowIfCancellationRequested();
             return AgentToolInvocationResult.Success(outputJson);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (TargetInvocationException exception) when (exception.InnerException is OperationCanceledException)
+        {
+            ExceptionDispatchInfo.Capture(exception.InnerException).Throw();
+            throw;
+        }
+        catch (Exception exception) when (cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(exception, "Tool {ToolName} failed while cancellation was requested.", tool.Name);
+            throw new OperationCanceledException("Tool execution was cancelled.", exception, cancellationToken);
         }
         catch (JsonException exception)
         {
@@ -103,7 +123,6 @@ public sealed class AgentToolInvoker
                 "ToolExecutionFailed",
                 "The tool could not be executed.");
         }
-        catch (OperationCanceledException) { throw; }
         catch (Exception exception)
         {
             logger.LogError(exception, "Tool {ToolName} execution failed.", tool.Name);
@@ -129,41 +148,69 @@ public sealed class AgentToolInvoker
                 $"Tool '{tool.Name}' input JSON produced a null value.");
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         var toolInstance = ActivatorUtilities.CreateInstance(
             _serviceProvider,
             tool.ToolType);
 
-        var executeMethod = tool.ToolType
-            .GetMethods(BindingFlags.Instance | BindingFlags.Public)
-            .Single(method =>
-                method.Name == nameof(IRuniqTool<object, object>.ExecuteAsync) &&
-                method.GetParameters().Length == 2);
-
-        var taskObject = executeMethod.Invoke(
-            toolInstance,
-            [input, cancellationToken]);
-
-        if (taskObject is not Task task)
+        Exception? invocationFailure = null;
+        try
         {
-            throw new InvalidOperationException(
-                $"Tool '{tool.Name}' ExecuteAsync method did not return a Task.");
+            var executeMethod = tool.ToolType
+                .GetMethods(BindingFlags.Instance | BindingFlags.Public)
+                .Single(method =>
+                    method.Name == nameof(IRuniqTool<object, object>.ExecuteAsync) &&
+                    method.GetParameters().Length == 2);
+
+            cancellationToken.ThrowIfCancellationRequested();
+            var taskObject = executeMethod.Invoke(
+                toolInstance,
+                [input, cancellationToken]);
+
+            if (taskObject is not Task task)
+            {
+                throw new InvalidOperationException(
+                    $"Tool '{tool.Name}' ExecuteAsync method did not return a Task.");
+            }
+
+            await task.ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var resultProperty = task.GetType().GetProperty("Result");
+
+            if (resultProperty is null)
+            {
+                return "{}";
+            }
+
+            var output = resultProperty.GetValue(task);
+
+            return JsonSerializer.Serialize(
+                output,
+                tool.OutputType,
+                JsonOptions);
+        }
+        catch (Exception exception)
+        {
+            invocationFailure = exception;
+            throw;
+        }
+        finally
+        {
+            try
+            {
+                if (toolInstance is IAsyncDisposable asyncDisposable)
+                    await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+                else if (toolInstance is IDisposable disposable)
+                    disposable.Dispose();
+            }
+            catch (Exception exception) when (invocationFailure is not null || cancellationToken.IsCancellationRequested)
+            {
+                logger.LogWarning(exception, "Tool {ToolName} cleanup failed after execution failed or was cancelled.", tool.Name);
+                if (invocationFailure is null) cancellationToken.ThrowIfCancellationRequested();
+            }
         }
 
-        await task.ConfigureAwait(false);
-
-        var resultProperty = task.GetType().GetProperty("Result");
-
-        if (resultProperty is null)
-        {
-            return "{}";
-        }
-
-        var output = resultProperty.GetValue(task);
-
-        return JsonSerializer.Serialize(
-            output,
-            tool.OutputType,
-            JsonOptions);
     }
 }
 

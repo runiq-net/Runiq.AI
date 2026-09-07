@@ -383,7 +383,17 @@ MIT
 
 ## Executor selection
 
+Migration to the fluent API is optional. The existing `model:` constructor remains
+supported without deprecation, including positional arguments and derived-class
+`base(...)` calls. Both forms select the same model executor before returning.
+
 ```csharp
+using Runiq.AI.Agents;
+using Runiq.AI.Agents.Configuration;
+
+var draft = new Agent(id: "draft", name: "Draft", instructions: "Answer questions.");
+// draft.Executor is null; select an executor before registration.
+
 var modelAgent = new Agent("support", "Support", "Answer questions.")
     .UseModel("openai/model-name");
 var codexAgent = new Agent("reviewer", "Reviewer", "Review code.").UseCodex();
@@ -397,7 +407,35 @@ AgentExecutorKind kind = codexAgent.Executor!.Kind;
 AgentModelConfiguration? modelSettings = modelAgent.Executor!.Model;
 ```
 
+The `existingAgent` and `modelAgent` examples above are equivalent model definitions.
+Tool registration works before or after selection. This complete example only defines
+agents; it does not invoke tools or provide a Codex/Claude tool bridge:
+
+```csharp
+using System.Threading;
+using System.Threading.Tasks;
+using Runiq.AI.Agents;
+using Runiq.AI.Agents.Tools;
+
+var first = new Agent("first", "First", "Review.").UseCodex().AddTool<MyTool>();
+var second = new Agent("second", "Second", "Review.").AddTool<MyTool>().UseClaude();
+
+/// <summary>Returns input unchanged when invoked by a supported execution path.</summary>
+[RuniqTool(name: "echo", description: "Echoes input.")]
+public sealed class MyTool : IRuniqTool<string, string>
+{
+    /// <inheritdoc />
+    public Task<string> ExecuteAsync(string input, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(input);
+    }
+}
+```
+
 The three-argument constructor validates identity and creates a definition with no executor.
+Both constructors trim `Id` and `Name` and reject null, empty or whitespace values.
+`Instructions` preserves whitespace; null becomes an empty string.
 `UseModel` validates the provider/model reference, reasoning effort and verbosity immediately.
 Its optional API key, provider settings and generation defaults match the existing constructor.
 The defaults remain `apiKey: null`, `provider: null`, `reasoningEffort: "minimal"`, and
@@ -420,6 +458,26 @@ tools and RAG settings remain unchanged. A corrected selection can still complet
 Configuration classes are sealed, have no public constructors or setters, and cannot be assigned to an agent.
 Identity, instructions, tool registrations and RAG configuration remain on the same `Agent` instance.
 
+### Fluent definition acceptance evidence
+
+The existing implementation is retained. Definition methods call the shared
+`SelectExecutor` mechanism; model configuration reuses `ModelReference.Parse`.
+`Interlocked.CompareExchange` publishes at most one validated configuration. This
+guarantee applies to executor selection, not concurrent mutation of tool lists or
+provider options. The definition path has no network, process, credential-validation
+or runtime-service dependency. Codex/Claude selection is configuration support only.
+
+| PBI | Acceptance evidence in `AgentExecutorTests` |
+| --- | --- |
+| 01 — Draft definition | `Constructors_PreserveIdentityValidation`, `Constructors_PreserveNormalization`, `Registration_ValidatesCompletedDefinitions`, `LegacyConstructor_PreservesSignatureAndOptionalDefaults` |
+| 02 — Model selection | `UseModel_PreservesLegacyConfiguration`, `ModelDefinitions_AcceptExistingReferenceFormats`, `ModelDefinitions_ProduceEquivalentEffectiveRequests`, `InvalidModel_LeavesSelectionAvailable`, `InvalidModel_CanBeCorrectedWithModelSelection` |
+| 03 — Codex/Claude preference | `RequestedExamples_PreserveNamedConstructorAndDefaults`, `Selection_IsExclusiveAndPreservesTools` |
+| 04 — Chaining and exclusivity | `FluentSelection_AllowsFurtherChaining`, `Selection_IsExclusiveAndPreservesTools`, `LegacyConstructor_RejectsEverySecondSelection`, `ConcurrentSelections_AllowExactlyOneWinner`, `ReadmeToolExamples_OnlyRegisterDefinitions` |
+| 05 — Examples and documentation | Examples above, XML comments on the draft constructor and selection methods, and the compiled example/definition tests |
+
+The definition tests require neither credentials nor a Codex/Claude CLI. Effective
+request equivalence uses an in-memory scripted chat client, not a real provider.
+
 `Executor` is null until selection; `Executor.Model` is null for Codex and Claude. All model-specific
 state lives in `AgentModelConfiguration`. Existing `Agent` model properties remain read-only aliases
 with their original types and values for model agents. On non-model or incomplete definitions,
@@ -427,7 +485,87 @@ with their original types and values for model agents. On non-model or incomplet
 `InvalidOperationException`; `ApiKey` and `Provider` return null. Use `Executor` when inspecting
 arbitrary definitions. Metadata returns null for model-only fields of non-model agents.
 
+Safe inspection across all executor choices:
+
+```csharp
+using System;
+using Runiq.AI.Agents;
+
+Agent agent = new Agent("reviewer", "Reviewer", "Review code.").UseCodex();
+if (agent.Executor?.Model is { } model)
+    Console.WriteLine($"{model.ModelReference.ProviderName}/{model.ModelReference.ModelName}");
+else
+    Console.WriteLine(agent.Executor?.Kind.ToString() ?? "No executor selected");
+```
+
+| Property | Model executor | Codex/Claude or no selection |
+| --- | --- | --- |
+| `Executor` | Selected configuration | Selected configuration, or null before selection |
+| `Executor?.Model` | Model configuration | null |
+| `Model`, `ModelReference`, `ProviderName`, `ModelName` | Configured/parsed values | `InvalidOperationException` identifying the agent and missing model executor |
+| `ReasoningEffort`, `Verbosity` | Normalized values | Same exception |
+| `ApiKey`, `Provider` | Original supplied values or null | null |
+
+Provider settings retain reference identity; they are not copied. Invalid model and
+generation settings still fail at definition time with `ArgumentException`. Historical
+parameter names remain `model`, `ReasoningEffort` and `Verbosity`; error messages may
+include additional agent context. Provider URL/timeout validation stays at registration.
+Metadata uses safe executor access and nullable model fields; it exposes no API key
+or provider settings. Its TypeScript consumer also accepts explicit null values.
+
+### Legacy model compatibility evidence
+
+The pre-executor public constructor and validation behavior were compared with commit
+`89180ff`. No additional compatibility layer or model parser is needed.
+
+| PBI | Evidence |
+| --- | --- |
+| 01 — Constructor compatibility | `LegacyConstructor_PreservesSignatureAndOptionalDefaults`, identity/normalization tests, `DerivedAgents_PreserveBaseConstructorContract`; unchanged sample projects built with the solution |
+| 02 — Common selection | Constructor delegates to `UseModel`, then `SelectExecutor`; `UseModel_PreservesLegacyConfiguration` and `LegacyConstructor_RejectsEverySecondSelection` |
+| 03 — Effective settings | `ModelDefinitions_ProduceEquivalentEffectiveRequests` uses a scripted client; `InvalidSettings_PreserveLegacyExceptionContract` and `ProviderValidation_RemainsAtRegistration` cover validation boundaries |
+| 04 — Getter/metadata contract | `GetterAndMetadataContract_CoversEverySelection` checks Model, Codex, Claude and drafts, including serialized metadata without secrets |
+| 05 — Optional migration | Examples and property table above; existing model/tool/RAG regressions and unchanged derived-agent samples |
+
 ### Validation boundaries and dependency audit
+
+The same executor-presence check is used at registration and runtime. Definition may
+start incomplete; registration may not finish with an incomplete agent. Selection
+validates a candidate before atomic publication and never replaces a valid selection.
+The current error priority checks an existing selection **before** validating a new
+model argument. Thus a second `UseModel("invalid")` raises `InvalidOperationException`;
+the same argument on a draft raises `ArgumentException` and leaves the draft reusable.
+
+| Scenario | Boundary and contract | Acceptance evidence |
+| --- | --- | --- |
+| Draft creation and missing registration | Constructor accepts the draft; registration throws `InvalidOperationException` naming the agent and all three selection methods | `Constructors_PreserveIdentityValidation`, `Registration_ValidatesCompletedDefinitions`, `Registration_AllowsSelectionAfterAddingDraft`, `RuntimeOverloads_RejectBeforeAnyExternalWork` |
+| First and second selection | Shared `SelectExecutor`; all nine second-selection combinations reject without replacing configuration | `Selection_IsExclusiveAndPreservesTools`, `LegacyConstructor_RejectsEverySecondSelection` |
+| Concurrent valid selections | Exactly one published configuration; identity, instructions and tools remain intact | `ConcurrentSelections_AllowExactlyOneWinner` |
+| Invalid first model selection and recovery | Existing parser/generation validation; no assignment until valid; Model, Codex or Claude can be selected afterward | `InvalidModel_LeavesSelectionAvailable`, `InvalidModel_CanBeCorrectedWithModelSelection`, `ConfigurationFailures_DoNotExposeSensitiveSettings` |
+| Missing or unimplemented runtime selection | `AgentExecutorMissing` versus `AgentExecutorNotSupported`, before provider, retrieval or tool work | `RuntimeOverloads_RejectBeforeAnyExternalWork`, `Runtime_ExecutesFluentModel` |
+| Safe and compatible errors | Preserve argument types/parameter names; redact supplied provider URL rather than echoing potential credentials | `InvalidSettings_PreserveLegacyExceptionContract`, `ProviderValidation_RemainsAtRegistration`, `ConfigurationFailures_DoNotExposeSensitiveSettings` |
+
+The runtime guard test covers all six existing overloads: result mode by agent object
+or ID with string or `AgentQuery`, and streaming by ID with either input form and a
+tool-invoker override. Runtime has no agent-object streaming overload; this feature
+adds none. Default Codex/Claude selections have no registered implementation and fail
+with `AgentExecutorNotSupported`. Explicit custom test executors remain supported by
+the existing registry; no new built-in adapter or model fallback is introduced.
+
+Registration keeps case-insensitive duplicate-ID checks and provider URL/timeout
+validation. These checks remain local and do not authenticate keys or probe endpoints.
+Invalid provider URLs produce an actionable message without echoing the URL, which may
+contain credentials. For example:
+
+```csharp
+using Runiq.AI.Agents;
+using Runiq.AI.Agents.Validation;
+
+var draft = new Agent("support", "Support", "Answer questions.");
+// AgentValidator.ValidateRegisteredAgents([draft]) would throw: select an executor first.
+draft.UseModel("openai/model-name");
+AgentValidator.ValidateRegisteredAgents([draft]);
+// draft.UseCodex() would throw: the Model executor is already selected.
+```
 
 Selection is committed only after model validation succeeds. Registration and runtime share the
 executor check in `AgentValidator`: registration requires a selection, while runtime additionally
@@ -445,7 +583,7 @@ at registration. Neither failure consumes the unfinished definition's ability to
 | RAG embedding registration | Reads `ProviderName` for every RAG agent | Inspects model configuration before registering OpenAI embedding clients. |
 | `RuntimeMetadataService` | Reads non-null model and generation aliases | Reads optional model configuration without inventing a model. Model-only DTO fields are nullable; existing model values are unchanged. |
 
-Codex and Claude are configuration preferences only. No CLI execution, tool bridge, Studio UI or
+No Codex or Claude adapter is bundled. No CLI execution, tool bridge, Studio UI or
 workflow behavior is implemented. Direct `Agent.ExecuteAsync` and `Agent.ExecuteStreamAsync` retain
 their existing unsupported-direct-execution contract. Runtime execution continues through dependency
 injection. The executor types belong to Agents and reuse Core's `ModelReference` and `ProviderOptions`;
@@ -462,18 +600,48 @@ them and do not mutate their definitions during execution.
 
 `AgentExecutionRequest` retains the agent and complete existing `AgentQuery`.
 `AgentRunContext` owns invocation identity and state, separately from the RAG context.
-Runtime resolves the internal model executor and owns its lifecycle; Codex and Claude
-remain configuration-only selections with no model fallback.
+Runtime resolves registered executors and owns their lifecycle; Codex and Claude
+remain unsupported by default with no model fallback.
 
 States are `Running`, `Completed`, `Failed`, and `Cancelled`. Both `ExecuteAsync`
 and streaming throw `AgentRunCanceledException`, an `OperationCanceledException`,
 for caller cancellation. Its `Run` property identifies the cancelled invocation.
 Cancellation produces no terminal event or result. Disposing an unfinished stream
 cancels the run and releases the executor. Streams are lazy, and enumerating one
-again creates a new run. Unexpected executor failures and empty responses produce
-`Failed` consistently in both APIs. Approval waiting and resumption are not supported.
+again creates a new run. Unexpected executor failures and responses containing neither
+text nor explicit JSON produce `Failed` consistently in both APIs. Approval waiting
+and resumption are not supported.
+
+Published events include a one-based `SequenceNumber` and UTC `Timestamp`. Successful
+completion events include the final `Message` and optional `StructuredOutput`, matching
+the aggregated result. `StructuredOutput` is a `JsonElement?` cloned by the factories;
+dispose the source `JsonDocument` freely after creating the event or result. Text is
+never parsed automatically. Supply JSON explicitly with
+`AgentExecutionEvent.Completed(rag, citations, structuredOutput)` or the five-argument
+`AgentExecutionResult.Success` overload. JSON-only success has an empty `Message`.
+The result builder rejects incomplete correlated streams, including cancelled streams.
+
+Register custom executors with `services.AddScoped<IAgentExecutor, YourExecutor>()`.
+Each implementation exposes its `AgentExecutorKind Kind` and the single event-stream
+`ExecuteAsync` method. Runtime continues to own identity, ordering, error handling and
+cancellation for both public APIs. The scoped resolver rejects multiple registrations
+for the same kind when resolved, rather than choosing the last. The built-in model
+registration is idempotent across repeated hosting registration. Missing selection
+returns `AgentExecutorMissing`; missing implementation returns `AgentExecutorNotSupported`.
+No Codex/Claude implementation is bundled, so those selections remain unsupported unless
+the host explicitly registers an implementation. No model fallback is performed.
 
 Existing overloads and result/event factories remain available; standalone factory
 products have null run identity. See the repository's
 [lifecycle and compatibility decisions](../../docs/agent-execution-lifecycle.md)
 for the full compatibility table, including the RAG `ConversationId` migration.
+
+Agent Chat HTTP results also carry `runId`, `agentId`, string `status` and optional
+`structuredOutput`. SSE retains its event types and adds run identity, status,
+`sequenceNumber` and UTC `timestamp`; successful terminal frames also carry the full
+`message` and explicit JSON. A failed tool step remains a `Running` run event.
+Cancellation produces neither a terminal frame nor `[DONE]`. The lifecycle document's
+[HTTP/SSE compatibility section](../../docs/agent-execution-lifecycle.md#hosted-http-and-sse-compatibility)
+describes field omission, JSON-only output and transport behavior. Clients with strict
+schemas should allow these additive fields. Separate API invocations create distinct
+runs; aggregate a stream with `AgentExecutionResultBuilder` to obtain its own result.

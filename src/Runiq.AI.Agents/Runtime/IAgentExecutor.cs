@@ -7,8 +7,18 @@ namespace Runiq.AI.Agents.Runtime;
 /// Produces execution events for a request while leaving run identity, cancellation,
 /// and terminal lifecycle ownership to the runtime.
 /// </summary>
-internal interface IAgentExecutor
+/// <remarks>
+/// Register implementations as scoped services. Keep the executor kind stable and per-run
+/// mutable state local to ExecuteAsync. Emit text through assistant deltas and explicit JSON
+/// through a completion event. The runtime stamps identity, sequence and time, and consumes
+/// only the first terminal event. Implementations must honor cancellation and release resources
+/// when their event enumerator is disposed.
+/// </remarks>
+public interface IAgentExecutor
 {
+    /// <summary>Gets the single executor kind handled by this registered implementation.</summary>
+    AgentExecutorKind Kind { get; }
+
     /// <summary>Executes one request using identity owned by the runtime.</summary>
     /// <param name="request">The reusable definition and complete per-call query.</param>
     /// <param name="run">The runtime-owned context for this invocation.</param>
@@ -22,11 +32,23 @@ internal interface IAgentExecutor
 /// <summary>
 /// Selects the configured executor without starting a run or taking ownership of its lifecycle.
 /// </summary>
-internal sealed class AgentExecutorResolver(IAgentExecutor modelExecutor)
+internal sealed class AgentExecutorResolver
 {
-    internal IAgentExecutor Resolve(AgentExecutionRequest request) => request.Agent.Executor?.Kind switch
+    private readonly IReadOnlyDictionary<AgentExecutorKind, IAgentExecutor> executors;
+
+    internal AgentExecutorResolver(IEnumerable<IAgentExecutor> registeredExecutors)
     {
-        AgentExecutorKind.Model => modelExecutor,
-        _ => throw new InvalidOperationException("The requested executor is unavailable.")
-    };
+        var byKind = new Dictionary<AgentExecutorKind, IAgentExecutor>();
+        foreach (var executor in registeredExecutors)
+        {
+            var kind = executor.Kind;
+            if (!Enum.IsDefined(kind))
+                throw new InvalidOperationException($"Agent executor registration has invalid kind '{kind}'.");
+            if (!byKind.TryAdd(kind, executor))
+                throw new InvalidOperationException($"Multiple agent executors are registered for kind '{kind}'. Register exactly one implementation per kind.");
+        }
+        executors = byKind;
+    }
+
+    internal IAgentExecutor? Resolve(AgentExecutorKind kind) => executors.GetValueOrDefault(kind);
 }

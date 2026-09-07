@@ -36,6 +36,8 @@ public sealed class AgentRunLifecycleTests
         Assert.NotEqual(runs[0][0].RunId, runs[1][0].RunId);
         foreach (var events in runs)
         {
+            Assert.Equal(Enumerable.Range(1, events.Count).Select(number => (long?)number),
+                events.Select(item => item.SequenceNumber));
             var runId = events[0].RunId;
             Assert.True(Guid.TryParseExact(runId, "N", out _));
             Assert.NotEqual(query.Message, runId);

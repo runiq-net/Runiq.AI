@@ -183,8 +183,8 @@ public sealed class AgentRagExecutionRuntimeTests
         var observability = new RagObservabilityProjection(Options.Create(new RagObservabilityOptions()), null, null,
             NullLogger<RagObservabilityProjection>.Instance);
         var runtime = new AgentExecutionRuntime([agent],
-            new AgentExecutorResolver(new ModelAgentExecutor(new TestChatClientResolver(client), retriever,
-                observability, new EmptyIndexRegistry(), new UnusedIngestionManager(), null)),
+            new AgentExecutorResolver([new ModelAgentExecutor(new TestChatClientResolver(client),
+                observability, retriever, new EmptyIndexRegistry(), new UnusedIngestionManager(), null)]),
             new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()), NullLogger<AgentExecutionRuntime>.Instance);
 
         var events = new List<AgentExecutionEvent>();
@@ -1302,9 +1302,9 @@ public sealed class AgentRagExecutionRuntimeTests
 
     private static AgentExecutionRuntime CreateReadinessRuntime(Agent agent, IChatClient client, IRagRetriever retriever,
         IRagIndexRegistry registry, IRagIngestionManager manager) => new([agent],
-        new AgentExecutorResolver(new ModelAgentExecutor(new TestChatClientResolver(client), retriever,
+        new AgentExecutorResolver([new ModelAgentExecutor(new TestChatClientResolver(client),
             new RagObservabilityProjection(Options.Create(new RagObservabilityOptions()), null, null,
-                NullLogger<RagObservabilityProjection>.Instance), registry, manager, null)),
+                NullLogger<RagObservabilityProjection>.Instance), retriever, registry, manager, null)]),
         new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()), NullLogger<AgentExecutionRuntime>.Instance);
 
     private static async Task<List<AgentExecutionEvent>> CollectAsync(IAsyncEnumerable<AgentExecutionEvent> source)

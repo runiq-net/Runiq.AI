@@ -1,10 +1,15 @@
+using System.Text.Json;
+
 namespace Runiq.AI.Agents
 {
     /// <summary>
-    /// Agent çalistirma sonucunu final cevap, hata bilgisi ve görünür execution adimlariyla temsil eder.
+    /// Represents a terminal execution result with text, explicit JSON, errors, and visible execution steps.
     /// </summary>
     public sealed class AgentExecutionResult
     {
+        /// <summary>Gets explicitly supplied JSON with ownership independent of its original document.</summary>
+        public JsonElement? StructuredOutput { get; }
+
         /// <summary>Gets the runtime run identifier, or null for a standalone factory result.</summary>
         public string? RunId { get; private init; }
 
@@ -19,7 +24,7 @@ namespace Runiq.AI.Agents
             ? Runtime.AgentRunStatus.Completed : Runtime.AgentRunStatus.Failed;
 
         internal AgentExecutionResult WithIdentity(string? runId, string? agentId) =>
-            new(IsSuccess, Message, ErrorCode, ErrorMessage, Steps, Rag, Citations, RagReadiness)
+            new(IsSuccess, Message, ErrorCode, ErrorMessage, Steps, Rag, Citations, RagReadiness, StructuredOutput)
             { RunId = runId, AgentId = agentId };
 
         private AgentExecutionResult(
@@ -30,8 +35,12 @@ namespace Runiq.AI.Agents
             IReadOnlyList<AgentExecutionStep> steps,
             AgentRagExecutionMetadata? rag,
             IReadOnlyList<AgentCitation>? citations = null,
-            RagSearchBlocked? ragReadiness = null)
+            RagSearchBlocked? ragReadiness = null,
+            JsonElement? structuredOutput = null)
         {
+            if (structuredOutput is { ValueKind: JsonValueKind.Undefined })
+                throw new ArgumentException("Structured output must be a defined JSON value.", nameof(structuredOutput));
+            StructuredOutput = structuredOutput?.Clone();
             IsSuccess = isSuccess;
             Message = message;
             ErrorCode = errorCode;
@@ -48,7 +57,7 @@ namespace Runiq.AI.Agents
         public bool IsSuccess { get; }
 
         /// <summary>
-        /// Basarili çalistirma sonucunda modelden dönen final cevaptir.
+        /// Gets the successful response text, empty for JSON-only success and null for failure.
         /// </summary>
         public string? Message { get; }
 
@@ -123,6 +132,18 @@ namespace Runiq.AI.Agents
                 rag: rag,
                 citations: citations);
         }
+
+        /// <summary>Creates a successful result retaining explicit JSON independently of its source document.</summary>
+        /// <param name="message">The final response text; empty for a JSON-only response.</param>
+        /// <param name="steps">The visible execution steps.</param>
+        /// <param name="rag">The optional RAG policy outcome.</param>
+        /// <param name="citations">The validated citations.</param>
+        /// <param name="structuredOutput">Optional JSON to clone; no output is inferred from the message.</param>
+        /// <returns>The successful result containing an owned JSON value.</returns>
+        /// <exception cref="ArgumentException">The supplied JSON element is undefined.</exception>
+        public static AgentExecutionResult Success(string message, IReadOnlyList<AgentExecutionStep> steps,
+            AgentRagExecutionMetadata? rag, IReadOnlyList<AgentCitation> citations, JsonElement? structuredOutput) =>
+            new(true, message, null, null, steps, rag, citations, structuredOutput: structuredOutput);
 
         /// <summary>
         /// Basarisiz agent çalistirma sonucu olusturur.

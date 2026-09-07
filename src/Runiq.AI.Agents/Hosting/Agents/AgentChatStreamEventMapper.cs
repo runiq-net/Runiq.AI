@@ -3,15 +3,18 @@ using Runiq.AI.Agents;
 namespace Runiq.AI.Core.Agents;
 
 /// <summary>
-/// Agent execution olaylarini Dashboard'un bekledigi stream DTO formatina cevirir.
+/// Projects execution events into the existing Agent Chat SSE contract with additive run metadata.
 /// </summary>
 internal static class AgentChatStreamEventMapper
 {
+    /// <summary>Preserves legacy event fields while carrying runtime identity and explicit completion output.</summary>
+    /// <param name="executionEvent">The runtime or standalone event to project.</param>
+    /// <returns>The corresponding Agent Chat transport event.</returns>
     public static AgentChatStreamEvent FromExecutionEvent(AgentExecutionEvent executionEvent)
     {
         ArgumentNullException.ThrowIfNull(executionEvent);
 
-        return executionEvent.Kind switch
+        var mapped = executionEvent.Kind switch
         {
             AgentExecutionEventKind.RagSearch => FromRagSearchEvent(executionEvent.RagSearch!),
 
@@ -60,6 +63,17 @@ internal static class AgentChatStreamEventMapper
 
             _ => throw new ArgumentOutOfRangeException(
                 nameof(executionEvent), executionEvent.Kind, "The execution event kind is not supported.")
+        };
+
+        return mapped with
+        {
+            RunId = executionEvent.RunId,
+            AgentId = executionEvent.AgentId,
+            Status = executionEvent.RunId is null ? null : executionEvent.Status,
+            SequenceNumber = executionEvent.SequenceNumber,
+            Timestamp = executionEvent.Timestamp,
+            Message = executionEvent.Message,
+            StructuredOutput = executionEvent.StructuredOutput,
         };
     }
 

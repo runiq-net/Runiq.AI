@@ -17,6 +17,9 @@ public enum AgentRunStatus
 public sealed class AgentRunContext
 {
     private int status;
+    private long eventSequence;
+
+    internal long NextEventSequence() => Interlocked.Increment(ref eventSequence);
 
     internal AgentRunContext(string agentId)
     {

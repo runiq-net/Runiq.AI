@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -77,8 +78,8 @@ public sealed class AgentExecutionRuntime
         this.toolInvoker = toolInvoker ?? throw new ArgumentNullException(nameof(toolInvoker));
         var observability = new RagObservabilityProjection(Options.Create(new RagObservabilityOptions()), null, null,
             NullLogger<RagObservabilityProjection>.Instance);
-        executorResolver = new(new ModelAgentExecutor(chatClientResolver, ragRetriever, observability,
-            null, null, ragReranker));
+        executorResolver = new([new ModelAgentExecutor(chatClientResolver, observability, ragRetriever,
+            null, null, ragReranker)]);
     }
 
     /// <summary>Initializes the hosted runtime with scoped executor resolution and server-side diagnostics.</summary>
@@ -253,7 +254,7 @@ public sealed class AgentExecutionRuntime
         var run = new AgentRunContext(agent?.Id ?? requestedAgentId!);
         IAsyncEnumerator<AgentExecutionEvent>? enumerator = null;
         var disposed = false;
-        var hasMessage = false;
+        var message = new StringBuilder();
         try
         {
             ThrowIfCancelled(run, cancellationToken);
@@ -262,11 +263,20 @@ public sealed class AgentExecutionRuntime
                 : string.IsNullOrWhiteSpace(query.Message)
                     ? AgentExecutionEvent.Failed("Agent input cannot be empty.", "InputRequired")
                     : null;
+            IAgentExecutor? executor = null;
             if (initialFailure is null)
             {
-                var executorFailure = AgentValidator.ValidateExecutor(agent!, requireRuntimeSupport: true);
+                var executorFailure = AgentValidator.ValidateExecutor(agent!);
                 if (executorFailure is not null)
                     initialFailure = AgentExecutionEvent.Failed(executorFailure.ErrorMessage!, executorFailure.ErrorCode);
+                else
+                {
+                    executor = executorResolver.Resolve(agent!.Executor!.Kind);
+                    if (executor is null)
+                        initialFailure = AgentExecutionEvent.Failed(
+                            $"Agent '{agent.Id}' selects {agent.Executor.Kind}, but no implementation is registered for this executor.",
+                            "AgentExecutorNotSupported");
+                }
             }
             if (initialFailure is not null)
             {
@@ -277,18 +287,17 @@ public sealed class AgentExecutionRuntime
             }
 
             var request = new AgentExecutionRequest(agent!, query);
-            enumerator = executorResolver.Resolve(request)
-                .ExecuteAsync(request, run, invocationToolInvoker, cancellationToken)
-                .GetAsyncEnumerator(cancellationToken);
             while (true)
             {
                 AgentExecutionEvent current;
                 try
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    enumerator ??= executor!.ExecuteAsync(request, run, invocationToolInvoker, cancellationToken)
+                        .GetAsyncEnumerator(cancellationToken);
                     current = await enumerator.MoveNextAsync()
                         ? enumerator.Current
-                        : AgentExecutionEvent.Failed("The executor ended without a terminal event.", "AgentExecutionFailed");
+                        : AgentExecutionEvent.Failed("The executor ended without a terminal event.", "AgentExecutionProtocolError");
                 }
                 catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
                 {
@@ -302,9 +311,9 @@ public sealed class AgentExecutionRuntime
                     current = AgentExecutionEvent.Failed("Agent execution failed.", "AgentExecutionFailed");
                 }
                 ThrowIfCancelled(run, cancellationToken);
-                hasMessage |= current.Kind == AgentExecutionEventKind.AssistantDelta &&
-                    !string.IsNullOrWhiteSpace(current.Content);
-                if (current.Kind == AgentExecutionEventKind.Completed && !hasMessage)
+                if (current.Kind == AgentExecutionEventKind.AssistantDelta) message.Append(current.Content);
+                if (current.Kind == AgentExecutionEventKind.Completed && current.StructuredOutput is null &&
+                    string.IsNullOrWhiteSpace(message.ToString()))
                     current = AgentExecutionEvent.Failed("Agent execution completed without producing a message.",
                         "AgentExecutionEmptyMessage", current.Rag);
 
@@ -312,7 +321,10 @@ public sealed class AgentExecutionRuntime
                 {
                     // Dispose before publishing a terminal outcome so cleanup cannot fail after completion.
                     disposed = true;
-                    try { await enumerator.DisposeAsync(); }
+                    try
+                    {
+                        if (enumerator is not null) await enumerator.DisposeAsync();
+                    }
                     catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
                     {
                         logger.LogWarning(exception, "Agent executor cleanup was cancelled for run {RunId} and agent {AgentId}.",
@@ -327,6 +339,12 @@ public sealed class AgentExecutionRuntime
                         current = AgentExecutionEvent.Failed("Agent executor cleanup failed.", "AgentExecutionFailed", current.Rag);
                     }
                     ThrowIfCancelled(run, cancellationToken);
+                    if (current.Kind == AgentExecutionEventKind.Completed)
+                        current = current with { Message = message.ToString() };
+                    else if (current.Kind == AgentExecutionEventKind.Failed && current.ErrorCode is null)
+                        current = AgentExecutionEvent.Failed(
+                            current.ErrorMessage ?? current.Content ?? "Agent execution failed.",
+                            "AgentExecutionFailed", current.Rag);
                     run.Finish(current.Status);
                     yield return Stamp(current, run);
                     yield break;
@@ -352,7 +370,13 @@ public sealed class AgentExecutionRuntime
     }
 
     private static AgentExecutionEvent Stamp(AgentExecutionEvent executionEvent, AgentRunContext run) =>
-        executionEvent with { RunId = run.RunId, AgentId = run.AgentId };
+        executionEvent with
+        {
+            RunId = run.RunId,
+            AgentId = run.AgentId,
+            SequenceNumber = run.NextEventSequence(),
+            Timestamp = DateTimeOffset.UtcNow
+        };
 
     private static void ThrowIfCancelled(AgentRunContext run, CancellationToken cancellationToken)
     {

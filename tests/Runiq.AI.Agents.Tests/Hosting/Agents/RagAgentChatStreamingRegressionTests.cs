@@ -275,9 +275,9 @@ public sealed class RagAgentChatStreamingRegressionTests
         var builder = (RagIndexBuilder)Activator.CreateInstance(typeof(RagIndexBuilder), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, [status.IndexName], null)!;
         builder.UseDirectory("documents").UseVectorStore("store").UseEmbeddingModel("model");
         var registration = (RagIndexRegistration)typeof(RagIndexBuilder).GetMethod("Build", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(builder, null)!;
-        return new AgentExecutionRuntime([agent], new AgentExecutorResolver(new ModelAgentExecutor(new TestChatClientResolver(), new EmptyRetriever(),
+        return new AgentExecutionRuntime([agent], new AgentExecutorResolver([new ModelAgentExecutor(new TestChatClientResolver(),
             new RagObservabilityProjection(Options.Create(new RagObservabilityOptions()), null, null, NullLogger<RagObservabilityProjection>.Instance),
-            new TestRegistry(registration), new TestIngestionManager(status), null)),
+            new EmptyRetriever(), new TestRegistry(registration), new TestIngestionManager(status), null)]),
             new AgentToolInvoker(services), NullLogger<AgentExecutionRuntime>.Instance);
     }
 

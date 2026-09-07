@@ -8,9 +8,9 @@ public enum AgentExecutorKind
 {
     /// <summary>Executes through the model provider pipeline.</summary>
     Model,
-    /// <summary>Requests Codex execution, which is not implemented yet.</summary>
+    /// <summary>Requests Codex execution; no built-in implementation is supplied.</summary>
     Codex,
-    /// <summary>Requests Claude execution, which is not implemented yet.</summary>
+    /// <summary>Requests Claude execution; no built-in implementation is supplied.</summary>
     Claude
 }
 

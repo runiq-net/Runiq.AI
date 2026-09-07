@@ -15,6 +15,79 @@ namespace Runiq.AI.Agents.Tests.Agents;
 public sealed class AgentExecutorTests
 {
     [Fact]
+    // Verifies the complete README tool examples compile in both chaining orders without constructing or executing the tool.
+    public void ReadmeToolExamples_OnlyRegisterDefinitions()
+    {
+        var first = new Agent("first", "First", "Review.").UseCodex().AddTool<DefinitionOnlyTool>();
+        var second = new Agent("second", "Second", "Review.").AddTool<DefinitionOnlyTool>().UseClaude();
+        Assert.Equal(AgentExecutorKind.Codex, first.Executor!.Kind);
+        Assert.Equal(AgentExecutorKind.Claude, second.Executor!.Kind);
+        foreach (var agent in new[] { first, second })
+        {
+            Assert.Equal("Review.", agent.Instructions);
+            Assert.Null(agent.Executor!.Model);
+            Assert.Equal("echo", Assert.Single(agent.Tools).Name);
+        }
+    }
+    [Theory]
+    [InlineData(null, "Name", "id")]
+    [InlineData("", "Name", "id")]
+    [InlineData(" \t", "Name", "id")]
+    [InlineData("id", null, "name")]
+    [InlineData("id", "", "name")]
+    [InlineData("id", " \t", "name")]
+    // Verifies draft and legacy constructors reject the same invalid identity parameters before selecting an executor.
+    public void Constructors_PreserveIdentityValidation(string? id, string? name, string parameter)
+    {
+        var draftError = Assert.Throws<ArgumentException>(() => new Agent(id!, name!, "instructions"));
+        var legacyError = Assert.Throws<ArgumentException>(() => new Agent(id!, name!, "instructions", model: "openai/model"));
+        Assert.Equal(parameter, draftError.ParamName);
+        Assert.Equal(legacyError.Message, draftError.Message);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  Keep whitespace.\n")]
+    // Verifies constructor overloads trim identity while preserving instructions and normalizing only null instructions.
+    public void Constructors_PreserveNormalization(string? instructions)
+    {
+        var draft = new Agent(id: " support ", name: " Support ", instructions: instructions!);
+        var legacy = new Agent(id: " support ", name: " Support ", instructions: instructions!, model: "openai/model");
+        Assert.Null(draft.Executor);
+        Assert.Equal("support", draft.Id);
+        Assert.Equal("Support", draft.Name);
+        Assert.Equal(instructions ?? string.Empty, draft.Instructions);
+        Assert.Equal(legacy.Id, draft.Id);
+        Assert.Equal(legacy.Name, draft.Name);
+        Assert.Equal(legacy.Instructions, draft.Instructions);
+    }
+
+    [Theory]
+    [InlineData(AgentExecutorKind.Model)]
+    [InlineData(AgentExecutorKind.Codex)]
+    [InlineData(AgentExecutorKind.Claude)]
+    // Verifies every second selection is rejected after legacy construction without replacing the original configuration.
+    public void LegacyConstructor_RejectsEverySecondSelection(AgentExecutorKind kind)
+    {
+        var agent = new Agent("agent", "Agent", "instructions", model: "openai/model");
+        var original = agent.Executor;
+        var failure = Assert.Throws<InvalidOperationException>(() => Select(agent, kind));
+        Assert.Contains("already has an executor (Model)", failure.Message);
+        Assert.Same(original, agent.Executor);
+    }
+
+    [Fact]
+    // Verifies a failed model configuration can be corrected with UseModel on the same definition.
+    public void InvalidModel_CanBeCorrectedWithModelSelection()
+    {
+        var agent = new Agent("agent", "Agent", "instructions");
+        Assert.Throws<ArgumentException>(() => agent.UseModel("openai/model", verbosity: "invalid"));
+        Assert.Null(agent.Executor);
+        Assert.Same(agent, agent.UseModel("openai/model"));
+        Assert.Equal("low", agent.Executor!.Model!.Verbosity);
+    }
+    [Fact]
     // Ensures fluent model configuration preserves every legacy constructor value and alias.
     public void UseModel_PreservesLegacyConfiguration()
     {
@@ -102,17 +175,32 @@ public sealed class AgentExecutorTests
     }
 
     [Fact]
-    // Ensures competing selection calls cannot publish a second executor configuration.
+    // Ensures simultaneously released selections publish one complete configuration and preserve unrelated agent state.
     public async Task ConcurrentSelections_AllowExactlyOneWinner()
     {
-        var agent = new Agent("agent", "Agent", "instructions");
-        var attempts = await Task.WhenAll(Enumerable.Range(0, 30).Select(i => Task.Run(() =>
+        var agent = new Agent("agent", "Agent", "instructions").AddTool<EchoTool>();
+        var tool = Assert.Single(agent.Tools);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var count = 0;
+        var tasks = Enumerable.Range(0, 30).Select(i => Task.Run(async () =>
         {
-            try { Select(agent, (AgentExecutorKind)(i % 3)); return true; }
-            catch (InvalidOperationException) { return false; }
-        })));
-        Assert.Single(attempts, success => success);
-        Assert.NotNull(agent.Executor);
+            if (Interlocked.Increment(ref count) == 30) ready.TrySetResult();
+            await release.Task;
+            try { Select(agent, (AgentExecutorKind)(i % 3)); return agent.Executor; }
+            catch (InvalidOperationException) { return null; }
+        })).ToArray();
+        try { await ready.Task.WaitAsync(TimeSpan.FromSeconds(10)); }
+        finally { release.TrySetResult(); }
+        var attempts = await Task.WhenAll(tasks);
+        var winner = Assert.Single(attempts, selection => selection is not null)!;
+        Assert.Same(winner, agent.Executor);
+        Assert.Equal(winner.Kind == AgentExecutorKind.Model, winner.Model is not null);
+        if (winner.Model is not null) Assert.Equal("openai/model", winner.Model.Model);
+        Assert.Same(tool, Assert.Single(agent.Tools));
+        Assert.Equal("agent", agent.Id);
+        Assert.Equal("Agent", agent.Name);
+        Assert.Equal("instructions", agent.Instructions);
     }
 
     [Fact]
@@ -187,7 +275,7 @@ public sealed class AgentExecutorTests
         if (kind.HasValue)
         {
             Assert.Contains(kind.Value.ToString(), result.ErrorMessage!);
-            Assert.Contains("not implemented in this version", result.ErrorMessage!);
+            Assert.Contains("no implementation is registered", result.ErrorMessage!);
         }
         var events = new List<AgentExecutionEvent>();
         await foreach (var item in runtime.ExecuteStreamAsync(agent.Id, "question")) events.Add(item);
@@ -410,6 +498,14 @@ public sealed class AgentExecutorTests
         AgentExecutorKind.Claude => agent.UseClaude(),
         _ => throw new ArgumentOutOfRangeException(nameof(kind))
     };
+
+    [RuniqTool(name: "echo", description: "Echoes input.")]
+    private sealed class DefinitionOnlyTool : IRuniqTool<string, string>
+    {
+        public DefinitionOnlyTool() => throw new InvalidOperationException("Definition must not instantiate tools.");
+        public Task<string> ExecuteAsync(string input, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Definition must not execute tools.");
+    }
 
     [RuniqTool(name: "echo", description: "Echoes input.")]
     private sealed class EchoTool : IRuniqTool<string, string>

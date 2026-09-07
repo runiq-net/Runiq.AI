@@ -11,6 +11,28 @@ namespace Runiq.AI.Agents.Tests.Agents;
 public sealed class AgentRuntimeDiagnosticsTests
 {
     [Fact]
+    // Verifies cancellation during terminal cleanup prevents completion publication and disposes the executor once.
+    public async Task TerminalCleanup_CancellationWinsBeforePublication()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var executor = new CancellingCleanupExecutor(cancellation);
+        var services = CreateServices(new RecordingLogger());
+        services.AddScoped(_ => new AgentExecutorResolver([executor]));
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var events = new List<AgentExecutionEvent>();
+        var exception = await Assert.ThrowsAsync<AgentRunCanceledException>(async () =>
+        {
+            await foreach (var item in scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>()
+                .ExecuteStreamAsync("agent", "question", cancellationToken: cancellation.Token)) events.Add(item);
+        });
+        Assert.Equal(AgentRunStatus.Cancelled, exception.Run.Status);
+        Assert.Single(events);
+        Assert.All(events, item => Assert.Equal(AgentRunStatus.Running, item.Status));
+        Assert.Equal(1, executor.Disposals);
+    }
+
+    [Fact]
     // Verifies the hosting graph resolves scoped executors and logs original model faults without exposing them to callers.
     public async Task Hosting_ResolvesScopedModelExecutorAndLogsExecutionFailure()
     {
@@ -21,10 +43,10 @@ public sealed class AgentRuntimeDiagnosticsTests
         using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         using var first = provider.CreateScope();
         using var second = provider.CreateScope();
-        Assert.Same(first.ServiceProvider.GetRequiredService<ModelAgentExecutor>(),
-            first.ServiceProvider.GetRequiredService<ModelAgentExecutor>());
-        Assert.NotSame(first.ServiceProvider.GetRequiredService<ModelAgentExecutor>(),
-            second.ServiceProvider.GetRequiredService<ModelAgentExecutor>());
+        Assert.Same(first.ServiceProvider.GetServices<IAgentExecutor>().Single(),
+            first.ServiceProvider.GetServices<IAgentExecutor>().Single());
+        Assert.NotSame(first.ServiceProvider.GetServices<IAgentExecutor>().Single(),
+            second.ServiceProvider.GetServices<IAgentExecutor>().Single());
         Assert.NotSame(first.ServiceProvider.GetRequiredService<AgentExecutorResolver>(),
             second.ServiceProvider.GetRequiredService<AgentExecutorResolver>());
 
@@ -44,7 +66,7 @@ public sealed class AgentRuntimeDiagnosticsTests
         var logger = new RecordingLogger();
         var executor = new FaultingExecutor(failExecution);
         var services = CreateServices(logger);
-        services.AddScoped(_ => new AgentExecutorResolver(executor));
+        services.AddScoped(_ => new AgentExecutorResolver([executor]));
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
 
@@ -68,7 +90,7 @@ public sealed class AgentRuntimeDiagnosticsTests
         var logger = new RecordingLogger();
         var executor = new FaultingExecutor(false, partial: true);
         var services = CreateServices(logger);
-        services.AddScoped(_ => new AgentExecutorResolver(executor));
+        services.AddScoped(_ => new AgentExecutorResolver([executor]));
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
         await using var stream = scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>()
@@ -118,9 +140,30 @@ public sealed class AgentRuntimeDiagnosticsTests
         public IChatClient Resolve(ChatRequest request) => throw failure;
     }
 
+    private sealed class CancellingCleanupExecutor(CancellationTokenSource cancellation) : IAgentExecutor,
+        IAsyncEnumerable<AgentExecutionEvent>, IAsyncEnumerator<AgentExecutionEvent>
+    {
+        private int step;
+        internal int Disposals;
+        public Runiq.AI.Agents.Configuration.AgentExecutorKind Kind => Runiq.AI.Agents.Configuration.AgentExecutorKind.Model;
+        public AgentExecutionEvent Current => step == 1 ? AgentExecutionEvent.AssistantDelta("answer") : AgentExecutionEvent.Completed();
+        public IAsyncEnumerable<AgentExecutionEvent> ExecuteAsync(AgentExecutionRequest request, AgentRunContext run,
+            AgentToolInvoker toolInvoker, CancellationToken cancellationToken) => this;
+        public IAsyncEnumerator<AgentExecutionEvent> GetAsyncEnumerator(CancellationToken cancellationToken = default) => this;
+        public ValueTask<bool> MoveNextAsync() => ValueTask.FromResult(++step <= 2);
+        public ValueTask DisposeAsync()
+        {
+            Disposals++;
+            cancellation.Cancel();
+            return ValueTask.CompletedTask;
+        }
+    }
+
     private sealed class FaultingExecutor(bool failExecution, bool partial = false) : IAgentExecutor,
         IAsyncEnumerable<AgentExecutionEvent>, IAsyncEnumerator<AgentExecutionEvent>
     {
+        public Runiq.AI.Agents.Configuration.AgentExecutorKind Kind => Runiq.AI.Agents.Configuration.AgentExecutorKind.Model;
+
         internal Exception ExecutionFailure { get; } = new InvalidOperationException("Original execution diagnostic");
         internal Exception CleanupFailure { get; } = new InvalidOperationException("Original cleanup diagnostic");
         internal AgentRunContext? Run { get; private set; }

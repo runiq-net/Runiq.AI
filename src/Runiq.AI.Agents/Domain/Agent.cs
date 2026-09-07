@@ -41,43 +41,43 @@ public class Agent
     public string Instructions { get; }
 
     /// <summary>
-    /// Ajanin kullanacagi modeli provider/model biçiminde alir.
+    /// Gets the configured, trimmed provider/model identifier for the selected model executor.
     /// </summary>
     /// <exception cref="InvalidOperationException">No model executor is selected.</exception>
     public string Model => RequiredModel.Model;
 
     /// <summary>
-    /// Model tanimindan çözümlenen provider adini alir.
+    /// Gets the normalized provider name parsed from the selected model reference.
     /// </summary>
     /// <exception cref="InvalidOperationException">No model executor is selected.</exception>
     public string ProviderName => ModelReference.ProviderName;
 
     /// <summary>
-    /// Model tanimindan çözümlenen model adini alir.
+    /// Gets the model name parsed from the selected model reference.
     /// </summary>
     /// <exception cref="InvalidOperationException">No model executor is selected.</exception>
     public string ModelName => ModelReference.ModelName;
 
     /// <summary>
-    /// Provider çagrilarinda kullanilacak opsiyonel API anahtarini alir.
+    /// Gets the supplied API key, or null when absent or no model executor is selected.
     /// </summary>
     /// <remarks>Returns null when no model executor is selected.</remarks>
     public string? ApiKey => Executor?.Model?.ApiKey;
 
     /// <summary>
-    /// Modelin yanit üretirken kullanacagi akil yürütme yogunlugunu alir.
+    /// Gets the normalized reasoning effort for the selected model executor.
     /// </summary>
     /// <exception cref="InvalidOperationException">No model executor is selected.</exception>
     public string ReasoningEffort => RequiredModel.ReasoningEffort;
 
     /// <summary>
-    /// Model yanitinin ayrinti seviyesini alir.
+    /// Gets the normalized verbosity for the selected model executor.
     /// </summary>
     /// <exception cref="InvalidOperationException">No model executor is selected.</exception>
     public string Verbosity => RequiredModel.Verbosity;
 
     /// <summary>
-    /// Provider için tanimlanan opsiyonel çalisma zamani ayarlarini alir.
+    /// Gets the original provider options instance, or null when absent or no model executor is selected.
     /// </summary>
     /// <remarks>Returns null when no model executor is selected.</remarks>
     public ProviderOptions? Provider => Executor?.Model?.Provider;
@@ -88,22 +88,24 @@ public class Agent
     public AgentRagOptions? Rag { get; private set; }
 
     /// <summary>
-    /// Provider ve model adini ayristirilmis biçimde temsil eden model referansini alir.
+    /// Gets the parsed model reference owned by the selected model configuration.
     /// </summary>
     /// <exception cref="InvalidOperationException">No model executor is selected.</exception>
     public ModelReference ModelReference => RequiredModel.ModelReference;
 
     /// <summary>
-    /// Yeni bir agent tanimi olusturur.
+    /// Creates an agent and selects model execution through the same configuration path as UseModel.
     /// </summary>
-    /// <param name="id">Ajanin sistem içindeki benzersiz kimligidir.</param>
-    /// <param name="name">Ajanin gösterilecek adidir.</param>
-    /// <param name="instructions">Ajanin model çagrilarinda kullanilacak sistem yönergeleridir.</param>
-    /// <param name="model">Kullanilacak modelin provider/model biçimindeki adidir.</param>
-    /// <param name="apiKey">Provider çagrilarinda kullanilacak opsiyonel API anahtaridir.</param>
-    /// <param name="provider">Provider için opsiyonel çalisma zamani ayarlaridir.</param>
-    /// <param name="reasoningEffort">Modelin akil yürütme yogunlugudur.</param>
-    /// <param name="verbosity">Model yanitinin ayrinti seviyesidir.</param>
+    /// <param name="id">The non-empty identifier, trimmed before storage.</param>
+    /// <param name="name">The non-empty display name, trimmed before storage.</param>
+    /// <param name="instructions">Instructions preserved verbatim; null becomes an empty string.</param>
+    /// <param name="model">The supported provider/model reference.</param>
+    /// <param name="apiKey">The optional API key, retained without authentication.</param>
+    /// <param name="provider">Optional provider settings retained by reference and validated at registration.</param>
+    /// <param name="reasoningEffort">Minimal, low, medium, or high; normalized to lowercase.</param>
+    /// <param name="verbosity">Low, medium, or high; normalized to lowercase.</param>
+    /// <remarks>Remains supported for positional, named and derived-class base calls. Performs no external I/O.</remarks>
+    /// <exception cref="ArgumentException">Identity, model reference or generation settings are invalid.</exception>
     public Agent(
         string id,
         string name,
@@ -122,6 +124,7 @@ public class Agent
     /// <param name="id">The non-empty unique agent identifier.</param>
     /// <param name="name">The non-empty display name.</param>
     /// <param name="instructions">The agent instructions; null is normalized to an empty string.</param>
+    /// <remarks>Trims the identifier and display name, preserves instruction whitespace, and performs no external I/O.</remarks>
     /// <exception cref="ArgumentException">The identifier or name is empty.</exception>
     public Agent(string id, string name, string instructions)
     {
@@ -134,6 +137,8 @@ public class Agent
     /// <remarks>
     /// Uses the existing Core model-reference parser. This method only configures the definition;
     /// it does not send network requests, start processes, or authenticate the supplied API key.
+    /// An existing selection is rejected before new model options are validated. A failed first
+    /// validation leaves selection available. Atomic selection does not make other configuration thread-safe.
     /// </remarks>
     /// <param name="model">The supported provider/model reference.</param>
     /// <param name="apiKey">The optional provider API key.</param>
@@ -148,19 +153,21 @@ public class Agent
         SelectExecutor(() => new AgentExecutorConfiguration(AgentExecutorKind.Model,
             new AgentModelConfiguration(model, apiKey, provider, reasoningEffort, verbosity)));
 
-    /// <summary>Selects the Codex execution preference. Codex execution is not implemented.</summary>
+    /// <summary>Selects Codex execution, which requires a host-registered executor implementation.</summary>
     /// <remarks>
     /// Does not require a CLI installation and does not start processes, send network requests,
     /// or authenticate. No timeout, sandbox, or session behavior is configured.
+    /// This records an execution preference only; no built-in Codex adapter or tool bridge is supplied.
     /// </remarks>
     /// <returns>The same agent instance.</returns>
     /// <exception cref="InvalidOperationException">An executor has already been selected.</exception>
     public Agent UseCodex() => SelectExecutor(() => new AgentExecutorConfiguration(AgentExecutorKind.Codex));
 
-    /// <summary>Selects the Claude execution preference. Claude execution is not implemented.</summary>
+    /// <summary>Selects Claude execution, which requires a host-registered executor implementation.</summary>
     /// <remarks>
     /// Does not require a CLI installation and does not start processes, send network requests,
     /// or authenticate. No timeout, sandbox, or session behavior is configured.
+    /// This records an execution preference only; no built-in Claude adapter or tool bridge is supplied.
     /// </remarks>
     /// <returns>The same agent instance.</returns>
     /// <exception cref="InvalidOperationException">An executor has already been selected.</exception>

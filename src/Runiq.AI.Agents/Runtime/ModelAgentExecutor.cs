@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Core.AI.Chat;
 using Runiq.AI.Core.Configuration;
@@ -33,19 +35,32 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
     private readonly IRagIndexRegistry? ragIndexRegistry;
     private readonly IRagIngestionManager? ragIngestionManager;
     private readonly IRagReranker? ragReranker;
+    private readonly ILogger<ModelAgentExecutor> logger;
 
-    internal ModelAgentExecutor(IChatClientResolver chatClientResolver,
-        IRagRetriever? ragRetriever, RagObservabilityProjection observability,
-        IRagIndexRegistry? ragIndexRegistry, IRagIngestionManager? ragIngestionManager,
-        IRagReranker? ragReranker)
+    /// <summary>Initializes the model pipeline from scoped host services.</summary>
+    /// <param name="chatClientResolver">Resolves provider-neutral model clients.</param>
+    /// <param name="observability">Projects safe RAG event metadata.</param>
+    /// <param name="ragRetriever">The optional retrieval service.</param>
+    /// <param name="ragIndexRegistry">The optional registered RAG indexes.</param>
+    /// <param name="ragIngestionManager">The optional index readiness service.</param>
+    /// <param name="ragReranker">The optional result reranker.</param>
+    /// <param name="logger">The optional server logger for model pipeline diagnostics.</param>
+    public ModelAgentExecutor(IChatClientResolver chatClientResolver,
+        RagObservabilityProjection observability, IRagRetriever? ragRetriever = null,
+        IRagIndexRegistry? ragIndexRegistry = null, IRagIngestionManager? ragIngestionManager = null,
+        IRagReranker? ragReranker = null, ILogger<ModelAgentExecutor>? logger = null)
     {
-        this.chatClientResolver = chatClientResolver;
+        this.chatClientResolver = chatClientResolver ?? throw new ArgumentNullException(nameof(chatClientResolver));
         this.ragRetriever = ragRetriever;
-        this.observability = observability;
+        this.observability = observability ?? throw new ArgumentNullException(nameof(observability));
         this.ragIndexRegistry = ragIndexRegistry;
         this.ragIngestionManager = ragIngestionManager;
         this.ragReranker = ragReranker;
+        this.logger = logger ?? NullLogger<ModelAgentExecutor>.Instance;
     }
+
+    /// <inheritdoc />
+    public AgentExecutorKind Kind => AgentExecutorKind.Model;
 
     /// <inheritdoc />
     public async IAsyncEnumerable<AgentExecutionEvent> ExecuteAsync(
@@ -54,6 +69,7 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
         AgentToolInvoker toolInvoker,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var agent = request.Agent;
         var query = request.Query;
 
@@ -68,8 +84,9 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
             }
             catch (ArgumentException exception)
             {
+                logger.LogWarning(exception, "RAG configuration failed for run {RunId} and agent {AgentId}.", run.RunId, run.AgentId);
                 ragConfigurationFailure = AgentExecutionEvent.Failed(
-                    $"RAG configuration is invalid for agent '{agent.Id}'; the model was not invoked. {exception.Message}",
+                    $"RAG configuration is invalid for agent '{agent.Id}'; the model was not invoked.",
                     "RagConfigurationInvalid");
             }
         }
@@ -100,6 +117,7 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
                 correlationId, agent.Id, run.RunId, indexName, safeQueries.Original, safeQueries.Effective,
                 activeRag.Acceptance.CandidateCount, activeRag.RetrievalMode));
 
+            cancellationToken.ThrowIfCancellationRequested();
             var readinessBlock = ResolveReadinessBlock(
                 correlationId, agent.Id, run.RunId, indexName, safeQueries,
                 activeRag.Acceptance.CandidateCount, out var readinessStatus);
@@ -131,8 +149,10 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
             var rerankingBlocksExecution = false;
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 runtimeContext = await SearchRagContextAsync(
                     activeRag, indexName, query.Message, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
                 var acceptedResults = runtimeContext.AcceptedRagResults;
                 var reranking = await RagRerankingProcessor.ExecuteAsync(
                     query.Message, acceptedResults, activeRag.Reranking, ragReranker,
@@ -173,6 +193,7 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
+                logger.LogError(exception, "RAG retrieval failed for run {RunId} and agent {AgentId}.", run.RunId, run.AgentId);
                 retrievalFailure = exception;
             }
 
@@ -295,6 +316,7 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
 
         while (true)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var options = new ChatRequestOptions
             {
                 ReasoningEffort = agent.ReasoningEffort,
@@ -312,11 +334,14 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
                 agent.ApiKey,
                 agent.Tools.Select(MapToolDefinition).ToArray(),
                 Options: options);
+            cancellationToken.ThrowIfCancellationRequested();
             var client = chatClientResolver.Resolve(chatRequest);
             var toolCalls = new List<ChatToolCall>();
 
+            cancellationToken.ThrowIfCancellationRequested();
             await foreach (var update in client.CompleteStreamingAsync(chatRequest, cancellationToken))
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 previousResponseId = update.ProviderResponseId ?? previousResponseId;
                 if (update.Kind == ChatStreamingUpdateKind.ContentDelta && !string.IsNullOrEmpty(update.ContentDelta))
                 {
@@ -329,6 +354,7 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
                 }
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
             if (toolCalls.Count == 0)
             {
                 yield return AgentExecutionEvent.Completed(
@@ -344,8 +370,11 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
             messages.Add(new ChatMessage(ChatRole.Assistant, string.Empty, ToolCalls: toolCalls));
             foreach (var toolCall in toolCalls)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 yield return AgentExecutionEvent.ToolCallStarted(toolCall.Id, toolCall.Name, toolCall.ArgumentsJson);
+                cancellationToken.ThrowIfCancellationRequested();
                 var result = await toolInvoker!.InvokeAsync(agent, toolCall.Name, toolCall.ArgumentsJson, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
                 string output;
                 if (result.IsSuccess)
                 {

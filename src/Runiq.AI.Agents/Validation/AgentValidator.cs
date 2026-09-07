@@ -8,6 +8,9 @@ namespace Runiq.AI.Agents.Validation
         /// <summary>
         /// Kayitli agent listesini dogrular. Hata bulunursa uygulamanin startup sirasinda durmasi için exception firlatir.
         /// </summary>
+        /// <param name="agents">The completed definitions to validate before registration.</param>
+        /// <exception cref="ArgumentNullException">The collection is null.</exception>
+        /// <exception cref="InvalidOperationException">Agent IDs conflict, an executor is missing, or provider settings are invalid.</exception>
         public static void ValidateRegisteredAgents(IEnumerable<Agent> agents)
         {
             ArgumentNullException.ThrowIfNull(agents);
@@ -39,7 +42,7 @@ namespace Runiq.AI.Agents.Validation
 
         private static void ValidateAgent(Agent agent)
         {
-            var executorFailure = ValidateExecutor(agent, requireRuntimeSupport: false);
+            var executorFailure = ValidateExecutor(agent);
             if (executorFailure is not null)
             {
                 throw new InvalidOperationException(
@@ -50,19 +53,13 @@ namespace Runiq.AI.Agents.Validation
             ValidateTimeout(agent);
         }
 
-        internal static AgentExecutionResult? ValidateExecutor(Agent agent, bool requireRuntimeSupport)
+        internal static AgentExecutionResult? ValidateExecutor(Agent agent)
         {
             var executor = agent.Executor;
             if (executor is null)
             {
                 return AgentExecutionResult.Failure("AgentExecutorMissing",
                     $"Agent '{agent.Id}' has no executor. Call UseModel, UseCodex, or UseClaude.");
-            }
-
-            if (requireRuntimeSupport && executor.Kind != Configuration.AgentExecutorKind.Model)
-            {
-                return AgentExecutionResult.Failure("AgentExecutorNotSupported",
-                    $"Agent '{agent.Id}' selects {executor.Kind}, which is configuration-only; this executor is not implemented in this version.");
             }
 
             return null;
@@ -80,7 +77,7 @@ namespace Runiq.AI.Agents.Validation
             if (!Uri.TryCreate(url, UriKind.Absolute, out _))
             {
                 throw new InvalidOperationException(
-                    $"Runiq agent registration failed. Agent '{agent.Id}' has invalid provider url: '{url}'.");
+                    $"Runiq agent registration failed. Agent '{agent.Id}' has invalid provider url. An absolute URL is required.");
             }
         }
 
