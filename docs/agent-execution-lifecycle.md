@@ -96,6 +96,23 @@ are outside this change.
 
 ## Shared output and executor registration
 
+Cancellation is classified by the invocation's caller token at the common runtime
+boundary. An executor may throw OperationCanceledException with a different,
+cancelled token; if the caller token is not cancelled, runtime treats that exception
+as an unexpected execution or cleanup failure, logs the original exception with
+RunId and AgentId, and publishes a safe AgentExecutionFailed outcome. If caller
+cancellation is signalled, both APIs throw AgentRunCanceledException with the same
+run context marked Cancelled. No Completed or Failed event is delivered for that
+cancelled invocation.
+
+`CancellationFault_UsesCallerTokenAndDisposesOnce` exercises execution and cleanup
+faults through both APIs with and without caller cancellation. It verifies token
+forwarding, retained run identity, one disposal, no repeated execution and correlated
+diagnostics. Existing boundary tests cover pre-cancellation, provider/RAG/tool
+cancellation, abandoned streams and competing terminal transitions. Cleanup occurs
+before terminal success is committed; cleanup failure can replace a pending success
+but cannot publish a second terminal. No automatic retries are performed.
+
 The model loop lives only in `ModelAgentExecutor.ExecuteAsync`. Runtime performs
 dispatch, correlation, cancellation and terminal publication, then builds batch
 results from those same events. A tool continuation is a second provider request
