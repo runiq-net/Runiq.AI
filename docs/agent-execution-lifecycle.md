@@ -122,6 +122,23 @@ is idempotent across repeated hosting registration; it never silently replaces a
 custom model registration. Replace the model interface registration explicitly if
 that is intended. No singleton registry captures scoped executor instances.
 
+All six public runtime overloads share the same dispatch pipeline: four batch
+overloads accept an agent definition or ID with text or an `AgentQuery`, and two
+streaming overloads accept an ID with text or a query. Each call invokes only the
+executor selected by `Agent.Executor.Kind`; batch execution aggregates that same
+event pipeline. The legacy public constructors remain available for manual model
+execution, while host registration supplies the scoped resolver through DI.
+Resolve the runtime inside a host scope and finish consuming its streams before
+disposing that scope. The container owns registered executors and their scoped
+dependencies; runtime owns each invocation's event enumerator.
+
+`Registry_DispatchesEachRegisteredKind` exercises all six overloads against hosted
+controlled Model, Codex and Claude executors. `Registry_PreservesScopedDependencies`
+checks reuse within a scope, isolation across scopes and dependency disposal. Missing
+selection returns `AgentExecutorMissing`; an absent implementation returns
+`AgentExecutorNotSupported` before RAG, provider or tool execution. Duplicate kinds
+are configuration errors at runtime resolution, rather than per-run failure results.
+
 Missing selection is `AgentExecutorMissing`. A selected kind without a registered
 implementation is `AgentExecutorNotSupported`; default Codex and Claude selections
 therefore remain unsupported without model fallback. An explicitly registered

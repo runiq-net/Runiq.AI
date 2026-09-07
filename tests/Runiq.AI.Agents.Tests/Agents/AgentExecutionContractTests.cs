@@ -193,7 +193,7 @@ public sealed class AgentExecutionContractTests
     [InlineData(AgentExecutorKind.Model)]
     [InlineData(AgentExecutorKind.Codex)]
     [InlineData(AgentExecutorKind.Claude)]
-    // Verifies dispatch by the registered kind, query preservation, and one common path for both runtime APIs.
+    // Verifies every public overload dispatches once to the hosted executor and preserves agent and query options.
     public async Task Registry_DispatchesEachRegisteredKind(AgentExecutorKind kind)
     {
         var services = CreateServices(kind);
@@ -204,13 +204,34 @@ public sealed class AgentExecutionContractTests
         using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         using var scope = provider.CreateScope();
         var runtime = scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>();
+        var agent = scope.ServiceProvider.GetRequiredService<Agent>();
         var query = new AgentQuery("question") { IndexName = "override" };
-        var result = await runtime.ExecuteAsync("agent", query);
-        var events = await CollectAsync(runtime.ExecuteStreamAsync("agent", query));
-        Assert.Equal(kind.ToString(), result.Message);
-        Assert.Equal(result.Message, events[^1].Message);
-        Assert.Equal(2, requests.Count);
-        Assert.All(requests, request => Assert.Same(query, request.Query));
+        var results = new[]
+        {
+            await runtime.ExecuteAsync(agent.Id, query),
+            await runtime.ExecuteAsync(agent, query),
+            await runtime.ExecuteAsync(agent.Id, query.Message),
+            await runtime.ExecuteAsync(agent, query.Message)
+        };
+        var queryEvents = await CollectAsync(runtime.ExecuteStreamAsync(agent.Id, query));
+        var textEvents = await CollectAsync(runtime.ExecuteStreamAsync(agent.Id, query.Message));
+        Assert.All(results, result =>
+        {
+            Assert.True(result.IsSuccess);
+            Assert.Equal(kind.ToString(), result.Message);
+        });
+        Assert.Equal(kind.ToString(), queryEvents[^1].Message);
+        Assert.Equal(kind.ToString(), textEvents[^1].Message);
+        Assert.Equal(6, requests.Count);
+        Assert.All(requests, request =>
+        {
+            Assert.Same(agent, request.Agent);
+            Assert.Equal(query.Message, request.Query.Message);
+        });
+        foreach (var index in new[] { 0, 1, 4 }) Assert.Same(query, requests[index].Query);
+        foreach (var index in new[] { 2, 3, 5 }) Assert.Null(requests[index].Query.IndexName);
+        Assert.Equal(6, results.Select(result => result.RunId)
+            .Append(queryEvents[^1].RunId).Append(textEvents[^1].RunId).Distinct().Count());
     }
 
     [Theory]
@@ -273,7 +294,7 @@ public sealed class AgentExecutionContractTests
     }
 
     [Fact]
-    // Verifies custom executors resolve scoped dependencies per scope without capturing them in a singleton registry.
+    // Verifies scoped executor dependencies are isolated and disposed with their scope without affecting another runtime.
     public async Task Registry_PreservesScopedDependencies()
     {
         var services = CreateServices();
@@ -289,12 +310,22 @@ public sealed class AgentExecutionContractTests
         using var second = provider.CreateScope();
         var firstRuntime = first.ServiceProvider.GetRequiredService<AgentExecutionRuntime>();
         var secondRuntime = second.ServiceProvider.GetRequiredService<AgentExecutionRuntime>();
+        var firstProbe = first.ServiceProvider.GetRequiredService<ScopeProbe>();
+        var secondProbe = second.ServiceProvider.GetRequiredService<ScopeProbe>();
         var one = await firstRuntime.ExecuteAsync("agent", "question");
         var repeat = await firstRuntime.ExecuteAsync("agent", "question");
         var two = await secondRuntime.ExecuteAsync("agent", "question");
         Assert.Equal(one.Message, repeat.Message);
         Assert.NotEqual(one.Message, two.Message);
         Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService<AgentExecutionRuntime>());
+        Assert.False(firstProbe.Disposed);
+        Assert.False(secondProbe.Disposed);
+        first.Dispose();
+        Assert.True(firstProbe.Disposed);
+        Assert.False(secondProbe.Disposed);
+        Assert.Equal(two.Message, (await secondRuntime.ExecuteAsync("agent", "after first scope disposal")).Message);
+        second.Dispose();
+        Assert.True(secondProbe.Disposed);
     }
 
     [Theory]
@@ -439,9 +470,11 @@ public sealed class AgentExecutionContractTests
         return events;
     }
 
-    private sealed class ScopeProbe
+    private sealed class ScopeProbe : IDisposable
     {
         public string Id { get; } = Guid.NewGuid().ToString("N");
+        public bool Disposed { get; private set; }
+        public void Dispose() => Disposed = true;
     }
 
     private sealed class InterleavedExecutor : IAgentExecutor
