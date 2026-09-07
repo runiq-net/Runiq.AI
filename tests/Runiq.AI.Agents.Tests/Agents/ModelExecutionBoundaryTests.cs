@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.Extensions.DependencyInjection;
 using Runiq.AI.Agents.Runtime;
 using Runiq.AI.Agents.Tools;
+using Runiq.AI.Core;
 using Runiq.AI.Core.AI.Chat;
 using Runiq.AI.Rag.Abstractions.Retrieval;
 using Runiq.AI.Rag.Abstractions.Reranking;
@@ -39,18 +40,37 @@ public sealed class ModelExecutionBoundaryTests
     }
 
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(false, true)]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
-    // Verifies legacy and fluent agents use one model/tool loop through both public execution APIs.
-    public async Task ModelLoop_PreservesSingleToolInvocation(bool fluent, bool streaming)
+    [InlineData(false, false, "resolver")]
+    [InlineData(false, true, "resolver")]
+    [InlineData(true, false, "resolver")]
+    [InlineData(true, true, "resolver")]
+    [InlineData(false, false, "clients")]
+    [InlineData(false, true, "clients")]
+    [InlineData(true, false, "clients")]
+    [InlineData(true, true, "clients")]
+    [InlineData(false, false, "hosting")]
+    [InlineData(false, true, "hosting")]
+    [InlineData(true, false, "hosting")]
+    [InlineData(true, true, "hosting")]
+    // Verifies both model definition forms and APIs share one tool loop through both manual constructors and scoped hosting.
+    public async Task ModelLoop_PreservesSingleToolInvocation(bool fluent, bool streaming, string construction)
     {
         using var state = new Probe();
-        await using var provider = new ServiceCollection().AddSingleton(state).BuildServiceProvider();
         var agent = CreateAgent(fluent);
         var client = new Client(state);
-        var runtime = new AgentExecutionRuntime([agent], new Resolver(client), new AgentToolInvoker(provider));
+        var services = new ServiceCollection().AddSingleton(state).AddSingleton(agent);
+        services.AddScoped<IChatClientResolver>(_ => new Resolver(client));
+        services.AddRuniqAgentServer();
+        await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+        await using var scope = provider.CreateAsyncScope();
+        var invoker = scope.ServiceProvider.GetRequiredService<AgentToolInvoker>();
+        var runtime = construction switch
+        {
+            "resolver" => new AgentExecutionRuntime([agent], new Resolver(client), invoker),
+            "clients" => new AgentExecutionRuntime([agent], client, client, invoker),
+            "hosting" => scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>(),
+            _ => throw new ArgumentOutOfRangeException(nameof(construction))
+        };
         if (streaming)
         {
             var events = new List<AgentExecutionEvent>();

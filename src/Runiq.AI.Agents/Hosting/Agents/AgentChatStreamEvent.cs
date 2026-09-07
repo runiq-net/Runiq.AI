@@ -49,6 +49,18 @@ public sealed record AgentChatStreamEvent(
     [JsonInclude]
     public DateTimeOffset? Timestamp { get; internal init; }
 
+    /// <summary>Gets the UTC run start time, or null for a standalone factory event.</summary>
+    [JsonPropertyName("startedAt")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonInclude]
+    public DateTimeOffset? StartedAt { get; internal init; }
+
+    /// <summary>Gets the UTC terminal transition time; omitted on running events.</summary>
+    [JsonPropertyName("endedAt")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonInclude]
+    public DateTimeOffset? EndedAt { get; internal init; }
+
     /// <summary>Gets the complete text on a successful terminal event; content retains its legacy meaning.</summary>
     [JsonPropertyName("message")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

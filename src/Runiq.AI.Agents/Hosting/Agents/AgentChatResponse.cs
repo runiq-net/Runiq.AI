@@ -25,6 +25,16 @@ public sealed record AgentChatResponse(
     [JsonInclude]
     public string? AgentId { get; internal init; }
 
+    /// <summary>Gets the UTC run start time, or null when no runtime metadata is available.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonInclude]
+    public DateTimeOffset? StartedAt { get; internal init; }
+
+    /// <summary>Gets the UTC terminal transition time, or null when no runtime metadata is available.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonInclude]
+    public DateTimeOffset? EndedAt { get; internal init; }
+
     /// <summary>Gets the terminal run status; cancellation propagates as an exception instead of a response.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonConverter(typeof(JsonStringEnumConverter<AgentRunStatus>))]

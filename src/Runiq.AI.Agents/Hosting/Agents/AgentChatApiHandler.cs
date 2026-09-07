@@ -103,6 +103,8 @@ public sealed class AgentChatApiHandler
         {
             RunId = result.RunId,
             AgentId = result.AgentId,
+            StartedAt = result.StartedAt,
+            EndedAt = result.EndedAt,
             Status = result.Status,
             StructuredOutput = result.StructuredOutput,
             Rag = result.Rag,

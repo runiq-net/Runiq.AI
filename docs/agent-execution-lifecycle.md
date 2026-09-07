@@ -16,6 +16,28 @@ the complete query (message and index override) rather than duplicating it.
 Agent definitions are configured before execution and must not be mutated while
 in use. Reusing an agent or query concurrently creates independent run contexts.
 
+`AgentRunContext.StartedAt` records UTC wall-clock time when runtime creates the
+context. Creating a streaming enumerable or obtaining its enumerator does not create
+a context; the first `MoveNextAsync` starts the run. Every new enumeration, including
+overlapping enumerations of the same enumerable, receives its own identity and times.
+The original agent and complete query (including `IndexName`) are passed to the
+executor without copying or dropping options.
+
+`EndedAt` is null while Running. Runtime assigns it together with the first terminal
+state, including failure, cancellation and early disposal. State and end time are
+published under the same lock, so observing a terminal status cannot be followed by
+a missing end time. Later terminal attempts change neither field. Separate property
+reads are not a transactional snapshot: a Running read can be followed by a populated
+EndedAt if completion occurs between reads. Timestamps use the system UTC clock and
+are not a monotonic duration clock. They belong to the run context; event `Timestamp`
+continues to describe event publication, not run start or end.
+
+`AgentRunContextTests` covers timestamp ownership, all terminal outcomes, deferred
+start, lossless requests, repeated enumeration, terminal races and simultaneous
+enumerations where cancellation of one leaves the other running. Existing lifecycle
+and executor contract tests cover shared identity in aggregated results and isolated
+tool events. No SDK, process or provider-session dependency is added to the context.
+
 ## State, events and results
 
 States are `Running`, `Completed`, `Failed`, and `Cancelled`. Every started run
@@ -59,7 +81,9 @@ enumerating. Cleanup errors do not create a second terminal transition.
 | --- | --- |
 | ExecuteAsync(agent ID or Agent, string or AgentQuery) | Keep signatures and constructor overloads; forward to one lifecycle path. |
 | ExecuteStreamAsync(agent ID, string or AgentQuery, optional tool invoker) | Keep signatures, lazy enumeration, tool override and event ordering. |
-| Success/Failure result factories | Keep every signature and payload. Standalone factory products have null run/agent/session identity; runtime stamps identity. |
+| Success/Failure result factories | Keep every signature and payload, including permissive standalone Success(""). Standalone products have null run/agent/session identity and null StartedAt/EndedAt; no identity or time is invented. Runtime enforces the empty response rule. |
+| Result Status and IsSuccess | Status is terminal only. IsSuccess is true exclusively for Completed; Failed and Cancelled are false. |
+| Cancelled result factory | Add Cancelled(steps, rag) for standalone cancellation representation. Runtime APIs continue throwing AgentRunCanceledException on caller cancellation. |
 | Event factories and existing event consumers | Keep factories and enum numeric values. Add read-only identity and status properties; Completed/Failed remain terminal event kinds. |
 | AgentExecutionResultBuilder | Retain legacy uncorrelated-event support; propagate runtime identity and reject mixed runs. |
 | Cancellation handlers | Existing OperationCanceledException handlers continue to work for both APIs; the subtype adds run context. |
@@ -72,12 +96,63 @@ are outside this change.
 
 ## Shared output and executor registration
 
+Cancellation is classified by the invocation's caller token at the common runtime
+boundary. An executor may throw OperationCanceledException with a different,
+cancelled token; if the caller token is not cancelled, runtime treats that exception
+as an unexpected execution or cleanup failure, logs the original exception with
+RunId and AgentId, and publishes a safe AgentExecutionFailed outcome. If caller
+cancellation is signalled, both APIs throw AgentRunCanceledException with the same
+run context marked Cancelled. No Completed or Failed event is delivered for that
+cancelled invocation.
+
+`CancellationFault_UsesCallerTokenAndDisposesOnce` exercises execution and cleanup
+faults through both APIs with and without caller cancellation. It verifies token
+forwarding, retained run identity, one disposal, no repeated execution and correlated
+diagnostics. Existing boundary tests cover pre-cancellation, provider/RAG/tool
+cancellation, abandoned streams and competing terminal transitions. Cleanup occurs
+before terminal success is committed; cleanup failure can replace a pending success
+but cannot publish a second terminal. No automatic retries are performed.
+
+The model loop lives only in `ModelAgentExecutor.ExecuteAsync`. Runtime performs
+dispatch, correlation, cancellation and terminal publication, then builds batch
+results from those same events. A tool continuation is a second provider request
+inside the same run, not a second runtime execution. Provider resolution, model
+options, endpoints, RAG preparation and citation processing stay in the existing
+model pipeline.
+
+`ModelLoop_PreservesSingleToolInvocation` covers legacy `model:` and fluent
+`UseModel(...)` definitions through batch and streaming APIs, using both public
+manual runtime constructors and hosting DI. Each case requires exactly two provider
+streams (initial request plus tool continuation), one tool invocation and matching
+resource disposal counts. The controlled client's non-streaming completion method
+throws if a separate batch model path is attempted. Existing model, RAG, citation
+and provider tests cover the retained pipeline behavior.
+
 `StructuredOutput` is an optional `JsonElement` on the existing completion event
 and result. Factories clone explicitly supplied JSON immediately; source documents
 may then be disposed. Undefined elements are rejected, while JSON null is a valid
 explicit output. Text is never parsed to infer structured output. JSON-only success
 has an empty `Message`; empty text without JSON remains a failure. Existing factory
 signatures remain available and produce no structured output.
+
+Structured output presence does not assert schema validation. It only means the
+executor supplied a defined JSON value. Both the event factory and result factory
+clone that value, so aggregation is safe after the source document is disposed.
+
+Runtime results carry `StartedAt` and `EndedAt` copied from the run context through
+the published events. All events share the run start time; only terminal events have
+an end time. These are UTC wall-clock values, separate from event publication
+`Timestamp`. A builder reconstructs the same timestamps without generating new
+ones. Standalone legacy factories leave these fields null. HTTP/SSE DTOs preserve
+these values through their explicit mappings and omit unavailable timestamps.
+
+On failure, `Message` remains null and existing tool/RAG/error steps are retained.
+Partial assistant text remains in a FinalAnswer step with Failed status rather than
+being presented as a completed answer. A completed tool step still records that
+individual tool's success even when the overall run fails. The standalone Cancelled
+factory preserves supplied steps and RAG information, returns null Message/JSON and
+uses `AgentExecutionCancelled`; it does not convert incomplete streams into results
+or change exception-based caller cancellation.
 
 Runtime events receive a one-based `SequenceNumber` and UTC `Timestamp` when
 published, including validation failures. Standalone factory events have null
@@ -91,6 +166,22 @@ direction before changing its state. Legacy uncorrelated factory-event aggregati
 remains supported. Before publishing a failed terminal event, runtime substitutes
 `AgentExecutionFailed` for an omitted error code so streaming and aggregate results agree.
 
+Publication always replaces the outer event's RunId, AgentId, SequenceNumber,
+Timestamp, StartedAt and EndedAt with runtime-owned values, even if an executor
+replays an event from another run. The source record is not mutated. Sequence
+numbers increase strictly within each run and restart at one on the next run;
+there is no global ordering guarantee across concurrent runs. UTC timestamps are
+wall-clock observations, not a substitute for sequence ordering.
+
+A fully consumed, non-cancelled stream ends with exactly one Completed or Failed
+event. Runtime disposes the source before publishing that terminal event and never
+advances it again, including when further deltas or terminals were queued. Closing
+without a terminal produces AgentExecutionProtocolError. Caller cancellation keeps
+the documented exception behavior. Early consumer disposal cannot deliver a terminal
+event, and server-side completion is not proof that an HTTP/SSE client received it.
+Assistant, tool and typed RAG events retain their existing payload contracts; no
+untyped provider-event payload or global event bus is introduced.
+
 `IAgentExecutor` is public and exposes its `AgentExecutorKind` plus one event-stream
 execution method; it does not own lifecycle transitions. Hosts register implementations
 with `AddScoped<IAgentExecutor, TExecutor>()`. The scoped resolver indexes all registered
@@ -99,6 +190,23 @@ with an explicit configuration exception when resolved. Built-in model registrat
 is idempotent across repeated hosting registration; it never silently replaces a
 custom model registration. Replace the model interface registration explicitly if
 that is intended. No singleton registry captures scoped executor instances.
+
+All six public runtime overloads share the same dispatch pipeline: four batch
+overloads accept an agent definition or ID with text or an `AgentQuery`, and two
+streaming overloads accept an ID with text or a query. Each call invokes only the
+executor selected by `Agent.Executor.Kind`; batch execution aggregates that same
+event pipeline. The legacy public constructors remain available for manual model
+execution, while host registration supplies the scoped resolver through DI.
+Resolve the runtime inside a host scope and finish consuming its streams before
+disposing that scope. The container owns registered executors and their scoped
+dependencies; runtime owns each invocation's event enumerator.
+
+`Registry_DispatchesEachRegisteredKind` exercises all six overloads against hosted
+controlled Model, Codex and Claude executors. `Registry_PreservesScopedDependencies`
+checks reuse within a scope, isolation across scopes and dependency disposal. Missing
+selection returns `AgentExecutorMissing`; an absent implementation returns
+`AgentExecutorNotSupported` before RAG, provider or tool execution. Duplicate kinds
+are configuration errors at runtime resolution, rather than per-run failure results.
 
 Missing selection is `AgentExecutorMissing`. A selected kind without a registered
 implementation is `AgentExecutorNotSupported`; default Codex and Claude selections
@@ -143,8 +251,8 @@ contract; clients do not select a separate endpoint for each executor kind.
 
 | Surface | Additive fields | Existing behavior retained |
 | --- | --- | --- |
-| Result JSON | `runId`, `agentId`, `status`, optional `structuredOutput` | `isSuccess`, `message`, error fields, steps, citations, grounding evidence and readiness |
-| Every runtime SSE event | `runId`, `agentId`, `status`, `sequenceNumber`, `timestamp` | Existing `type`, `content` and tool/RAG payloads |
+| Result JSON | `runId`, `agentId`, `status`, `startedAt`, `endedAt`, optional `structuredOutput` | `isSuccess`, `message`, error fields, steps, citations, grounding evidence and readiness |
+| Every runtime SSE event | `runId`, `agentId`, `status`, `sequenceNumber`, `timestamp`, `startedAt`; terminal events also include `endedAt` | Existing `type`, `content` and tool/RAG payloads |
 | Successful terminal SSE event | `message`, optional `structuredOutput` | `type: "completed"`, `content: null`, optional citations |
 
 Run status is serialized as `Running`, `Completed` or `Failed`, independently of
@@ -191,6 +299,9 @@ information for the **same** run, apply that stream's events to
 Tool-call identity across simultaneous runs is the pair `(runId, toolCallId)`.
 
 ## Offline contract coverage
+
+See [the acceptance matrix and adapter guide](agent-executor-acceptance.md) for
+criterion-to-test mapping, host registration and local delivery commands.
 
 `AgentExecutionContractTests` uses controlled Model/Codex/Claude executors to verify
 dispatch, output ownership, per-run ordering, terminal/result equality, failures,

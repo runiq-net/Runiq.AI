@@ -10,6 +10,72 @@ namespace Runiq.AI.Agents.Tests.Agents;
 
 public sealed class AgentRuntimeDiagnosticsTests
 {
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(true, true, true)]
+    // Verifies only caller-token cancellation wins; unrelated cancellation faults are sanitized and logged through either API.
+    public async Task CancellationFault_UsesCallerTokenAndDisposesOnce(bool cleanup, bool callerCancelled, bool streaming)
+    {
+        using var cancellation = new CancellationTokenSource();
+        var logger = new RecordingLogger();
+        var executor = new CancellationFaultExecutor(cancellation, cleanup, callerCancelled);
+        var services = CreateServices(logger);
+        services.AddScoped(_ => new AgentExecutorResolver([executor]));
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var runtime = scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>();
+        var events = new List<AgentExecutionEvent>();
+        AgentExecutionResult? result = null;
+        async Task Execute()
+        {
+            if (streaming)
+            {
+                var builder = new AgentExecutionResultBuilder();
+                await foreach (var item in runtime.ExecuteStreamAsync("agent", "question", cancellationToken: cancellation.Token))
+                {
+                    events.Add(item);
+                    builder.Apply(item);
+                }
+                result = builder.Build();
+            }
+            else result = await runtime.ExecuteAsync("agent", "question", cancellation.Token);
+        }
+        if (callerCancelled)
+        {
+            var error = await Assert.ThrowsAsync<AgentRunCanceledException>(Execute);
+            Assert.Same(executor.Run, error.Run);
+            Assert.Equal(cancellation.Token, error.CancellationToken);
+            Assert.Equal(AgentRunStatus.Cancelled, error.Run.Status);
+            Assert.Null(result);
+            Assert.All(events, item => Assert.Equal(AgentRunStatus.Running, item.Status));
+        }
+        else
+        {
+            await Execute();
+            Assert.NotNull(result);
+            Assert.False(result.IsSuccess);
+            Assert.Equal(AgentRunStatus.Failed, result.Status);
+            Assert.Equal("AgentExecutionFailed", result.ErrorCode);
+            Assert.Equal(cleanup ? "Agent executor cleanup failed." : "Agent execution failed.", result.ErrorMessage);
+            Assert.Equal(executor.Run!.RunId, result.RunId);
+            if (streaming) Assert.Single(events, item => item.Status != AgentRunStatus.Running);
+        }
+        Assert.Equal(2, executor.Reads);
+        Assert.Equal(1, executor.Disposals);
+        Assert.NotNull(executor.Run!.EndedAt);
+        Assert.All(events, item => Assert.Equal(executor.Run.RunId, item.RunId));
+        if (!callerCancelled || cleanup)
+            AssertLog(Assert.Single(logger.Entries), executor.Failure, executor.Run.RunId,
+                callerCancelled ? LogLevel.Warning : LogLevel.Error);
+        else Assert.Empty(logger.Entries);
+    }
+
     [Fact]
     // Verifies cancellation during terminal cleanup prevents completion publication and disposes the executor once.
     public async Task TerminalCleanup_CancellationWinsBeforePublication()
@@ -133,6 +199,46 @@ public sealed class AgentRuntimeDiagnosticsTests
         Assert.Equal("agent", entry.Properties["AgentId"]);
         Assert.DoesNotContain("question", entry.Properties.Values);
         Assert.DoesNotContain("key", entry.Properties.Values);
+    }
+
+    private sealed class CancellationFaultExecutor(CancellationTokenSource caller, bool cleanup, bool cancelCaller) :
+        IAgentExecutor, IAsyncEnumerable<AgentExecutionEvent>, IAsyncEnumerator<AgentExecutionEvent>
+    {
+        internal int Reads, Disposals;
+        internal AgentRunContext? Run;
+        internal OperationCanceledException Failure { get; } = new("Private executor diagnostic", new CancellationToken(true));
+        public Runiq.AI.Agents.Configuration.AgentExecutorKind Kind => Runiq.AI.Agents.Configuration.AgentExecutorKind.Model;
+        public AgentExecutionEvent Current => Reads == 1 ? AgentExecutionEvent.AssistantDelta("partial") : AgentExecutionEvent.Completed();
+        public IAsyncEnumerable<AgentExecutionEvent> ExecuteAsync(AgentExecutionRequest request, AgentRunContext run,
+            AgentToolInvoker toolInvoker, CancellationToken cancellationToken)
+        {
+            Assert.Equal(caller.Token, cancellationToken);
+            Run = run;
+            return this;
+        }
+        public IAsyncEnumerator<AgentExecutionEvent> GetAsyncEnumerator(CancellationToken cancellationToken = default)
+        {
+            Assert.Equal(caller.Token, cancellationToken);
+            return this;
+        }
+        public ValueTask<bool> MoveNextAsync()
+        {
+            Reads++;
+            if (Reads == 2 && !cleanup) Fail();
+            return ValueTask.FromResult(Reads <= 2);
+        }
+        public ValueTask DisposeAsync()
+        {
+            Disposals++;
+            Assert.Equal(cancelCaller && !cleanup ? AgentRunStatus.Cancelled : AgentRunStatus.Running, Run!.Status);
+            if (cleanup) Fail();
+            return ValueTask.CompletedTask;
+        }
+        private void Fail()
+        {
+            if (cancelCaller) caller.Cancel();
+            throw Failure;
+        }
     }
 
     private sealed class ThrowingChatResolver(Exception failure) : IChatClientResolver

@@ -13,6 +13,12 @@ public sealed record AgentExecutionEvent
     /// <summary>Gets the UTC runtime publication time, or null for an unpublished factory event.</summary>
     public DateTimeOffset? Timestamp { get; internal init; }
 
+    /// <summary>Gets the UTC run start time, or null for an unpublished factory event.</summary>
+    public DateTimeOffset? StartedAt { get; internal init; }
+
+    /// <summary>Gets the UTC terminal transition time; null on running or unpublished events.</summary>
+    public DateTimeOffset? EndedAt { get; internal init; }
+
     /// <summary>Gets the complete text on successful runtime completion; null on other events.</summary>
     public string? Message { get; internal init; }
 

@@ -21,6 +21,8 @@ public sealed class AgentExecutionResultBuilder
     private RagSearchBlocked? ragReadiness;
     private string? runId;
     private string? agentId;
+    private DateTimeOffset? startedAt;
+    private DateTimeOffset? endedAt;
     private JsonElement? structuredOutput;
     private long lastSequence;
     private bool terminalReceived;
@@ -47,6 +49,8 @@ public sealed class AgentExecutionResultBuilder
             lastSequence = executionEvent.SequenceNumber.Value;
             runId = executionEvent.RunId;
             agentId = executionEvent.AgentId;
+            startedAt = executionEvent.StartedAt;
+            endedAt = executionEvent.EndedAt;
         }
         hasEvents = true;
         rag = executionEvent.Rag ?? rag;
@@ -114,7 +118,7 @@ public sealed class AgentExecutionResultBuilder
                 steps,
                 rag,
                 ragReadiness);
-        return result.WithIdentity(runId, agentId);
+        return result.WithIdentity(runId, agentId, startedAt, endedAt);
     }
 
     private void AppendAssistantDelta(AgentExecutionEvent executionEvent)
@@ -270,7 +274,7 @@ public sealed class AgentExecutionResultBuilder
             OutputJson: null,
             ErrorCode: null,
             ErrorMessage: null,
-            Status: AgentExecutionStepStatus.Completed,
+            Status: failureCode is null ? AgentExecutionStepStatus.Completed : AgentExecutionStepStatus.Failed,
             StartedAt: now,
             CompletedAt: now));
 
