@@ -216,10 +216,15 @@ public sealed class AgentRunLifecycleTests
         {
             var run = new AgentRunContext("agent");
             Assert.Equal(AgentRunStatus.Running, run.Status);
+            Assert.Null(run.EndedAt);
+            Assert.Equal(TimeSpan.Zero, run.StartedAt.Offset);
             run.Finish(terminal);
+            var end = Assert.IsType<DateTimeOffset>(run.EndedAt);
+            Assert.InRange(end, run.StartedAt, DateTimeOffset.UtcNow);
             foreach (var alternative in new[] { AgentRunStatus.Completed, AgentRunStatus.Failed, AgentRunStatus.Cancelled })
                 run.Finish(alternative);
             Assert.Equal(terminal, run.Status);
+            Assert.Equal(end, run.EndedAt);
         }
     }
 

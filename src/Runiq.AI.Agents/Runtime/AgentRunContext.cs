@@ -16,7 +16,9 @@ public enum AgentRunStatus
 /// <summary>Holds runtime-owned identity and lifecycle state for a single invocation.</summary>
 public sealed class AgentRunContext
 {
-    private int status;
+    private readonly object lifecycleLock = new();
+    private AgentRunStatus status;
+    private DateTimeOffset? endedAt;
     private long eventSequence;
 
     internal long NextEventSequence() => Interlocked.Increment(ref eventSequence);
@@ -25,6 +27,7 @@ public sealed class AgentRunContext
     {
         AgentId = agentId;
         RunId = Guid.NewGuid().ToString("N");
+        StartedAt = DateTimeOffset.UtcNow;
     }
 
     /// <summary>Gets the opaque run identifier, which is never a session-resumption key.</summary>
@@ -33,17 +36,36 @@ public sealed class AgentRunContext
     /// <summary>Gets the reusable agent definition identifier.</summary>
     public string AgentId { get; }
 
+    /// <summary>Gets the UTC time when runtime created this invocation's context, on first enumeration for streams.</summary>
+    public DateTimeOffset StartedAt { get; }
+
+    /// <summary>Gets the UTC time of the first terminal transition, or null while the run is running.</summary>
+    /// <remarks>The timestamp is assigned with the terminal state and is never changed by later completion attempts.</remarks>
+    public DateTimeOffset? EndedAt
+    {
+        get { lock (lifecycleLock) return endedAt; }
+    }
+
     /// <summary>Gets the reserved provider session identifier; always null in this version.</summary>
     public string? ProviderSessionId => null;
 
     /// <summary>Gets the current state; only the runtime can make a terminal transition.</summary>
-    public AgentRunStatus Status => (AgentRunStatus)Volatile.Read(ref status);
+    public AgentRunStatus Status
+    {
+        get { lock (lifecycleLock) return status; }
+    }
 
     internal void Finish(AgentRunStatus terminalStatus)
     {
-        if (terminalStatus == AgentRunStatus.Running)
+        if (terminalStatus is not (AgentRunStatus.Completed or AgentRunStatus.Failed or AgentRunStatus.Cancelled))
             throw new ArgumentException("A terminal state is required.", nameof(terminalStatus));
-        Interlocked.CompareExchange(ref status, (int)terminalStatus, (int)AgentRunStatus.Running);
+        // Publish terminal state and its timestamp together so a terminal reader cannot observe a missing end time.
+        lock (lifecycleLock)
+        {
+            if (status != AgentRunStatus.Running) return;
+            endedAt = DateTimeOffset.UtcNow;
+            status = terminalStatus;
+        }
     }
 }
 

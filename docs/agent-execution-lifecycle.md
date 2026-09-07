@@ -16,6 +16,28 @@ the complete query (message and index override) rather than duplicating it.
 Agent definitions are configured before execution and must not be mutated while
 in use. Reusing an agent or query concurrently creates independent run contexts.
 
+`AgentRunContext.StartedAt` records UTC wall-clock time when runtime creates the
+context. Creating a streaming enumerable or obtaining its enumerator does not create
+a context; the first `MoveNextAsync` starts the run. Every new enumeration, including
+overlapping enumerations of the same enumerable, receives its own identity and times.
+The original agent and complete query (including `IndexName`) are passed to the
+executor without copying or dropping options.
+
+`EndedAt` is null while Running. Runtime assigns it together with the first terminal
+state, including failure, cancellation and early disposal. State and end time are
+published under the same lock, so observing a terminal status cannot be followed by
+a missing end time. Later terminal attempts change neither field. Separate property
+reads are not a transactional snapshot: a Running read can be followed by a populated
+EndedAt if completion occurs between reads. Timestamps use the system UTC clock and
+are not a monotonic duration clock. They belong to the run context; event `Timestamp`
+continues to describe event publication, not run start or end.
+
+`AgentRunContextTests` covers timestamp ownership, all terminal outcomes, deferred
+start, lossless requests, repeated enumeration, terminal races and simultaneous
+enumerations where cancellation of one leaves the other running. Existing lifecycle
+and executor contract tests cover shared identity in aggregated results and isolated
+tool events. No SDK, process or provider-session dependency is added to the context.
+
 ## State, events and results
 
 States are `Running`, `Completed`, `Failed`, and `Cancelled`. Every started run

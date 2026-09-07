@@ -600,6 +600,10 @@ them and do not mutate their definitions during execution.
 
 `AgentExecutionRequest` retains the agent and complete existing `AgentQuery`.
 `AgentRunContext` owns invocation identity and state, separately from the RAG context.
+It exposes UTC `StartedAt` and nullable `EndedAt`; runtime sets the end time together
+with the first terminal state and preserves it thereafter. Streaming starts on the
+first enumeration step, not when its enumerable or enumerator is obtained. Each new
+enumeration receives a fresh context, even when the same enumerable is reused.
 Runtime resolves registered executors and owns their lifecycle; Codex and Claude
 remain unsupported by default with no model fallback.
 
