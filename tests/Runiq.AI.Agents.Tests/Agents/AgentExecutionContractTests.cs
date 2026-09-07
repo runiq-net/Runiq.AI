@@ -16,6 +16,100 @@ namespace Runiq.AI.Agents.Tests.Agents;
 public sealed class AgentExecutionContractTests
 {
     [Fact]
+    // Verifies replayed executor events cannot impersonate another run and keep distinct same-name tool calls intact.
+    public async Task Publication_OverridesForeignMetadataWithoutMutatingSourceEvents()
+    {
+        var source = new[]
+        {
+            AgentExecutionEvent.ToolCallStarted("first", "lookup", "{}"),
+            AgentExecutionEvent.ToolCallStarted("second", "lookup", "{}"),
+            AgentExecutionEvent.ToolCallCompleted("second", "lookup", "found"),
+            AgentExecutionEvent.ToolCallFailed("first", "lookup", "unavailable", "ToolUnavailable"),
+            AgentExecutionEvent.AssistantDelta("answer"),
+            AgentExecutionEvent.Completed()
+        }.Select(item => item with
+        {
+            RunId = "foreign-run", AgentId = "foreign-agent", SequenceNumber = 900,
+            Timestamp = DateTimeOffset.UnixEpoch, StartedAt = DateTimeOffset.UnixEpoch,
+            EndedAt = DateTimeOffset.UnixEpoch
+        }).ToArray();
+        var services = CreateServices();
+        services.AddScoped<IAgentExecutor>(_ => new TestExecutor(AgentExecutorKind.Codex, () => source));
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var stream = scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>().ExecuteStreamAsync("agent", "question");
+        var before = DateTimeOffset.UtcNow;
+        var first = await CollectAsync(stream);
+        var second = await CollectAsync(stream);
+        Assert.NotEqual(first[0].RunId, second[0].RunId);
+        foreach (var events in new[] { first, second })
+        {
+            Assert.Equal(Enumerable.Range(1, source.Length).Select(value => (long?)value), events.Select(item => item.SequenceNumber));
+            Assert.Single(events, item => item.Status != AgentRunStatus.Running);
+            Assert.All(events, item =>
+            {
+                Assert.NotEqual("foreign-run", item.RunId);
+                Assert.Equal(events[0].RunId, item.RunId);
+                Assert.Equal("agent", item.AgentId);
+                Assert.InRange(item.Timestamp!.Value, before, DateTimeOffset.UtcNow);
+                Assert.Equal(events[0].StartedAt, item.StartedAt);
+            });
+            Assert.All(events.SkipLast(1), item => Assert.Null(item.EndedAt));
+            Assert.NotNull(events[^1].EndedAt);
+            var builder = new AgentExecutionResultBuilder();
+            events.ForEach(builder.Apply);
+            var tools = builder.Build().Steps.Where(step => step.Kind == AgentExecutionStepKind.ToolCall).ToArray();
+            Assert.Equal(2, tools.Length);
+            Assert.Equal(AgentExecutionStepStatus.Failed, tools.Single(step => step.ToolCallId == "first").Status);
+            Assert.Equal("found", tools.Single(step => step.ToolCallId == "second").OutputJson);
+        }
+        Assert.All(source, item =>
+        {
+            Assert.Equal("foreign-run", item.RunId);
+            Assert.Equal("foreign-agent", item.AgentId);
+            Assert.Equal(900, item.SequenceNumber);
+            Assert.Equal(DateTimeOffset.UnixEpoch, item.Timestamp);
+            Assert.Equal(DateTimeOffset.UnixEpoch, item.EndedAt);
+        });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    // Verifies terminal publication disposes the source before delivery and never resumes executor code beyond either terminal kind.
+    public async Task TerminalPublication_DisposesWithoutAdvancingPastTerminal(bool fail)
+    {
+        var disposed = false;
+        var advancedPastTerminal = false;
+        async IAsyncEnumerable<AgentExecutionEvent> Execute()
+        {
+            try
+            {
+                yield return AgentExecutionEvent.AssistantDelta("answer");
+                await Task.Yield();
+                yield return fail ? AgentExecutionEvent.Failed("controlled", "ControlledFailure") : AgentExecutionEvent.Completed();
+                advancedPastTerminal = true;
+                yield return AgentExecutionEvent.AssistantDelta("must not escape");
+            }
+            finally { disposed = true; }
+        }
+        var services = CreateServices();
+        services.AddScoped<IAgentExecutor>(_ => new StreamExecutor(Execute));
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        await using var enumerator = scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>()
+            .ExecuteStreamAsync("agent", "question").GetAsyncEnumerator();
+        Assert.True(await enumerator.MoveNextAsync());
+        Assert.False(disposed);
+        Assert.True(await enumerator.MoveNextAsync());
+        Assert.Equal(fail ? AgentRunStatus.Failed : AgentRunStatus.Completed, enumerator.Current.Status);
+        Assert.True(disposed);
+        Assert.False(advancedPastTerminal);
+        Assert.False(await enumerator.MoveNextAsync());
+        Assert.False(advancedPastTerminal);
+    }
+
+    [Fact]
     // Verifies every legacy result factory remains callable without inventing runtime metadata or inferring JSON.
     public void ResultFactories_PreserveStandaloneCompatibility()
     {
@@ -588,6 +682,13 @@ public sealed class AgentExecutionContractTests
         var events = new List<AgentExecutionEvent>();
         await foreach (var item in source) events.Add(item);
         return events;
+    }
+
+    private sealed class StreamExecutor(Func<IAsyncEnumerable<AgentExecutionEvent>> source) : IAgentExecutor
+    {
+        public AgentExecutorKind Kind => AgentExecutorKind.Codex;
+        public IAsyncEnumerable<AgentExecutionEvent> ExecuteAsync(AgentExecutionRequest request, AgentRunContext run,
+            AgentToolInvoker toolInvoker, CancellationToken cancellationToken) => source();
     }
 
     private sealed class ScopeProbe : IDisposable

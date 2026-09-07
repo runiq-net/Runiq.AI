@@ -134,6 +134,22 @@ direction before changing its state. Legacy uncorrelated factory-event aggregati
 remains supported. Before publishing a failed terminal event, runtime substitutes
 `AgentExecutionFailed` for an omitted error code so streaming and aggregate results agree.
 
+Publication always replaces the outer event's RunId, AgentId, SequenceNumber,
+Timestamp, StartedAt and EndedAt with runtime-owned values, even if an executor
+replays an event from another run. The source record is not mutated. Sequence
+numbers increase strictly within each run and restart at one on the next run;
+there is no global ordering guarantee across concurrent runs. UTC timestamps are
+wall-clock observations, not a substitute for sequence ordering.
+
+A fully consumed, non-cancelled stream ends with exactly one Completed or Failed
+event. Runtime disposes the source before publishing that terminal event and never
+advances it again, including when further deltas or terminals were queued. Closing
+without a terminal produces AgentExecutionProtocolError. Caller cancellation keeps
+the documented exception behavior. Early consumer disposal cannot deliver a terminal
+event, and server-side completion is not proof that an HTTP/SSE client received it.
+Assistant, tool and typed RAG events retain their existing payload contracts; no
+untyped provider-event payload or global event bus is introduced.
+
 `IAgentExecutor` is public and exposes its `AgentExecutorKind` plus one event-stream
 execution method; it does not own lifecycle transitions. Hosts register implementations
 with `AddScoped<IAgentExecutor, TExecutor>()`. The scoped resolver indexes all registered
