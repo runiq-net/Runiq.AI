@@ -19,8 +19,6 @@ public sealed class AgentQuery
     /// </summary>
     public string Message { get; }
 
-    internal string ConversationId { get; } = Guid.NewGuid().ToString("N");
-
     /// <summary>
     /// Gets or initializes the vector index name override used for this agent RAG query.
     /// </summary>

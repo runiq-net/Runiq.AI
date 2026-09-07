@@ -6,18 +6,18 @@ namespace Runiq.AI.Core.Metadata;
 /// <param name="Id">The unique agent identifier.</param>
 /// <param name="Name">The display name of the agent.</param>
 /// <param name="Instructions">The instructions configured for the agent.</param>
-/// <param name="Model">The configured model identifier.</param>
-/// <param name="ReasoningEffort">The configured reasoning effort.</param>
-/// <param name="Verbosity">The configured response verbosity.</param>
+/// <param name="Model">The configured model identifier, or null for a non-model executor.</param>
+/// <param name="ReasoningEffort">The configured reasoning effort, or null for a non-model executor.</param>
+/// <param name="Verbosity">The configured response verbosity, or null for a non-model executor.</param>
 /// <param name="Rag">The retrieval configuration exposed to the dashboard.</param>
 /// <param name="Tools">The tools attached to the agent.</param>
 public sealed record AgentMetadataDto(
     string Id,
     string Name,
     string Instructions,
-    string Model,
-    string ReasoningEffort,
-    string Verbosity,
+    string? Model,
+    string? ReasoningEffort,
+    string? Verbosity,
     AgentRagMetadataDto Rag,
     IReadOnlyList<AgentToolMetadataDto> Tools);
 

@@ -10,9 +10,9 @@ export type AgentMetadata = {
   id: string;
   name: string;
   instructions?: string;
-  model?: string;
-  reasoningEffort?: string;
-  verbosity?: string;
+  model?: string | null;
+  reasoningEffort?: string | null;
+  verbosity?: string | null;
   rag: {
     enabled: boolean;
     indexName?: string | null;

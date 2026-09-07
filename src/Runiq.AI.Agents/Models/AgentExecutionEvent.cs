@@ -1,10 +1,41 @@
+using System.Text.Json;
+
 namespace Runiq.AI.Agents;
 
 /// <summary>
-/// Agent çalismasi sirasinda üretilen stream olayini temsil eder.
+/// Represents an execution event with runtime publication metadata and optional explicit completion output.
 /// </summary>
 public sealed record AgentExecutionEvent
 {
+    /// <summary>Gets the one-based publication sequence within a run, or null before runtime publication.</summary>
+    public long? SequenceNumber { get; internal init; }
+
+    /// <summary>Gets the UTC runtime publication time, or null for an unpublished factory event.</summary>
+    public DateTimeOffset? Timestamp { get; internal init; }
+
+    /// <summary>Gets the complete text on successful runtime completion; null on other events.</summary>
+    public string? Message { get; internal init; }
+
+    /// <summary>Gets explicitly supplied completion JSON, cloned independently of the source document.</summary>
+    public JsonElement? StructuredOutput { get; private init; }
+
+    /// <summary>Gets the runtime run identifier, or null for a standalone factory event.</summary>
+    public string? RunId { get; internal init; }
+
+    /// <summary>Gets the agent definition identifier, or null for a standalone factory event.</summary>
+    public string? AgentId { get; internal init; }
+
+    /// <summary>Gets the reserved provider session identifier; always null in this version.</summary>
+    public string? ProviderSessionId => null;
+
+    /// <summary>Gets the run state represented by this event, independently of tool step state.</summary>
+    public Runtime.AgentRunStatus Status => Kind switch
+    {
+        AgentExecutionEventKind.Completed => Runtime.AgentRunStatus.Completed,
+        AgentExecutionEventKind.Failed => Runtime.AgentRunStatus.Failed,
+        _ => Runtime.AgentRunStatus.Running
+    };
+
     private AgentExecutionEvent(
         AgentExecutionEventKind Kind,
         string? Content,
@@ -196,6 +227,20 @@ public sealed record AgentExecutionEvent
         {
             Citations = citations.ToArray(),
         };
+    }
+
+    /// <summary>Creates a completion event with an owned copy of explicitly supplied JSON.</summary>
+    /// <param name="rag">The RAG policy outcome, if available.</param>
+    /// <param name="citations">The validated citations to retain.</param>
+    /// <param name="structuredOutput">Optional JSON to clone now; text is never parsed to infer this value.</param>
+    /// <returns>A completion event safe to retain after disposing the source JSON document.</returns>
+    /// <exception cref="ArgumentException">The supplied JSON element is undefined.</exception>
+    public static AgentExecutionEvent Completed(AgentRagExecutionMetadata? rag,
+        IReadOnlyList<AgentCitation> citations, JsonElement? structuredOutput)
+    {
+        if (structuredOutput is { ValueKind: JsonValueKind.Undefined })
+            throw new ArgumentException("Structured output must be a defined JSON value.", nameof(structuredOutput));
+        return Completed(rag, citations) with { StructuredOutput = structuredOutput?.Clone() };
     }
 
     /// <summary>

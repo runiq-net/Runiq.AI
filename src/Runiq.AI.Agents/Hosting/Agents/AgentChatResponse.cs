@@ -1,10 +1,12 @@
 using Runiq.AI.Agents;
 using System.Text.Json.Serialization;
+using System.Text.Json;
+using Runiq.AI.Agents.Runtime;
 
 namespace Runiq.AI.Core.Agents;
 
 /// <summary>
-/// Studio üzerinden çalistirilan agent chat cevabini temsil eder.
+/// Represents an Agent Chat result with legacy output fields and optional runtime metadata.
 /// </summary>
 public sealed record AgentChatResponse(
     bool IsSuccess,
@@ -13,6 +15,27 @@ public sealed record AgentChatResponse(
     string? ErrorMessage,
     IReadOnlyList<AgentChatExecutionStepResponse> Steps)
 {
+    /// <summary>Gets the runtime invocation identifier, or null when rejected before execution.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonInclude]
+    public string? RunId { get; internal init; }
+
+    /// <summary>Gets the agent definition identifier associated with this run.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonInclude]
+    public string? AgentId { get; internal init; }
+
+    /// <summary>Gets the terminal run status; cancellation propagates as an exception instead of a response.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonConverter(typeof(JsonStringEnumConverter<AgentRunStatus>))]
+    [JsonInclude]
+    public AgentRunStatus? Status { get; internal init; }
+
+    /// <summary>Gets explicit executor JSON backed by the execution result's independently owned data.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonInclude]
+    public JsonElement? StructuredOutput { get; internal init; }
+
     /// <summary>
     /// Gets or initializes the structured RAG policy outcome, or null when RAG was not configured.
     /// </summary>

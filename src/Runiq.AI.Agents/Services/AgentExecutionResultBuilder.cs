@@ -1,15 +1,16 @@
 using System.Text;
+using System.Text.Json;
 
 namespace Runiq.AI.Agents;
 
 /// <summary>
-/// Stream olarak gelen agent execution event'lerinden tamamlanmis AgentExecutionResult üretir.
+/// Aggregates execution events while preserving run identity, explicit output, and visible steps.
 /// </summary>
 public sealed class AgentExecutionResultBuilder
 {
     private readonly StringBuilder messageBuilder = new();
     private readonly List<AgentExecutionStep> steps = [];
-    private readonly Dictionary<string, int> toolStepIndexesByCallId = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> toolStepIndexesByCallId = new(StringComparer.Ordinal);
 
     private int nextIndex = 1;
     private bool finalAnswerAdded;
@@ -18,16 +19,49 @@ public sealed class AgentExecutionResultBuilder
     private AgentRagExecutionMetadata? rag;
     private IReadOnlyList<AgentCitation> citations = [];
     private RagSearchBlocked? ragReadiness;
+    private string? runId;
+    private string? agentId;
+    private JsonElement? structuredOutput;
+    private long lastSequence;
+    private bool terminalReceived;
+    private bool hasEvents;
 
     /// <summary>
-    /// Tek bir execution event'ini result state'ine uygular.
+    /// Applies an event while enforcing publication order and terminal boundaries for correlated runs.
     /// </summary>
+    /// <param name="executionEvent">The next execution event in publication order.</param>
+    /// <exception cref="InvalidOperationException">The event mixes runs, is out of sequence, or follows a correlated terminal event.</exception>
     public void Apply(AgentExecutionEvent executionEvent)
     {
         ArgumentNullException.ThrowIfNull(executionEvent);
+        if (hasEvents && (runId is null) != (executionEvent.RunId is null))
+            throw new InvalidOperationException("Correlated and uncorrelated events cannot be combined.");
+        if (runId is not null && terminalReceived)
+            throw new InvalidOperationException("A correlated run cannot accept events after completion.");
+        if (executionEvent.RunId is not null)
+        {
+            if (runId is not null && (runId != executionEvent.RunId || agentId != executionEvent.AgentId))
+                throw new InvalidOperationException("Events from different runs cannot be combined.");
+            if (executionEvent.SequenceNumber != lastSequence + 1)
+                throw new InvalidOperationException("Run events must be applied in contiguous publication order.");
+            lastSequence = executionEvent.SequenceNumber.Value;
+            runId = executionEvent.RunId;
+            agentId = executionEvent.AgentId;
+        }
+        hasEvents = true;
         rag = executionEvent.Rag ?? rag;
         ragReadiness = executionEvent.RagSearch as RagSearchBlocked ?? ragReadiness;
-        if (executionEvent.Kind == AgentExecutionEventKind.Completed) citations = executionEvent.Citations;
+        if (executionEvent.Kind == AgentExecutionEventKind.Completed)
+        {
+            citations = executionEvent.Citations;
+            structuredOutput = executionEvent.StructuredOutput;
+            if (executionEvent.Message is not null)
+            {
+                messageBuilder.Clear();
+                messageBuilder.Append(executionEvent.Message);
+            }
+        }
+        terminalReceived |= executionEvent.Status != Runtime.AgentRunStatus.Running;
 
         switch (executionEvent.Kind)
         {
@@ -58,14 +92,18 @@ public sealed class AgentExecutionResultBuilder
     }
 
     /// <summary>
-    /// Toplanan event'lerden tamamlanmis agent execution result üretir.
+    /// Builds the terminal result, retaining explicit JSON, RAG metadata, citations, and tool steps.
     /// </summary>
+    /// <returns>The aggregated result; standalone legacy factory events may be built without a terminal marker.</returns>
+    /// <exception cref="InvalidOperationException">A correlated run has not published a terminal event.</exception>
     public AgentExecutionResult Build()
     {
+        if (runId is not null && !terminalReceived)
+            throw new InvalidOperationException("A result cannot be built from an incomplete or cancelled run stream.");
         AddFinalAnswerStep();
 
-        return failureCode is null
-            ? AgentExecutionResult.Success(messageBuilder.ToString(), steps, rag, citations)
+        var result = failureCode is null
+            ? AgentExecutionResult.Success(messageBuilder.ToString(), steps, rag, citations, structuredOutput)
             : ragReadiness is null ? AgentExecutionResult.Failure(
                 failureCode,
                 failureMessage ?? "Agent execution failed.",
@@ -76,6 +114,7 @@ public sealed class AgentExecutionResultBuilder
                 steps,
                 rag,
                 ragReadiness);
+        return result.WithIdentity(runId, agentId);
     }
 
     private void AppendAssistantDelta(AgentExecutionEvent executionEvent)

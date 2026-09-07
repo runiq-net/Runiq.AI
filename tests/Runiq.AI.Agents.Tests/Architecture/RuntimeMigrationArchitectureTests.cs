@@ -27,13 +27,16 @@ public sealed class RuntimeMigrationArchitectureTests
         Assert.DoesNotContain(exposedTypes, type => type.FullName?.Contains("AgentExecution", StringComparison.Ordinal) == true || type.Name == "Agent");
     }
 
-    // Verifies that the runtime stores the shared resolver and does not directly retain protocol clients.
     [Fact]
-    public void Runtime_ShouldCommunicateThroughCoreChatResolver()
+    // Verifies model resolution belongs to the model executor while runtime resolves executors.
+    public void Runtime_ShouldResolveExecutorsAndModelExecutorShouldUseCoreChatResolver()
     {
         var fields = typeof(AgentExecutionRuntime).GetFields(BindingFlags.Instance | BindingFlags.NonPublic);
 
-        Assert.Contains(fields, field => field.FieldType == typeof(IChatClientResolver));
+        Assert.Contains(fields, field => field.FieldType == typeof(AgentExecutorResolver));
+        Assert.DoesNotContain(fields, field => field.FieldType == typeof(IChatClientResolver));
+        var modelFields = typeof(ModelAgentExecutor).GetFields(BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.Contains(modelFields, field => field.FieldType == typeof(IChatClientResolver));
         Assert.DoesNotContain(fields, field => field.FieldType == typeof(OpenAICompatibleClient) || field.FieldType == typeof(OpenAIResponsesClient));
     }
 

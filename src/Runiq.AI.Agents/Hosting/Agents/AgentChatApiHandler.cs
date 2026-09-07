@@ -101,6 +101,10 @@ public sealed class AgentChatApiHandler
                 .Select(AgentChatExecutionStepResponse.FromExecutionStep)
                 .ToArray())
         {
+            RunId = result.RunId,
+            AgentId = result.AgentId,
+            Status = result.Status,
+            StructuredOutput = result.StructuredOutput,
             Rag = result.Rag,
             GroundingEvidence = groundingEvidence.Count == 0 ? null : groundingEvidence,
             Citations = result.Citations.Count == 0 ? null : result.Citations,

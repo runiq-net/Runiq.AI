@@ -266,7 +266,7 @@ function AgentsEmptyState() {
   );
 }
 
-function getProvider(model: string | undefined): string {
+function getProvider(model: string | null | undefined): string {
   if (!model || !model.includes('/')) {
     return 'unknown';
   }
@@ -274,7 +274,7 @@ function getProvider(model: string | undefined): string {
   return model.split('/')[0] || 'unknown';
 }
 
-function getModel(model: string | undefined): string {
+function getModel(model: string | null | undefined): string {
   if (!model) {
     return 'not configured';
   }

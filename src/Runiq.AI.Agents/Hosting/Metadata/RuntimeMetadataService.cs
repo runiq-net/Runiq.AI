@@ -27,9 +27,9 @@ internal sealed class RuntimeMetadataService : IRuntimeMetadataService
                 Id: agent.Id,
                 Name: agent.Name,
                 Instructions: agent.Instructions,
-                Model: agent.Model,
-                ReasoningEffort: agent.ReasoningEffort,
-                Verbosity: agent.Verbosity,
+                Model: agent.Executor?.Model?.Model,
+                ReasoningEffort: agent.Executor?.Model?.ReasoningEffort,
+                Verbosity: agent.Executor?.Model?.Verbosity,
                 Rag: new AgentRagMetadataDto(
                     Enabled: agent.Rag?.Enabled == true,
                     IndexName: agent.Rag?.IndexName,
