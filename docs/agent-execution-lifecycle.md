@@ -96,6 +96,21 @@ are outside this change.
 
 ## Shared output and executor registration
 
+The model loop lives only in `ModelAgentExecutor.ExecuteAsync`. Runtime performs
+dispatch, correlation, cancellation and terminal publication, then builds batch
+results from those same events. A tool continuation is a second provider request
+inside the same run, not a second runtime execution. Provider resolution, model
+options, endpoints, RAG preparation and citation processing stay in the existing
+model pipeline.
+
+`ModelLoop_PreservesSingleToolInvocation` covers legacy `model:` and fluent
+`UseModel(...)` definitions through batch and streaming APIs, using both public
+manual runtime constructors and hosting DI. Each case requires exactly two provider
+streams (initial request plus tool continuation), one tool invocation and matching
+resource disposal counts. The controlled client's non-streaming completion method
+throws if a separate batch model path is attempted. Existing model, RAG, citation
+and provider tests cover the retained pipeline behavior.
+
 `StructuredOutput` is an optional `JsonElement` on the existing completion event
 and result. Factories clone explicitly supplied JSON immediately; source documents
 may then be disposed. Undefined elements are rejected, while JSON null is a valid
