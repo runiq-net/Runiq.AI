@@ -380,3 +380,100 @@ The main direction is clear:
 ## License
 
 MIT
+
+## Executor selection
+
+```csharp
+var modelAgent = new Agent("support", "Support", "Answer questions.")
+    .UseModel("openai/model-name");
+var codexAgent = new Agent("reviewer", "Reviewer", "Review code.").UseCodex();
+var claudeAgent = new Agent("analyst", "Analyst", "Analyze.").UseClaude();
+
+// Existing constructor calls, including derived agent constructors, remain valid.
+var existingAgent = new Agent(
+    id: "support", name: "Support", instructions: "Answer questions.", model: "openai/model-name");
+
+AgentExecutorKind kind = codexAgent.Executor!.Kind;
+AgentModelConfiguration? modelSettings = modelAgent.Executor!.Model;
+```
+
+The three-argument constructor validates identity and creates a definition with no executor.
+`UseModel` validates the provider/model reference, reasoning effort and verbosity immediately.
+Its optional API key, provider settings and generation defaults match the existing constructor.
+The defaults remain `apiKey: null`, `provider: null`, `reasoningEffort: "minimal"`, and
+`verbosity: "low"`. Both APIs use Core's `ModelReference.Parse`, including provider normalization
+and model names containing additional slashes. Existing provider options, including named model
+registrations, are retained by reference and resolved by the existing runtime.
+
+All three selection methods return the original `Agent`, so calls can continue with `AddTool<T>()`
+or `UseRag(...)`. Definition and selection only perform local validation and configuration: they
+send no network requests, start no processes, and perform no authentication. Codex and Claude CLI
+installations are not prerequisites. Their parameterless methods configure no timeout, sandbox,
+or session behavior; the existing model-specific `ProviderOptions.Timeout` remains unchanged.
+
+Every successful selection is final: repeat selections, changes between executors and concurrent
+second selections throw `InvalidOperationException`. Invalid model options leave selection available.
+Repeat selection is rejected before validating the new options, even if the second model is invalid.
+The error identifies the agent and its existing executor. Invalid first selections throw
+`ArgumentException` with the agent ID, original parameter name and validation cause; the executor,
+tools and RAG settings remain unchanged. A corrected selection can still complete the definition.
+Configuration classes are sealed, have no public constructors or setters, and cannot be assigned to an agent.
+Identity, instructions, tool registrations and RAG configuration remain on the same `Agent` instance.
+
+`Executor` is null until selection; `Executor.Model` is null for Codex and Claude. All model-specific
+state lives in `AgentModelConfiguration`. Existing `Agent` model properties remain read-only aliases
+with their original types and values for model agents. On non-model or incomplete definitions,
+`Model`, `ModelReference`, `ProviderName`, `ModelName`, `ReasoningEffort` and `Verbosity` throw
+`InvalidOperationException`; `ApiKey` and `Provider` return null. Use `Executor` when inspecting
+arbitrary definitions. Metadata returns null for model-only fields of non-model agents.
+
+### Validation boundaries and dependency audit
+
+Selection is committed only after model validation succeeds. Registration and runtime share the
+executor check in `AgentValidator`: registration requires a selection, while runtime additionally
+requires an implemented executor. Codex/Claude execution returns `AgentExecutorNotSupported` with
+the agent ID and an explicit statement that the executor is not implemented in this version.
+An incomplete definition returns `AgentExecutorMissing` at runtime and an actionable exception
+at registration. Neither failure consumes the unfinished definition's ability to select an executor.
+
+| Location | Previous model assumption | Responsibility after this change |
+| --- | --- | --- |
+| `Agent` constructor and model properties | Every definition parses a required model | Existing eight-parameter public constructor selects model execution; new three-parameter constructor permits an unfinished definition. The former private RAG constructor was implementation-only and is removed. |
+| `RuniqServerOptions.AddAgent` | Collects already constructed model agents | Still collects definitions; allows configuration to finish inside the server callback. |
+| `AgentValidator` / `AddRuniqServer` | Checks duplicate IDs and provider URL/timeout | After the callback, requires an executor, rejects duplicate IDs, and retains model provider checks. Codex/Claude need no provider or key. |
+| `AgentExecutionRuntime` | RAG, model resolution, endpoint, API key, generation options and chat request all assume model execution | Rejects missing (`AgentExecutorMissing`) or unsupported (`AgentExecutorNotSupported`) executors before RAG or provider resolution. Existing model API-key validation and execution order remain intact. Direct runtime definitions are checked too. |
+| RAG embedding registration | Reads `ProviderName` for every RAG agent | Inspects model configuration before registering OpenAI embedding clients. |
+| `RuntimeMetadataService` | Reads non-null model and generation aliases | Reads optional model configuration without inventing a model. Model-only DTO fields are nullable; existing model values are unchanged. |
+
+Codex and Claude are configuration preferences only. No CLI execution, tool bridge, Studio UI or
+workflow behavior is implemented. Direct `Agent.ExecuteAsync` and `Agent.ExecuteStreamAsync` retain
+their existing unsupported-direct-execution contract. Runtime execution continues through dependency
+injection. The executor types belong to Agents and reuse Core's `ModelReference` and `ProviderOptions`;
+no new dependency or parallel agent model is introduced. Workflow adapters already delegate execution
+to the Agents runtime and require no changes.
+
+## Execution lifecycle
+
+Every runtime invocation creates a fresh `RunId`. Runtime events and results expose
+that identifier together with `AgentId` and `Status`. `ProviderSessionId` is reserved
+and remains null; `RunId` cannot resume a provider session. Reusing an `AgentQuery`
+starts a new run, including when calls overlap. Configure agents before executing
+them and do not mutate their definitions during execution.
+
+`AgentExecutionRequest` retains the agent and complete existing `AgentQuery`.
+`AgentRunContext` owns invocation identity and state, separately from the RAG context.
+Runtime resolves the internal model executor and owns its lifecycle; Codex and Claude
+remain configuration-only selections with no model fallback.
+
+States are `Running`, `Completed`, `Failed`, and `Cancelled`. Both `ExecuteAsync`
+and streaming throw `AgentRunCanceledException`, an `OperationCanceledException`,
+for caller cancellation. Its `Run` property identifies the cancelled invocation.
+Cancellation produces no terminal event or result. Disposing an unfinished stream
+cancels the run and releases the executor. Streams are lazy, and enumerating one
+again creates a new run. Unexpected executor failures and empty responses produce
+`Failed` consistently in both APIs. Approval waiting and resumption are not supported.
+
+Existing overloads and result/event factories remain available; standalone factory
+products have null run identity. See the repository's
+[lifecycle and compatibility decisions](../../docs/agent-execution-lifecycle.md)
+for the full compatibility table, including the RAG `ConversationId` migration.

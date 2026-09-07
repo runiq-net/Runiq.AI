@@ -1,4 +1,4 @@
-﻿using System.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Core.Configuration;
 using Runiq.AI.Core.Models;
@@ -12,6 +12,13 @@ namespace Runiq.AI.Agents;
 public class Agent
 {
     private readonly List<AgentToolRegistration> tools = [];
+    private AgentExecutorConfiguration? executor;
+
+    /// <summary>Gets the selected executor, or null until a Use method selects one.</summary>
+    public AgentExecutorConfiguration? Executor => Volatile.Read(ref executor);
+
+    private AgentModelConfiguration RequiredModel => Executor?.Model
+        ?? throw new InvalidOperationException($"Agent '{Id}' does not have a model executor.");
 
     /// <summary>
     /// Agent'a code-first olarak eklenmis tool kayitlarini döner.
@@ -36,37 +43,44 @@ public class Agent
     /// <summary>
     /// Ajanin kullanacagi modeli provider/model biçiminde alir.
     /// </summary>
-    public string Model { get; }
+    /// <exception cref="InvalidOperationException">No model executor is selected.</exception>
+    public string Model => RequiredModel.Model;
 
     /// <summary>
     /// Model tanimindan çözümlenen provider adini alir.
     /// </summary>
+    /// <exception cref="InvalidOperationException">No model executor is selected.</exception>
     public string ProviderName => ModelReference.ProviderName;
 
     /// <summary>
     /// Model tanimindan çözümlenen model adini alir.
     /// </summary>
+    /// <exception cref="InvalidOperationException">No model executor is selected.</exception>
     public string ModelName => ModelReference.ModelName;
 
     /// <summary>
     /// Provider çagrilarinda kullanilacak opsiyonel API anahtarini alir.
     /// </summary>
-    public string? ApiKey { get; }
+    /// <remarks>Returns null when no model executor is selected.</remarks>
+    public string? ApiKey => Executor?.Model?.ApiKey;
 
     /// <summary>
     /// Modelin yanit üretirken kullanacagi akil yürütme yogunlugunu alir.
     /// </summary>
-    public string ReasoningEffort { get; }
+    /// <exception cref="InvalidOperationException">No model executor is selected.</exception>
+    public string ReasoningEffort => RequiredModel.ReasoningEffort;
 
     /// <summary>
     /// Model yanitinin ayrinti seviyesini alir.
     /// </summary>
-    public string Verbosity { get; }
+    /// <exception cref="InvalidOperationException">No model executor is selected.</exception>
+    public string Verbosity => RequiredModel.Verbosity;
 
     /// <summary>
     /// Provider için tanimlanan opsiyonel çalisma zamani ayarlarini alir.
     /// </summary>
-    public ProviderOptions? Provider { get; }
+    /// <remarks>Returns null when no model executor is selected.</remarks>
+    public ProviderOptions? Provider => Executor?.Model?.Provider;
 
     /// <summary>
     /// Agent RAG sorgulari için opsiyonel çalisma zamani ayarlarini alir.
@@ -76,7 +90,8 @@ public class Agent
     /// <summary>
     /// Provider ve model adini ayristirilmis biçimde temsil eden model referansini alir.
     /// </summary>
-    public ModelReference ModelReference { get; }
+    /// <exception cref="InvalidOperationException">No model executor is selected.</exception>
+    public ModelReference ModelReference => RequiredModel.ModelReference;
 
     /// <summary>
     /// Yeni bir agent tanimi olusturur.
@@ -98,53 +113,88 @@ public class Agent
         ProviderOptions? provider = null,
         string reasoningEffort = "minimal",
         string verbosity = "low")
-        : this(
-            id,
-            name,
-            instructions,
-            model,
-            apiKey,
-            provider,
-            reasoningEffort,
-            verbosity,
-            rag: null)
+        : this(id, name, instructions)
     {
+        UseModel(model, apiKey, provider, reasoningEffort, verbosity);
     }
 
-    /// <summary>
-    /// Yeni bir agent tanimi olusturur.
-    /// </summary>
-    /// <param name="id">Ajanin sistem içindeki benzersiz kimligidir.</param>
-    /// <param name="name">Ajanin gösterilecek adidir.</param>
-    /// <param name="instructions">Ajanin model çagrilarinda kullanilacak sistem yönergeleridir.</param>
-    /// <param name="model">Kullanilacak modelin provider/model biçimindeki adidir.</param>
-    /// <param name="apiKey">Provider çagrilarinda kullanilacak opsiyonel API anahtaridir.</param>
-    /// <param name="provider">Provider için opsiyonel çalisma zamani ayarlaridir.</param>
-    /// <param name="reasoningEffort">Modelin akil yürütme yogunlugudur.</param>
-    /// <param name="verbosity">Model yanitinin ayrinti seviyesidir.</param>
-    /// <param name="rag">Agent RAG sorgulari için opsiyonel çalisma zamani ayarlaridir.</param>
-    private Agent(
-        string id,
-        string name,
-        string instructions,
-        string model,
-        string? apiKey,
-        ProviderOptions? provider,
-        string reasoningEffort,
-        string verbosity,
-        AgentRagOptions? rag)
+    /// <summary>Creates an agent definition whose executor must be selected before registration or execution.</summary>
+    /// <param name="id">The non-empty unique agent identifier.</param>
+    /// <param name="name">The non-empty display name.</param>
+    /// <param name="instructions">The agent instructions; null is normalized to an empty string.</param>
+    /// <exception cref="ArgumentException">The identifier or name is empty.</exception>
+    public Agent(string id, string name, string instructions)
     {
         Id = ValidateRequired(id, nameof(id));
         Name = ValidateRequired(name, nameof(name));
         Instructions = instructions ?? string.Empty;
-        Model = ValidateRequired(model, nameof(model));
-        ModelReference = ModelReference.Parse(Model);
-        ApiKey = apiKey;
-        Provider = provider;
-        Rag = rag;
-        ReasoningEffort = ValidateReasoningEffort(reasoningEffort);
-        Verbosity = ValidateVerbosity(verbosity);
     }
+
+    /// <summary>Selects model execution and validates the model-specific configuration.</summary>
+    /// <remarks>
+    /// Uses the existing Core model-reference parser. This method only configures the definition;
+    /// it does not send network requests, start processes, or authenticate the supplied API key.
+    /// </remarks>
+    /// <param name="model">The supported provider/model reference.</param>
+    /// <param name="apiKey">The optional provider API key.</param>
+    /// <param name="provider">The optional provider runtime settings.</param>
+    /// <param name="reasoningEffort">One of minimal, low, medium, or high.</param>
+    /// <param name="verbosity">One of low, medium, or high.</param>
+    /// <returns>The same agent instance.</returns>
+    /// <exception cref="ArgumentException">A model or generation setting is invalid.</exception>
+    /// <exception cref="InvalidOperationException">An executor has already been selected.</exception>
+    public Agent UseModel(string model, string? apiKey = null, ProviderOptions? provider = null,
+        string reasoningEffort = "minimal", string verbosity = "low") =>
+        SelectExecutor(() => new AgentExecutorConfiguration(AgentExecutorKind.Model,
+            new AgentModelConfiguration(model, apiKey, provider, reasoningEffort, verbosity)));
+
+    /// <summary>Selects the Codex execution preference. Codex execution is not implemented.</summary>
+    /// <remarks>
+    /// Does not require a CLI installation and does not start processes, send network requests,
+    /// or authenticate. No timeout, sandbox, or session behavior is configured.
+    /// </remarks>
+    /// <returns>The same agent instance.</returns>
+    /// <exception cref="InvalidOperationException">An executor has already been selected.</exception>
+    public Agent UseCodex() => SelectExecutor(() => new AgentExecutorConfiguration(AgentExecutorKind.Codex));
+
+    /// <summary>Selects the Claude execution preference. Claude execution is not implemented.</summary>
+    /// <remarks>
+    /// Does not require a CLI installation and does not start processes, send network requests,
+    /// or authenticate. No timeout, sandbox, or session behavior is configured.
+    /// </remarks>
+    /// <returns>The same agent instance.</returns>
+    /// <exception cref="InvalidOperationException">An executor has already been selected.</exception>
+    public Agent UseClaude() => SelectExecutor(() => new AgentExecutorConfiguration(AgentExecutorKind.Claude));
+
+    private Agent SelectExecutor(Func<AgentExecutorConfiguration> createConfiguration)
+    {
+        if (Executor is { } selected)
+        {
+            throw DuplicateExecutor(selected);
+        }
+
+        AgentExecutorConfiguration configuration;
+        try
+        {
+            configuration = createConfiguration();
+        }
+        catch (ArgumentException exception)
+        {
+            throw new ArgumentException(
+                $"Agent '{Id}' has invalid executor configuration. {exception.Message}",
+                exception.ParamName, exception);
+        }
+
+        if (Interlocked.CompareExchange(ref executor, configuration, null) is { } existing)
+        {
+            throw DuplicateExecutor(existing);
+        }
+
+        return this;
+    }
+
+    private InvalidOperationException DuplicateExecutor(AgentExecutorConfiguration selected) =>
+        new($"Agent '{Id}' already has an executor ({selected.Kind}). Only one executor can be selected.");
 
     /// <summary>
     /// Agent cevabini tek seferlik tamamlanmis çikti olarak üretir.
@@ -228,35 +278,4 @@ public class Agent
         return value.Trim();
     }
 
-    private static string ValidateReasoningEffort(string value)
-    {
-        var normalized = ValidateRequired(value, nameof(ReasoningEffort)).ToLowerInvariant();
-
-        return normalized switch
-        {
-            "minimal" => normalized,
-            "low" => normalized,
-            "medium" => normalized,
-            "high" => normalized,
-            _ => throw new ArgumentException(
-                "Reasoning effort must be one of: minimal, low, medium, high.",
-                nameof(ReasoningEffort))
-        };
-    }
-
-    private static string ValidateVerbosity(string value)
-    {
-        var normalized = ValidateRequired(value, nameof(Verbosity)).ToLowerInvariant();
-
-        return normalized switch
-        {
-            "low" => normalized,
-            "medium" => normalized,
-            "high" => normalized,
-            _ => throw new ArgumentException(
-                "Verbosity must be one of: low, medium, high.",
-                nameof(Verbosity))
-        };
-    }
 }
-

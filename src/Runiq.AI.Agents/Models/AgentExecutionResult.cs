@@ -5,6 +5,23 @@ namespace Runiq.AI.Agents
     /// </summary>
     public sealed class AgentExecutionResult
     {
+        /// <summary>Gets the runtime run identifier, or null for a standalone factory result.</summary>
+        public string? RunId { get; private init; }
+
+        /// <summary>Gets the agent definition identifier, or null for a standalone factory result.</summary>
+        public string? AgentId { get; private init; }
+
+        /// <summary>Gets the reserved provider session identifier; always null in this version.</summary>
+        public string? ProviderSessionId => null;
+
+        /// <summary>Gets the terminal state; caller cancellation is reported by an exception.</summary>
+        public Runtime.AgentRunStatus Status => IsSuccess
+            ? Runtime.AgentRunStatus.Completed : Runtime.AgentRunStatus.Failed;
+
+        internal AgentExecutionResult WithIdentity(string? runId, string? agentId) =>
+            new(IsSuccess, Message, ErrorCode, ErrorMessage, Steps, Rag, Citations, RagReadiness)
+            { RunId = runId, AgentId = agentId };
+
         private AgentExecutionResult(
             bool isSuccess,
             string? message,

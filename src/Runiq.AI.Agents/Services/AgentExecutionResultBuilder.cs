@@ -18,6 +18,8 @@ public sealed class AgentExecutionResultBuilder
     private AgentRagExecutionMetadata? rag;
     private IReadOnlyList<AgentCitation> citations = [];
     private RagSearchBlocked? ragReadiness;
+    private string? runId;
+    private string? agentId;
 
     /// <summary>
     /// Tek bir execution event'ini result state'ine uygular.
@@ -25,6 +27,13 @@ public sealed class AgentExecutionResultBuilder
     public void Apply(AgentExecutionEvent executionEvent)
     {
         ArgumentNullException.ThrowIfNull(executionEvent);
+        if (executionEvent.RunId is not null)
+        {
+            if (runId is not null && (runId != executionEvent.RunId || agentId != executionEvent.AgentId))
+                throw new InvalidOperationException("Events from different runs cannot be combined.");
+            runId = executionEvent.RunId;
+            agentId = executionEvent.AgentId;
+        }
         rag = executionEvent.Rag ?? rag;
         ragReadiness = executionEvent.RagSearch as RagSearchBlocked ?? ragReadiness;
         if (executionEvent.Kind == AgentExecutionEventKind.Completed) citations = executionEvent.Citations;
@@ -64,7 +73,7 @@ public sealed class AgentExecutionResultBuilder
     {
         AddFinalAnswerStep();
 
-        return failureCode is null
+        var result = failureCode is null
             ? AgentExecutionResult.Success(messageBuilder.ToString(), steps, rag, citations)
             : ragReadiness is null ? AgentExecutionResult.Failure(
                 failureCode,
@@ -76,6 +85,7 @@ public sealed class AgentExecutionResultBuilder
                 steps,
                 rag,
                 ragReadiness);
+        return result.WithIdentity(runId, agentId);
     }
 
     private void AppendAssistantDelta(AgentExecutionEvent executionEvent)

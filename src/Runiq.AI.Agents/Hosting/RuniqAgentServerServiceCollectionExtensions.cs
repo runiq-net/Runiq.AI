@@ -78,7 +78,7 @@ public static class RuniqAgentServerServiceCollectionExtensions
 
         var registrations = agents
             .Where(agent => agent.Rag is not null &&
-                string.Equals(agent.ProviderName, "openai", StringComparison.OrdinalIgnoreCase))
+                string.Equals(agent.Executor?.Model?.ModelReference.ProviderName, "openai", StringComparison.OrdinalIgnoreCase))
             .Select(agent => new
             {
                 Agent = agent,
@@ -135,15 +135,20 @@ public static class RuniqAgentServerServiceCollectionExtensions
             provider.GetService<IRagObservabilityRedactor>(),
             provider.GetService<IRagObservabilityMetadataProjector>(),
             provider.GetRequiredService<ILogger<RagObservabilityProjection>>()));
-        services.AddScoped<AgentExecutionRuntime>(provider => new AgentExecutionRuntime(
-            provider.GetServices<Agent>(),
+        services.AddScoped<ModelAgentExecutor>(provider => new ModelAgentExecutor(
             provider.GetRequiredService<IChatClientResolver>(),
-            provider.GetRequiredService<AgentToolInvoker>(),
             provider.GetService<IRagRetriever>(),
             provider.GetRequiredService<RagObservabilityProjection>(),
             provider.GetService<IRagIndexRegistry>(),
             provider.GetService<IRagIngestionManager>(),
             provider.GetService<Runiq.AI.Rag.Abstractions.Reranking.IRagReranker>()));
+        services.AddScoped<AgentExecutorResolver>(provider => new AgentExecutorResolver(
+            provider.GetRequiredService<ModelAgentExecutor>()));
+        services.AddScoped<AgentExecutionRuntime>(provider => new AgentExecutionRuntime(
+            provider.GetServices<Agent>(),
+            provider.GetRequiredService<AgentExecutorResolver>(),
+            provider.GetRequiredService<AgentToolInvoker>(),
+            provider.GetRequiredService<ILogger<AgentExecutionRuntime>>()));
         services.AddScoped<AgentChatApiHandler>();
 
         return services;

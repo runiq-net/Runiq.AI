@@ -182,9 +182,10 @@ public sealed class AgentRagExecutionRuntimeTests
         var retriever = new ThrowingRetriever(new InvalidOperationException("Retriever must not run."));
         var observability = new RagObservabilityProjection(Options.Create(new RagObservabilityOptions()), null, null,
             NullLogger<RagObservabilityProjection>.Instance);
-        var runtime = new AgentExecutionRuntime([agent], new TestChatClientResolver(client),
-            new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()), retriever, observability,
-            new EmptyIndexRegistry(), new UnusedIngestionManager());
+        var runtime = new AgentExecutionRuntime([agent],
+            new AgentExecutorResolver(new ModelAgentExecutor(new TestChatClientResolver(client), retriever,
+                observability, new EmptyIndexRegistry(), new UnusedIngestionManager(), null)),
+            new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()), NullLogger<AgentExecutionRuntime>.Instance);
 
         var events = new List<AgentExecutionEvent>();
         await foreach (var executionEvent in runtime.ExecuteStreamAsync(agent.Id,
@@ -987,7 +988,9 @@ public sealed class AgentRagExecutionRuntimeTests
         var second = await runtime.ExecuteStreamAsync(agent.Id, query).ToListAsync();
 
         Assert.NotEqual(first[0].RagSearch!.CorrelationId, second[0].RagSearch!.CorrelationId);
-        Assert.Equal(first[0].RagSearch!.ConversationId, second[0].RagSearch!.ConversationId);
+        Assert.NotEqual(first[0].RagSearch!.ConversationId, second[0].RagSearch!.ConversationId);
+        Assert.All(first, item => Assert.Equal(first[0].RunId, item.RunId));
+        Assert.Equal(first[0].RunId, first[0].RagSearch!.ConversationId);
 
         var disabled = new Agent("plain", "Plain", "instructions", "openai/model", "key");
         var disabledEvents = await CreateRuntime(disabled, new ScriptedChatClient())
@@ -1001,12 +1004,12 @@ public sealed class AgentRagExecutionRuntimeTests
     {
         var agent = CreateAgent();
         using var source = new CancellationTokenSource();
-        source.Cancel();
         await using var enumerator = CreateRuntime(agent, new ScriptedChatClient(), new CancellingRetriever())
             .ExecuteStreamAsync(agent.Id, "question", cancellationToken: source.Token).GetAsyncEnumerator();
 
         Assert.True(await enumerator.MoveNextAsync());
         Assert.IsType<RagSearchStarted>(enumerator.Current.RagSearch);
+        source.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await enumerator.MoveNextAsync());
     }
 
@@ -1298,9 +1301,11 @@ public sealed class AgentRagExecutionRuntimeTests
             new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()), retriever, reranker);
 
     private static AgentExecutionRuntime CreateReadinessRuntime(Agent agent, IChatClient client, IRagRetriever retriever,
-        IRagIndexRegistry registry, IRagIngestionManager manager) => new([agent], new TestChatClientResolver(client),
-        new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()), retriever,
-        new RagObservabilityProjection(Options.Create(new RagObservabilityOptions()), null, null, NullLogger<RagObservabilityProjection>.Instance), registry, manager);
+        IRagIndexRegistry registry, IRagIngestionManager manager) => new([agent],
+        new AgentExecutorResolver(new ModelAgentExecutor(new TestChatClientResolver(client), retriever,
+            new RagObservabilityProjection(Options.Create(new RagObservabilityOptions()), null, null,
+                NullLogger<RagObservabilityProjection>.Instance), registry, manager, null)),
+        new AgentToolInvoker(new ServiceCollection().BuildServiceProvider()), NullLogger<AgentExecutionRuntime>.Instance);
 
     private static async Task<List<AgentExecutionEvent>> CollectAsync(IAsyncEnumerable<AgentExecutionEvent> source)
     {

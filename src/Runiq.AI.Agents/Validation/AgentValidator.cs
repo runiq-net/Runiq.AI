@@ -39,8 +39,33 @@ namespace Runiq.AI.Agents.Validation
 
         private static void ValidateAgent(Agent agent)
         {
+            var executorFailure = ValidateExecutor(agent, requireRuntimeSupport: false);
+            if (executorFailure is not null)
+            {
+                throw new InvalidOperationException(
+                    $"Runiq agent registration failed. {executorFailure.ErrorMessage}");
+            }
+
             ValidateProviderUrl(agent);
             ValidateTimeout(agent);
+        }
+
+        internal static AgentExecutionResult? ValidateExecutor(Agent agent, bool requireRuntimeSupport)
+        {
+            var executor = agent.Executor;
+            if (executor is null)
+            {
+                return AgentExecutionResult.Failure("AgentExecutorMissing",
+                    $"Agent '{agent.Id}' has no executor. Call UseModel, UseCodex, or UseClaude.");
+            }
+
+            if (requireRuntimeSupport && executor.Kind != Configuration.AgentExecutorKind.Model)
+            {
+                return AgentExecutionResult.Failure("AgentExecutorNotSupported",
+                    $"Agent '{agent.Id}' selects {executor.Kind}, which is configuration-only; this executor is not implemented in this version.");
+            }
+
+            return null;
         }
 
         private static void ValidateProviderUrl(Agent agent)
