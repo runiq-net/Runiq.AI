@@ -300,6 +300,9 @@ Tool-call identity across simultaneous runs is the pair `(runId, toolCallId)`.
 
 ## Offline contract coverage
 
+See [the acceptance matrix and adapter guide](agent-executor-acceptance.md) for
+criterion-to-test mapping, host registration and local delivery commands.
+
 `AgentExecutionContractTests` uses controlled Model/Codex/Claude executors to verify
 dispatch, output ownership, per-run ordering, terminal/result equality, failures,
 cancellation, duplicate registrations, missing selections, scoped lifetimes and

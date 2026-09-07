@@ -15,6 +15,56 @@ namespace Runiq.AI.Agents.Tests.Agents;
 
 public sealed class AgentExecutionContractTests
 {
+    [Theory]
+    [InlineData("text")]
+    [InlineData("json")]
+    [InlineData("failure")]
+    [InlineData("protocol")]
+    // Verifies deterministic independent runs agree on terminal payloads while retaining distinct runtime identities and times.
+    public async Task IndependentRuns_ComparePayloadsWithoutEquatingRunIdentity(string outcome)
+    {
+        var calls = 0;
+        var services = CreateServices();
+        services.AddScoped<IAgentExecutor>(_ => new TestExecutor(AgentExecutorKind.Codex, () =>
+        {
+            calls++;
+            using var json = JsonDocument.Parse("{\"value\":42}");
+            return outcome switch
+            {
+                "text" => [AgentExecutionEvent.AssistantDelta("answer"), AgentExecutionEvent.Completed()],
+                "json" => [AgentExecutionEvent.Completed(null, [], json.RootElement)],
+                "failure" => [AgentExecutionEvent.AssistantDelta("partial"), AgentExecutionEvent.Failed("controlled", "ControlledFailure")],
+                _ => [AgentExecutionEvent.AssistantDelta("partial")]
+            };
+        }));
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var runtime = scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>();
+        var batch = await runtime.ExecuteAsync("agent", "question");
+        var events = await CollectAsync(runtime.ExecuteStreamAsync("agent", "question"));
+        var builder = new AgentExecutionResultBuilder();
+        events.ForEach(builder.Apply);
+        var streamed = builder.Build();
+        Assert.Equal(2, calls);
+        Assert.NotNull(batch.RunId);
+        Assert.NotEqual(batch.RunId, streamed.RunId);
+        Assert.Equal(batch.AgentId, streamed.AgentId);
+        Assert.Equal(batch.Status, streamed.Status);
+        Assert.Equal(batch.IsSuccess, streamed.IsSuccess);
+        Assert.Equal(batch.Message, streamed.Message);
+        Assert.Equal(batch.ErrorCode, streamed.ErrorCode);
+        Assert.Equal(batch.ErrorMessage, streamed.ErrorMessage);
+        Assert.Equal(batch.StructuredOutput?.GetRawText(), streamed.StructuredOutput?.GetRawText());
+        Assert.Equal(batch.Steps.Select(step => (step.Kind, step.Status, step.Content)),
+            streamed.Steps.Select(step => (step.Kind, step.Status, step.Content)));
+        Assert.NotNull(batch.StartedAt);
+        Assert.NotNull(batch.EndedAt);
+        Assert.Equal(events[^1].RunId, streamed.RunId);
+        Assert.Equal(events[^1].StartedAt, streamed.StartedAt);
+        Assert.Equal(events[^1].EndedAt, streamed.EndedAt);
+        Assert.Single(events, item => item.Status != AgentRunStatus.Running);
+    }
+
     [Fact]
     // Verifies replayed executor events cannot impersonate another run and keep distinct same-name tool calls intact.
     public async Task Publication_OverridesForeignMetadataWithoutMutatingSourceEvents()
