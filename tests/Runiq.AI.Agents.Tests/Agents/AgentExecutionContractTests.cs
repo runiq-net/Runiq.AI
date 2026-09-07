@@ -16,6 +16,98 @@ namespace Runiq.AI.Agents.Tests.Agents;
 public sealed class AgentExecutionContractTests
 {
     [Fact]
+    // Verifies every legacy result factory remains callable without inventing runtime metadata or inferring JSON.
+    public void ResultFactories_PreserveStandaloneCompatibility()
+    {
+        const string text = "{\"value\":42}";
+        var successes = new[]
+        {
+            AgentExecutionResult.Success(text),
+            AgentExecutionResult.Success(text, []),
+            AgentExecutionResult.Success(text, [], null),
+            AgentExecutionResult.Success(text, [], null, []),
+            AgentExecutionResult.Success(text, [], null, [], null)
+        };
+        var failures = new[]
+        {
+            AgentExecutionResult.Failure("code", "error"),
+            AgentExecutionResult.Failure("code", "error", []),
+            AgentExecutionResult.Failure("code", "error", [], null)
+        };
+        var cancelled = AgentExecutionResult.Cancelled();
+        foreach (var result in successes.Concat(failures).Append(cancelled))
+        {
+            Assert.Null(result.RunId);
+            Assert.Null(result.AgentId);
+            Assert.Null(result.StartedAt);
+            Assert.Null(result.EndedAt);
+            Assert.Null(result.ProviderSessionId);
+            Assert.Null(result.StructuredOutput);
+            Assert.NotEqual(AgentRunStatus.Running, result.Status);
+            Assert.Equal(result.Status == AgentRunStatus.Completed, result.IsSuccess);
+        }
+        Assert.All(successes, result => Assert.Equal(text, result.Message));
+        Assert.All(failures, result =>
+        {
+            Assert.Equal(AgentRunStatus.Failed, result.Status);
+            Assert.Null(result.Message);
+            Assert.Equal("code", result.ErrorCode);
+            Assert.Equal("error", result.ErrorMessage);
+        });
+        Assert.Equal(AgentRunStatus.Cancelled, cancelled.Status);
+        Assert.Null(cancelled.Message);
+        Assert.Equal("AgentExecutionCancelled", cancelled.ErrorCode);
+        Assert.NotNull(cancelled.ErrorMessage);
+        Assert.True(AgentExecutionResult.Success("").IsSuccess);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    // Verifies terminal timestamps survive aggregation and failures retain partial tool and text steps without reporting success.
+    public async Task ResultMetadata_MatchesPublishedRunAndRetainsPartialSteps(bool fail)
+    {
+        var services = CreateServices();
+        AgentRunContext? capturedRun = null;
+        services.AddScoped<IAgentExecutor>(_ => new TestExecutor(AgentExecutorKind.Codex,
+            () => [AgentExecutionEvent.ToolCallStarted("call", "lookup", "{}"),
+                AgentExecutionEvent.ToolCallCompleted("call", "lookup", "done"),
+                AgentExecutionEvent.AssistantDelta("partial"),
+                fail ? AgentExecutionEvent.Failed("controlled error", "ControlledFailure") : AgentExecutionEvent.Completed()],
+            onRun: run => capturedRun = run));
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var runtime = scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>();
+        var events = await CollectAsync(runtime.ExecuteStreamAsync("agent", "question"));
+        var builder = new AgentExecutionResultBuilder();
+        events.ForEach(builder.Apply);
+        var result = builder.Build();
+        Assert.NotNull(capturedRun);
+        Assert.Equal(capturedRun.StartedAt, result.StartedAt);
+        Assert.Equal(capturedRun.EndedAt, result.EndedAt);
+        Assert.NotNull(result.EndedAt);
+        Assert.All(events, item => Assert.Equal(result.StartedAt, item.StartedAt));
+        Assert.All(events.SkipLast(1), item => Assert.Null(item.EndedAt));
+        Assert.Equal(events[^1].EndedAt, result.EndedAt);
+        Assert.Equal(events[^1].Status, result.Status);
+        Assert.Equal(!fail, result.IsSuccess);
+        Assert.Equal(fail ? null : "partial", result.Message);
+        var tool = Assert.Single(result.Steps, step => step.Kind == AgentExecutionStepKind.ToolCall);
+        Assert.Equal("call", tool.ToolCallId);
+        Assert.Equal("done", tool.OutputJson);
+        var answer = Assert.Single(result.Steps, step => step.Kind == AgentExecutionStepKind.FinalAnswer);
+        Assert.Equal("partial", answer.Content);
+        Assert.Equal(fail ? AgentExecutionStepStatus.Failed : AgentExecutionStepStatus.Completed, answer.Status);
+        var batch = await runtime.ExecuteAsync("agent", "question");
+        Assert.Equal(capturedRun.StartedAt, batch.StartedAt);
+        Assert.Equal(capturedRun.EndedAt, batch.EndedAt);
+        Assert.Equal(result.Status, batch.Status);
+        var cancelled = AgentExecutionResult.Cancelled(result.Steps, result.Rag);
+        Assert.Equal(result.Steps, cancelled.Steps);
+        Assert.False(cancelled.IsSuccess);
+    }
+
+    [Fact]
     // Verifies overlapping calls on one runtime isolate identical tool IDs, sequence counters, and per-run aggregation.
     public async Task ConcurrentRuns_IsolateToolsAndMatchTheirOwnTerminal()
     {
@@ -161,6 +253,34 @@ public sealed class AgentExecutionContractTests
         Assert.True(result.IsSuccess);
         Assert.Equal(explicitJson, result.StructuredOutput.HasValue);
         Assert.Equal(explicitJson ? "" : "{\"value\":42}", result.Message);
+        Assert.NotNull(result.StartedAt);
+        Assert.NotNull(result.EndedAt);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" \n ")]
+    // Verifies a custom executor's empty completion is normalized to the same timed failure through both APIs.
+    public async Task EmptyCompletion_ProducesExplicitFailure(string text)
+    {
+        var services = CreateServices();
+        services.AddScoped<IAgentExecutor>(_ => new TestExecutor(AgentExecutorKind.Codex,
+            () => [AgentExecutionEvent.AssistantDelta(text), AgentExecutionEvent.Completed()]));
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var runtime = scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>();
+        var result = await runtime.ExecuteAsync("agent", "question");
+        var events = await CollectAsync(runtime.ExecuteStreamAsync("agent", "question"));
+        Assert.False(result.IsSuccess);
+        Assert.Equal(AgentRunStatus.Failed, result.Status);
+        Assert.Equal("AgentExecutionEmptyMessage", result.ErrorCode);
+        Assert.Null(result.Message);
+        Assert.Null(result.StructuredOutput);
+        Assert.NotNull(result.StartedAt);
+        Assert.NotNull(result.EndedAt);
+        Assert.Equal(result.Status, events[^1].Status);
+        Assert.Equal(result.ErrorCode, events[^1].ErrorCode);
+        Assert.Equal(result.ErrorMessage, events[^1].ErrorMessage);
     }
 
     [Fact]
@@ -495,7 +615,7 @@ public sealed class AgentExecutionContractTests
     }
 
     private sealed class TestExecutor(AgentExecutorKind kind, Func<AgentExecutionEvent[]> events,
-        Action<AgentExecutionRequest>? onRequest = null) : IAgentExecutor
+        Action<AgentExecutionRequest>? onRequest = null, Action<AgentRunContext>? onRun = null) : IAgentExecutor
     {
         public AgentExecutorKind Kind => kind;
 
@@ -503,6 +623,7 @@ public sealed class AgentExecutionContractTests
             AgentRunContext run, AgentToolInvoker toolInvoker, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             onRequest?.Invoke(request);
+            onRun?.Invoke(run);
             foreach (var item in events())
             {
                 cancellationToken.ThrowIfCancellationRequested();

@@ -81,7 +81,9 @@ enumerating. Cleanup errors do not create a second terminal transition.
 | --- | --- |
 | ExecuteAsync(agent ID or Agent, string or AgentQuery) | Keep signatures and constructor overloads; forward to one lifecycle path. |
 | ExecuteStreamAsync(agent ID, string or AgentQuery, optional tool invoker) | Keep signatures, lazy enumeration, tool override and event ordering. |
-| Success/Failure result factories | Keep every signature and payload. Standalone factory products have null run/agent/session identity; runtime stamps identity. |
+| Success/Failure result factories | Keep every signature and payload, including permissive standalone Success(""). Standalone products have null run/agent/session identity and null StartedAt/EndedAt; no identity or time is invented. Runtime enforces the empty response rule. |
+| Result Status and IsSuccess | Status is terminal only. IsSuccess is true exclusively for Completed; Failed and Cancelled are false. |
+| Cancelled result factory | Add Cancelled(steps, rag) for standalone cancellation representation. Runtime APIs continue throwing AgentRunCanceledException on caller cancellation. |
 | Event factories and existing event consumers | Keep factories and enum numeric values. Add read-only identity and status properties; Completed/Failed remain terminal event kinds. |
 | AgentExecutionResultBuilder | Retain legacy uncorrelated-event support; propagate runtime identity and reject mixed runs. |
 | Cancellation handlers | Existing OperationCanceledException handlers continue to work for both APIs; the subtype adds run context. |
@@ -100,6 +102,25 @@ may then be disposed. Undefined elements are rejected, while JSON null is a vali
 explicit output. Text is never parsed to infer structured output. JSON-only success
 has an empty `Message`; empty text without JSON remains a failure. Existing factory
 signatures remain available and produce no structured output.
+
+Structured output presence does not assert schema validation. It only means the
+executor supplied a defined JSON value. Both the event factory and result factory
+clone that value, so aggregation is safe after the source document is disposed.
+
+Runtime results carry `StartedAt` and `EndedAt` copied from the run context through
+the published events. All events share the run start time; only terminal events have
+an end time. These are UTC wall-clock values, separate from event publication
+`Timestamp`. A builder reconstructs the same timestamps without generating new
+ones. Standalone legacy factories leave these fields null. These additions apply
+to the core execution models; HTTP/SSE transport DTO fields are unchanged here.
+
+On failure, `Message` remains null and existing tool/RAG/error steps are retained.
+Partial assistant text remains in a FinalAnswer step with Failed status rather than
+being presented as a completed answer. A completed tool step still records that
+individual tool's success even when the overall run fails. The standalone Cancelled
+factory preserves supplied steps and RAG information, returns null Message/JSON and
+uses `AgentExecutionCancelled`; it does not convert incomplete streams into results
+or change exception-based caller cancellation.
 
 Runtime events receive a one-based `SequenceNumber` and UTC `Timestamp` when
 published, including validation failures. Standalone factory events have null

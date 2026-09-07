@@ -8,6 +8,7 @@ namespace Runiq.AI.Agents
     public sealed class AgentExecutionResult
     {
         /// <summary>Gets explicitly supplied JSON with ownership independent of its original document.</summary>
+        /// <remarks>Presence does not imply schema validation; response text is never parsed to infer JSON.</remarks>
         public JsonElement? StructuredOutput { get; }
 
         /// <summary>Gets the runtime run identifier, or null for a standalone factory result.</summary>
@@ -16,19 +17,25 @@ namespace Runiq.AI.Agents
         /// <summary>Gets the agent definition identifier, or null for a standalone factory result.</summary>
         public string? AgentId { get; private init; }
 
+        /// <summary>Gets the UTC run start time, or null for a standalone factory result.</summary>
+        public DateTimeOffset? StartedAt { get; private init; }
+
+        /// <summary>Gets the UTC terminal transition time, or null for a standalone factory result.</summary>
+        public DateTimeOffset? EndedAt { get; private init; }
+
         /// <summary>Gets the reserved provider session identifier; always null in this version.</summary>
         public string? ProviderSessionId => null;
 
         /// <summary>Gets the terminal state; caller cancellation is reported by an exception.</summary>
-        public Runtime.AgentRunStatus Status => IsSuccess
-            ? Runtime.AgentRunStatus.Completed : Runtime.AgentRunStatus.Failed;
+        public Runtime.AgentRunStatus Status { get; }
 
-        internal AgentExecutionResult WithIdentity(string? runId, string? agentId) =>
-            new(IsSuccess, Message, ErrorCode, ErrorMessage, Steps, Rag, Citations, RagReadiness, StructuredOutput)
-            { RunId = runId, AgentId = agentId };
+        internal AgentExecutionResult WithIdentity(string? runId, string? agentId,
+            DateTimeOffset? startedAt = null, DateTimeOffset? endedAt = null) =>
+            new(Status, Message, ErrorCode, ErrorMessage, Steps, Rag, Citations, RagReadiness, StructuredOutput)
+            { RunId = runId, AgentId = agentId, StartedAt = startedAt, EndedAt = endedAt };
 
         private AgentExecutionResult(
-            bool isSuccess,
+            Runtime.AgentRunStatus status,
             string? message,
             string? errorCode,
             string? errorMessage,
@@ -41,7 +48,9 @@ namespace Runiq.AI.Agents
             if (structuredOutput is { ValueKind: JsonValueKind.Undefined })
                 throw new ArgumentException("Structured output must be a defined JSON value.", nameof(structuredOutput));
             StructuredOutput = structuredOutput?.Clone();
-            IsSuccess = isSuccess;
+            Status = status;
+            if (Status is not (Runtime.AgentRunStatus.Completed or Runtime.AgentRunStatus.Failed or Runtime.AgentRunStatus.Cancelled))
+                throw new ArgumentException("A result must have a terminal status.", nameof(status));
             Message = message;
             ErrorCode = errorCode;
             ErrorMessage = errorMessage;
@@ -52,12 +61,12 @@ namespace Runiq.AI.Agents
         }
 
         /// <summary>
-        /// Agent çalistirma isleminin basarili olup olmadigini belirtir.
+        /// Gets whether the terminal status is Completed.
         /// </summary>
-        public bool IsSuccess { get; }
+        public bool IsSuccess => Status == Runtime.AgentRunStatus.Completed;
 
         /// <summary>
-        /// Gets the successful response text, empty for JSON-only success and null for failure.
+        /// Gets the successful response text, empty for JSON-only success and null for failure or cancellation.
         /// </summary>
         public string? Message { get; }
 
@@ -124,7 +133,7 @@ namespace Runiq.AI.Agents
         public static AgentExecutionResult Success(string message, IReadOnlyList<AgentExecutionStep> steps, AgentRagExecutionMetadata? rag, IReadOnlyList<AgentCitation> citations)
         {
             return new AgentExecutionResult(
-                isSuccess: true,
+                status: Runtime.AgentRunStatus.Completed,
                 message: message,
                 errorCode: null,
                 errorMessage: null,
@@ -143,7 +152,7 @@ namespace Runiq.AI.Agents
         /// <exception cref="ArgumentException">The supplied JSON element is undefined.</exception>
         public static AgentExecutionResult Success(string message, IReadOnlyList<AgentExecutionStep> steps,
             AgentRagExecutionMetadata? rag, IReadOnlyList<AgentCitation> citations, JsonElement? structuredOutput) =>
-            new(true, message, null, null, steps, rag, citations, structuredOutput: structuredOutput);
+            new(Runtime.AgentRunStatus.Completed, message, null, null, steps, rag, citations, structuredOutput: structuredOutput);
 
         /// <summary>
         /// Basarisiz agent çalistirma sonucu olusturur.
@@ -179,7 +188,7 @@ namespace Runiq.AI.Agents
             AgentRagExecutionMetadata? rag)
         {
             return new AgentExecutionResult(
-                isSuccess: false,
+                status: Runtime.AgentRunStatus.Failed,
                 message: null,
                 errorCode: errorCode,
                 errorMessage: errorMessage,
@@ -187,9 +196,18 @@ namespace Runiq.AI.Agents
                 rag: rag);
         }
 
+        /// <summary>Creates a standalone cancelled result without inventing run identity or timestamps.</summary>
+        /// <param name="steps">Optional visible steps produced before cancellation.</param>
+        /// <param name="rag">Optional RAG policy information already available.</param>
+        /// <returns>A Cancelled result with no successful message or structured output.</returns>
+        /// <remarks>Runtime caller cancellation still throws AgentRunCanceledException; this factory does not change that behavior.</remarks>
+        public static AgentExecutionResult Cancelled(IReadOnlyList<AgentExecutionStep>? steps = null,
+            AgentRagExecutionMetadata? rag = null) =>
+            new(Runtime.AgentRunStatus.Cancelled, null, "AgentExecutionCancelled", "Agent execution was cancelled.", steps ?? [], rag);
+
         internal static AgentExecutionResult ReadinessFailure(string errorCode, string errorMessage,
             IReadOnlyList<AgentExecutionStep> steps, AgentRagExecutionMetadata? rag, RagSearchBlocked readiness) =>
-            new(false, null, errorCode, errorMessage, steps, rag, ragReadiness: readiness);
+            new(Runtime.AgentRunStatus.Failed, null, errorCode, errorMessage, steps, rag, ragReadiness: readiness);
     }
 
     /// <summary>
