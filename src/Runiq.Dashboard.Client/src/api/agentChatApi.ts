@@ -263,6 +263,7 @@ const ragNoContextReasons = [
   'CandidatesRejected',
   'ContextBudgetExhausted',
   'NotAnswerable',
+  'RerankingFailed',
 ] as const;
 
 const contextExclusionReasons = [
@@ -271,6 +272,7 @@ const contextExclusionReasons = [
   'SourceLimitExceeded',
   'SourceDiversityPreference',
   'NotAnswerable',
+  'RerankingFailed',
 ] as const;
 
 const rerankingOutcomes = ['Disabled', 'Succeeded', 'Fallback', 'Failed'] as const;

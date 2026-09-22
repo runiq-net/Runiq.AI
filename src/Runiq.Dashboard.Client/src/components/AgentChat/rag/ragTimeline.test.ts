@@ -151,6 +151,9 @@ test('formatters present duration and lifecycle classifications', () => {
   assert.equal(formatRagDuration('00:00:00.1250000'), '125 ms');
   assert.equal(formatRagDuration('00:00:02.5000000'), '2.5 s');
   assert.equal(getNoContextLabel('BelowRelevanceThreshold'), 'Below relevance threshold');
+  assert.equal(getNoContextLabel('ContextBudgetExhausted'), 'Context budget exhausted');
+  assert.equal(getNoContextLabel('NotAnswerable'), 'Not answerable');
+  assert.equal(getNoContextLabel('RerankingFailed'), 'Reranking failed');
   assert.equal(getRejectionReasonLabel('ResultLimitExceeded'), 'Result limit exceeded');
   assert.equal(getFailureClassificationLabel('VectorStoreQueryFailed'), 'Vector store query failed');
   assert.equal(getDistinctEffectiveQuery('same query', 'same query'), undefined);
@@ -214,6 +217,30 @@ test('parser accepts reranking metadata and not-answerable context exclusions', 
   assert.equal(parsed.ragSearch.noContextReason, 'NotAnswerable');
   assert.equal(parsed.ragSearch.contextExcludedResults?.[0]?.reason, 'NotAnswerable');
   assert.equal(parsed.ragSearch.reranking?.candidates[0]?.rerankRelevance, 0.82);
+});
+
+// Verifies the completed-event parser accepts backend reranking-failed no-context and exclusion reasons.
+test('parser accepts reranking-failed no-context and context exclusions', () => {
+  const completed = completedEvent('retrieval-1');
+  const parsed = parseStreamEventPayload(JSON.stringify({
+    ...completed,
+    ragSearch: {
+      ...completed.ragSearch,
+      acceptedCount: 0,
+      selectedResults: [],
+      noContextReason: 'RerankingFailed',
+      contextExcludedResults: [{
+        documentId: 'document-1',
+        chunkId: 'chunk-1',
+        reason: 'RerankingFailed',
+        estimatedTokens: 42,
+      }],
+    },
+  }));
+
+  assert.ok(parsed && parsed.type === 'rag_search_completed');
+  assert.equal(parsed.ragSearch.noContextReason, 'RerankingFailed');
+  assert.equal(parsed.ragSearch.contextExcludedResults?.[0]?.reason, 'RerankingFailed');
 });
 
 // Verifies malformed or unknown reranking fields are rejected instead of entering typed lifecycle state.

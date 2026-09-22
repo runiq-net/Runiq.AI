@@ -228,6 +228,23 @@ public sealed class AgentChatRagStreamEventMapperTests
     }
 
     [Fact]
+    // Verifies a fail-closed reranking outcome serializes the backend no-context and context exclusion names consumed by Dashboard.
+    public void FromExecutionEvent_ShouldSerializeRerankingFailedNoContextOutcome()
+    {
+        using var json = SerializeCompleted(CreateCompleted(
+            noContextReason: RagNoContextReason.RerankingFailed,
+            contextExcludedResults:
+            [
+                new RagSearchContextExcludedResult(
+                    "document-1", "chunk-1", RagContextSelectionExclusionReason.RerankingFailed, 40),
+            ]));
+
+        var ragSearch = json.RootElement.GetProperty("ragSearch");
+        Assert.Equal("RerankingFailed", ragSearch.GetProperty("noContextReason").GetString());
+        Assert.Equal("RerankingFailed", ragSearch.GetProperty("contextExcludedResults")[0].GetProperty("reason").GetString());
+    }
+
+    [Fact]
     // Verifies a timed-out reranker serializes fallback status, timeout, and only its safe failure classification.
     public void FromExecutionEvent_ShouldSerializeTimeoutFallback()
     {
