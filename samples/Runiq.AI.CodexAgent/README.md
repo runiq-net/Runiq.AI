@@ -1,16 +1,19 @@
-# Runiq Codex Repository Assistant
+# Runiq Codex Project Assistants
 
-This .NET 10 web sample uses Runiq's embedded dashboard to chat with one read-only
-repository agent backed by the local Codex CLI. It follows the Expense sample's
-structure: like OrderSupport, it uses `Microsoft.NET.Sdk.Web`. The agent is defined
-in `Agents/CodexAgent.cs`, while
-`Program.cs` contains only host, executor and dashboard registration.
+Chat with two Codex agents in the Runiq dashboard: summarize file changes with a
+deterministic C# tool, or review code and get suggested fixes and tests.
+
+| Agent | Purpose | Model | Reasoning | Service tier |
+| --- | --- | --- | --- | --- |
+| QuickProjectAssistant | Summarizes supplied change counts using `change_summary` | `gpt-5.6-sol` | Medium | Fast |
+| CodeReviewer | Reviews code and suggests fixes and test cases | `gpt-6-astra` | High | Default |
 
 ## Run
 
-Install the .NET 10 SDK and Codex CLI, and sign in to Codex under the same account
-that runs this sample. Windows and Linux are supported; Linux requires `setsid`.
-Runiq makes no direct OpenAI model API calls here. `OPENAI_API_KEY` is not required.
+Requirements: .NET 10 SDK and a Codex CLI with Streamable HTTP MCP support,
+installed and signed in under the account running the sample. Linux also requires
+`setsid`. Both agents use **local Codex CLI authentication**; `OPENAI_API_KEY` is
+not required.
 
 From the repository root:
 
@@ -18,93 +21,72 @@ From the repository root:
 dotnet run --project samples/Runiq.AI.CodexAgent --launch-profile http
 ```
 
-Open [http://localhost:5298/dashboard](http://localhost:5298/dashboard), select
-**CodexAgent**, and send:
+Open [http://localhost:5298/dashboard](http://localhost:5298/dashboard) and select
+an agent from the Agents page.
 
-Try different requests:
+## Try QuickProjectAssistant
 
-- `hi` - a greeting and short help, without automatic repository inspection.
-- `Explain Program.cs and why UseCodex(options => options.Model = "gpt-6-sol") does not require an API key. Cite relevant lines.`
-- `Review Agents/CodexAgent.cs for ambiguous instructions and suggest a clearer version without changing files.`
-- `Find the bug in this C# method and propose a fix: int Max(int a, int b) => a < b ? a : b;`
+Send this prompt:
 
-The user input determines the task. The agent can explain specific files, review
-pasted code, or propose changes as code/diff in its answer. Repository-specific
-answers cite file paths and lines. It stays read-only: suggestions are not applied.
-Each request is self-contained; include the code/file and question rather than
-relying on earlier dashboard messages. There is no separate frontend, custom chat
-endpoint, manual event loop or console execution workflow.
+```text
+Use the change_summary tool to summarize these changes:
+- OrderService.cs: +45 / -12
+- OrderController.cs: +18 / -4
+- OrderServiceTests.cs: +90 / -0
 
-## Agent and dashboard registration
+Explain the result in three short bullet points. Do not modify files.
+```
 
-1. `AddRuniqServer` registers `CodexAgent.Create()`. `UseCodex(...)` selects the
-   executor; Runiq automatically registers the required Codex runtime infrastructure.
-2. `UseRuniqDashboard` serves Runiq's embedded UI at `/dashboard`.
+The chat displays a **Change Summary** tool call with this result, followed by
+an explanation:
 
-No separate executor registration is needed. `WorkingDirectory` defaults to the
-host's `ContentRootPath`, which is this sample's project directory when launched
-as shown. `OPENAI_API_KEY` is not required; local Codex CLI authentication is used.
-For optional process limits or a different workspace, use standard
-`builder.Services.Configure<CodexExecutorOptions>(...)` with the
-`Runiq.AI.Agents.Configuration` namespace. This configures settings only; automatic
-registration still follows the registered agent's executor selection.
+```json
+{"files":3,"added":153,"deleted":16}
+```
 
-No sample-specific configuration or infrastructure is needed. The executor's
-existing defaults provide a read-only sandbox, a ten-minute timeout, and native
-Codex discovery on PATH (including the standard Windows npm layout). On Windows,
-use the native `codex.exe`, not a shell shim. The project must remain inside a Git
-repository. For advanced host options, see the [Codex executor documentation](../../docs/codex-executor.md).
+The tool calculates totals from the supplied numbers without accessing files or
+external services. Expand the tool card to inspect its input and output.
 
-The agent prohibits file modifications and destructive commands. .NET build
-artifacts and Codex's own local session storage are separate from inspected sources.
+## Try CodeReviewer
 
-CLI installation, authentication and other failures use the existing Runiq
-dashboard error handling and executor error codes. Missing Codex and missing
-authentication remain distinct; no sample-specific error translation is added.
-Requests do not crash the host or fall back to a model API client.
+Send this prompt:
 
-Each request creates a new runtime run and Codex conversation using the existing
-CLI authentication. The confirmed `ProviderSessionId` is retained in the existing
-HTTP/SSE response metadata; this sample adds no dashboard session/resume controls.
+```text
+Review this C# method:
 
-As in Expense, the dashboard allows anonymous access for the local sample. The
-launch profile binds to localhost; configure authentication before exposing it
-to other users or networks. Inspection remains subject to Codex permissions and
-account availability. No sandbox bypass is enabled.
+decimal CalculateTotal(decimal price, int quantity)
+    => price + quantity;
 
-## Model selection
+It should calculate the total cost from the unit price and quantity.
+Explain the bug, suggest corrected code, and provide three test cases.
+Do not modify files.
+```
 
-The Codex model is explicitly selected at the Runiq Agent level. A Codex agent
-cannot be configured without a non-null, non-empty, non-whitespace model:
+Expect a recommendation to multiply price by quantity, a corrected method, and
+test cases. CodeReviewer has no Runiq tools attached.
+
+## Configure your agents
+
+Agent definitions live in `Agents/`. Select a model explicitly with `UseCodex`
+and attach typed tools with `AddTool<T>`:
 
 ```csharp
 .UseCodex(options =>
 {
-    options.Model = "gpt-6-sol";
-    // Optional overrides (these are the defaults):
-    options.ReasoningEffort = CodexReasoningEffort.High;
-    options.ServiceTier = CodexServiceTier.Default;
-});
+    options.Model = "gpt-5.6-sol";
+    options.ReasoningEffort = CodexReasoningEffort.Medium;
+    options.ServiceTier = CodexServiceTier.Fast;
+})
+.AddTool<ChangeSummaryTool>();
 ```
 
-The enums are in `Runiq.AI.Agents.Configuration`. ReasoningEffort defaults to High;
-ServiceTier defaults to Default. Default omits a tier override and preserves the
-local CLI's configured/default tier; it does not force standard service if the CLI
-is configured for Fast. Fast sends `-c service_tier="fast"` (Codex maps this to priority).
-Model and effort are explicitly sent on both new and resumed turns. The immutable
-agent configuration takes precedence over the saved session model/effort; there is
-no per-query model override. Different agents can use different settings in one host.
+`AddRuniqServer` registers the required executor and tool connection automatically.
+Model is required; reasoning defaults to **High** and service tier to **Default**.
+Default preserves local CLI tier settings. Model and Fast availability depend on
+your CLI/account; model rejections become meaningful Runiq runtime errors.
 
-Runiq has no model-name whitelist or model/effort compatibility table. If, for example,
-`Model = "abcd"` is rejected by Codex CLI, Runiq normalizes the runtime failure to
-`CodexModelNotAvailable` with a message identifying the requested model. Unsupported
-reasoning combinations map to `CodexReasoningEffortNotSupported`. Execution events/results
-retain model, executor, exit code and local diagnostic detail in `ErrorDetails`.
-Raw diagnostic detail is excluded from JSON and user-facing messages.
+Include all relevant context in each prompt; this sample does not carry dashboard
+chat history between requests. The dashboard allows anonymous access for local use.
 
-`OPENAI_API_KEY` is not required: execution uses local Codex CLI authentication.
-Host `CodexExecutorOptions` only controls executable, workspace, timeout, sandbox,
-Git checks and output limits. It does not contain model, effort or tier settings.
-See the [Codex executor documentation](../../docs/codex-executor.md) for continuation,
-error handling and opt-in integration tests, and the
-[official configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
+See the [Codex executor guide](../../docs/codex-executor.md) for process settings,
+tool execution boundaries, session continuation, and troubleshooting.

@@ -597,7 +597,10 @@ at registration. Neither failure consumes the unfinished definition's ability to
 Local Codex CLI execution is registered automatically by `AddRuniqServer` for
 agents selecting `UseCodex(...)`; see [configuration, continuation and limits](../../docs/codex-executor.md).
 Local Claude Code execution is also registered automatically for `UseClaude()` agents; see
-[configuration and continuation](../../docs/claude-executor.md). No Runiq tool bridge or new Studio UI is supplied. Direct `Agent.ExecuteAsync` and `Agent.ExecuteStreamAsync` retain
+[configuration and continuation](../../docs/claude-executor.md). Codex agents support
+existing `.AddTool<T>()` bindings through an automatic per-run loopback MCP bridge;
+tool events use the existing dashboard UI. Claude tool bindings remain unsupported.
+Direct `Agent.ExecuteAsync` and `Agent.ExecuteStreamAsync` retain
 their existing unsupported-direct-execution contract. Runtime execution continues through dependency
 injection. The executor types belong to Agents and reuse Core's `ModelReference` and `ProviderOptions`;
 no new dependency or parallel agent model is introduced. Workflow adapters already delegate execution

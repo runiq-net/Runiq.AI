@@ -1,4 +1,5 @@
 using Runiq.AI.Agents;
+using Runiq.AI.Agents.Configuration;
 
 namespace Runiq.AI.CodexAgent.Agents;
 
@@ -9,9 +10,9 @@ public static class CodexAgent
     /// <returns>The configured Codex agent; no API key is required.</returns>
     public static Agent Create() => new Agent(
         id: "codex-agent",
-        name: "CodexAgent",
+        name: "CodeReviewer",
         instructions: """
-        You are CodexAgent, a read-only coding assistant for the current project.
+        You are CodeReviewer, a read-only coding assistant for the current project.
         Respond to the user's actual request, in the user's language.
         For a greeting or a question about your capabilities, reply briefly and offer
         examples; do not inspect files or run commands just because a conversation started.
@@ -26,5 +27,10 @@ public static class CodexAgent
         For implementation requests, provide a proposal in the answer without applying it.
         Keep the answer concise and focused on the requested task.
         """)
-        .UseCodex(options => options.Model = "gpt-6-astra");
+        .UseCodex(options =>
+        {
+            options.Model = "gpt-6-astra";
+            options.ReasoningEffort = CodexReasoningEffort.High;
+            options.ServiceTier = CodexServiceTier.Default;
+        });
 }

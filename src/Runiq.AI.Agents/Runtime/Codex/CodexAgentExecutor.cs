@@ -1,6 +1,7 @@
 using Runiq.AI.Agents.Runtime.Cli;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Runiq.AI.Agents.Configuration;
@@ -16,7 +17,7 @@ internal sealed class CodexAgentExecutor(ICliProcessFactory processes, IOptions<
     public async IAsyncEnumerable<AgentExecutionEvent> ExecuteAsync(AgentExecutionRequest request, AgentRunContext run,
         AgentToolInvoker toolInvoker, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        await using var events = ExecuteCoreAsync(request, run, cancellationToken).GetAsyncEnumerator(cancellationToken);
+        await using var events = ExecuteCoreAsync(request, run, toolInvoker, cancellationToken).GetAsyncEnumerator(cancellationToken);
         while (true)
         {
             AgentExecutionEvent? next;
@@ -50,11 +51,11 @@ internal sealed class CodexAgentExecutor(ICliProcessFactory processes, IOptions<
         }
     }
 
-    private async IAsyncEnumerable<AgentExecutionEvent> ExecuteCoreAsync(AgentExecutionRequest request, AgentRunContext run,
+    private async IAsyncEnumerable<AgentExecutionEvent> ExecuteCoreAsync(AgentExecutionRequest request, AgentRunContext run, AgentToolInvoker toolInvoker,
         [EnumeratorCancellation] CancellationToken callerToken)
     {
         callerToken.ThrowIfCancellationRequested();
-        if (request.Agent.Tools.Count != 0 || request.Agent.Rag is { Enabled: true } || request.Query.IndexName is not null)
+        if (request.Agent.Rag is { Enabled: true } || request.Query.IndexName is not null)
             throw new CodexException("CodexCapabilityNotSupported");
         var configuration = options.Value;
         var sessionId = request.Query.ProviderSessionId;
@@ -68,7 +69,7 @@ internal sealed class CodexAgentExecutor(ICliProcessFactory processes, IOptions<
         {
             using var timeout = new CancellationTokenSource(configuration.Timeout);
             using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(callerToken, timeout.Token);
-            await using var events = RunProcessAsync(command, prompt, configuration, sessionId, run, lifetime, ConfirmSession)
+            await using var events = RunWithToolsAsync(request.Agent, toolInvoker, command, prompt, configuration, sessionId, run, lifetime, ConfirmSession)
                 .GetAsyncEnumerator(lifetime.Token);
             while (true)
             {
@@ -101,6 +102,47 @@ internal sealed class CodexAgentExecutor(ICliProcessFactory processes, IOptions<
                 lockedSession = confirmed.ToLowerInvariant();
             }
             run.SetProviderSessionId(confirmed);
+        }
+    }
+
+    private async IAsyncEnumerable<AgentExecutionEvent> RunWithToolsAsync(Agent agent, AgentToolInvoker invoker,
+        System.Diagnostics.ProcessStartInfo command, string prompt, CodexExecutorOptions configuration,
+        string? sessionId, AgentRunContext run, CancellationTokenSource lifetime, Action<string> confirmSession)
+    {
+        if (agent.Tools.Count == 0)
+        {
+            await foreach (var item in RunProcessAsync(command, prompt, configuration, sessionId, run, lifetime, confirmSession))
+                yield return item;
+            yield break;
+        }
+
+        var channel = Channel.CreateBounded<AgentExecutionEvent>(new BoundedChannelOptions(32)
+        {
+            SingleReader = true, FullMode = BoundedChannelFullMode.Wait
+        });
+        await using var bridge = await CodexToolBridge.StartAsync(agent, invoker, command, configuration, channel.Writer, lifetime.Token);
+        var pump = PumpAsync();
+        try
+        {
+            // Process cleanup cancels lifetime even on success; drain already-published events before observing completion.
+            await foreach (var item in channel.Reader.ReadAllAsync()) yield return item;
+        }
+        finally
+        {
+            await lifetime.CancelAsync();
+            await pump;
+        }
+
+        async Task PumpAsync()
+        {
+            Exception? failure = null;
+            try
+            {
+                await foreach (var item in RunProcessAsync(command, prompt, configuration, sessionId, run, lifetime, confirmSession))
+                    await channel.Writer.WriteAsync(item, lifetime.Token);
+            }
+            catch (Exception exception) { failure = exception; }
+            finally { channel.Writer.TryComplete(failure); }
         }
     }
 
@@ -184,7 +226,8 @@ internal sealed class CodexAgentExecutor(ICliProcessFactory processes, IOptions<
         "CodexSessionInvalid" => "The Codex session identifier is invalid or differs from the requested session.",
         "CodexSessionNotFound" => "The requested Codex session was not found.",
         "CodexSessionBusy" => "The Codex session is already executing in this host.",
-        "CodexCapabilityNotSupported" => "The Codex CLI executor does not support Runiq tool or RAG bindings.",
+        "CodexCapabilityNotSupported" => "The Codex CLI executor does not support Runiq RAG bindings.",
+        "CodexToolBridgeFailed" => "Codex could not connect to the local Runiq tool bridge. Check CLI MCP support and local networking.",
         "CodexProcessIoFailed" => "Communication with the Codex process failed.",
         "CodexPlatformNotSupported" => "The local Codex process adapter currently supports Windows and Linux hosts.",
         _ => "Codex execution failed. Check the CLI installation and its local configuration."
