@@ -5,8 +5,9 @@
 A run is one execution started by one runtime invocation. Streaming is lazy: a run
 starts on the first enumeration, and enumerating again starts a new run. Runtime
 creates one opaque `RunId`, independently of the prompt. `AgentId` identifies the
-reusable definition; `ProviderSessionId` is reserved for a future provider session
-and is null in v1. A `RunId` is never a session-resumption key. Provider response
+reusable definition; `ProviderSessionId` carries a confirmed Codex thread identity
+when the [local adapter](codex-executor.md) is enabled, and otherwise is null.
+A `RunId` is never a session-resumption key. Provider response
 IDs used inside a model/tool loop remain private to that executor.
 
 `AgentExecutionRequest` pairs the existing `Agent` and `AgentQuery`, retaining
@@ -42,10 +43,11 @@ tool events. No SDK, process or provider-session dependency is added to the cont
 
 States are `Running`, `Completed`, `Failed`, and `Cancelled`. Every started run
 reaches exactly one terminal state; the first terminal transition wins. There is
-no approval-waiting state, persistence, session continuation, or resume guarantee.
+no approval-waiting state or Runiq-owned persistence. Session continuation is an
+executor capability: the opt-in Codex adapter resumes the CLI's persisted sessions.
 Runtime owns lifecycle and executor resolution; the model executor retains the
-existing provider-neutral model, RAG and tool orchestration. No Codex or Claude
-adapter is bundled; unregistered kinds retain the unsupported error code with no model fallback.
+existing provider-neutral model, RAG and tool orchestration. The Codex adapter requires
+explicit registration; Claude remains host-supplied. Unregistered kinds retain the unsupported error code with no model fallback.
 
 Every runtime event and returned result carries the same run identity. Existing
 event ordering is retained; no start event is inserted. A fully consumed normal
@@ -91,8 +93,8 @@ enumerating. Cleanup errors do not create a second terminal transition.
 | Empty streaming output | Now Failed (AgentExecutionEmptyMessage), consistent with ExecuteAsync. |
 | RAG ConversationId | Keep the wire field, populated from runtime RunId. Reusing a query no longer reuses this identifier; it is not a provider session. |
 
-Real Codex/Claude adapters, tool bridges, persistence, Studio and workflow changes
-are outside this change.
+The subsequent [Codex adapter](codex-executor.md) extends these contracts without
+adding tool bridges, Runiq-owned persistence, Studio or workflow changes.
 
 ## Shared output and executor registration
 

@@ -73,6 +73,13 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
         var agent = request.Agent;
         var query = request.Query;
 
+        if (query.ProviderSessionId is not null)
+        {
+            yield return AgentExecutionEvent.Failed("The model executor does not support provider session continuation.",
+                "AgentSessionNotSupported");
+            yield break;
+        }
+
         var runtimeContext = new AgentRuntimeContext();
 
         AgentExecutionEvent? ragConfigurationFailure = null;

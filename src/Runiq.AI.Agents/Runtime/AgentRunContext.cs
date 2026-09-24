@@ -20,6 +20,7 @@ public sealed class AgentRunContext
     private AgentRunStatus status;
     private DateTimeOffset? endedAt;
     private long eventSequence;
+    private string? providerSessionId;
 
     internal long NextEventSequence() => Interlocked.Increment(ref eventSequence);
 
@@ -46,8 +47,22 @@ public sealed class AgentRunContext
         get { lock (lifecycleLock) return endedAt; }
     }
 
-    /// <summary>Gets the reserved provider session identifier; always null in this version.</summary>
-    public string? ProviderSessionId => null;
+    /// <summary>Gets the actual provider session identifier once confirmed by the executor; otherwise null.</summary>
+    public string? ProviderSessionId
+    {
+        get { lock (lifecycleLock) return providerSessionId; }
+    }
+
+    internal void SetProviderSessionId(string sessionId)
+    {
+        lock (lifecycleLock)
+        {
+            if (status != AgentRunStatus.Running ||
+                (providerSessionId is not null && providerSessionId != sessionId))
+                throw new InvalidOperationException("A run cannot change its confirmed provider session.");
+            providerSessionId = sessionId;
+        }
+    }
 
     /// <summary>Gets the current state; only the runtime can make a terminal transition.</summary>
     public AgentRunStatus Status

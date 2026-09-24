@@ -2,6 +2,7 @@
 
 - Inspect the existing architecture and relevant code before implementation.
 - Read and follow applicable local skills under `.codex/skills/` when available. The repository must remain usable when they are absent.
+- For planning, implementing or reviewing sample, agent/tool or dashboard work, read `.codex/skills/RuniqFramework/SKILL.md` when present. Verify existing host configuration before creating frontend or framework PBIs; a small sample need not be split by technical layer.
 - Preserve project dependency direction and extend existing abstractions instead of creating parallel implementations.
 - Keep public API changes minimal and intentional. Add complete English XML documentation for every new public member.
 - Do not change unrelated behavior or files, and do not add production compatibility layers solely to preserve obsolete tests.

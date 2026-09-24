@@ -24,6 +24,12 @@ public sealed record AgentChatStreamEvent(
     [JsonInclude]
     public string? RunId { get; internal init; }
 
+    /// <summary>Gets the confirmed provider session identifier, when available.</summary>
+    [JsonPropertyName("providerSessionId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonInclude]
+    public string? ProviderSessionId { get; internal init; }
+
     /// <summary>Gets the reusable agent definition identifier.</summary>
     [JsonPropertyName("agentId")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

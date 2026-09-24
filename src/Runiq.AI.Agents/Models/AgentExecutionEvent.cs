@@ -31,8 +31,8 @@ public sealed record AgentExecutionEvent
     /// <summary>Gets the agent definition identifier, or null for a standalone factory event.</summary>
     public string? AgentId { get; internal init; }
 
-    /// <summary>Gets the reserved provider session identifier; always null in this version.</summary>
-    public string? ProviderSessionId => null;
+    /// <summary>Gets the confirmed provider session identifier, or null when unavailable.</summary>
+    public string? ProviderSessionId { get; internal init; }
 
     /// <summary>Gets the run state represented by this event, independently of tool step state.</summary>
     public Runtime.AgentRunStatus Status => Kind switch
