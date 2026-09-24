@@ -86,6 +86,8 @@ internal sealed class CodexJsonProtocol(string? expectedSessionId)
 
     internal static string ClassifyFailure(string diagnostic)
     {
+        if (Contains("runiq_agent_tools") && Contains("failed", "could not", "timed out", "timeout"))
+            return "CodexToolBridgeFailed";
         // Require both a setting and rejection wording; ordinary network/rate-limit failures are not model failures.
         if (Contains("reasoning") && Contains("unsupported", "not supported", "invalid", "not support", "not allowed"))
             return "CodexReasoningEffortNotSupported";

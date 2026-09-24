@@ -46,6 +46,8 @@ public sealed class CodexExecutorTests
         Assert.False(factory.Command.UseShellExecute);
         Assert.False(factory.Command.Environment.ContainsKey("CODEX_API_KEY"));
         Assert.False(factory.Command.Environment.ContainsKey("OPENAI_API_KEY"));
+        Assert.False(factory.Command.Environment.ContainsKey(CodexToolBridge.TokenVariable));
+        Assert.DoesNotContain(factory.Command.ArgumentList, argument => argument.Contains("mcp_servers.runiq_agent_tools"));
         var mapped = AgentChatStreamEventMapper.FromExecutionEvent(events[0]);
         Assert.Equal(Session, mapped.ProviderSessionId);
         Assert.Contains("providerSessionId", JsonSerializer.Serialize(mapped));

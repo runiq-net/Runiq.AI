@@ -1,12 +1,45 @@
 using Runiq.AI.Agents.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Runiq.AI.Agents.Runtime;
+using Runiq.AI.Agents.Tools;
 using Runiq.AI.Core;
 
 namespace Runiq.AI.Agents.Tests.Agents;
 
 public sealed class CodexLocalIntegrationTests
 {
+    [LocalCodexFact]
+    // Verifies an authenticated real CLI invokes a Runiq tool and reconnects to its fresh bridge on resume.
+    public async Task LocalCli_InvokesRuniqToolAndResumes()
+    {
+        var collection = new ServiceCollection().AddLogging();
+        collection.AddRuniqServer(options => options.AddAgent(new Agent("tools", "Tools", "Always use change_summary for change totals.")
+            .UseCodex(o => o.Model = Environment.GetEnvironmentVariable("RUNIQ_CODEX_MODEL") ?? "gpt-6-sol")
+            .AddTool<Runiq.AI.CodexAgent.Tools.ChangeSummaryTool>()));
+        collection.Configure<CodexExecutorOptions>(options =>
+        {
+            options.WorkingDirectory = Path.GetTempPath();
+            options.SkipGitRepositoryCheck = true;
+            options.ExecutablePath = Environment.GetEnvironmentVariable("RUNIQ_CODEX_EXECUTABLE");
+            options.Timeout = TimeSpan.FromMinutes(2);
+        });
+        await using var services = collection.BuildServiceProvider();
+        await using var scope = services.CreateAsyncScope();
+        var runtime = scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>();
+        string? session = null;
+        for (var turn = 0; turn < 2; turn++)
+        {
+            var events = new List<AgentExecutionEvent>();
+            await foreach (var item in runtime.ExecuteStreamAsync("tools", new AgentQuery(
+                "Call change_summary with files [{path: 'a.cs', added: 45, deleted: 12}, {path: 'b.cs', added: 18, deleted: 4}]. Report its totals.")
+                { ProviderSessionId = session })) events.Add(item);
+            Assert.Equal(AgentExecutionEventKind.Completed, events[^1].Kind);
+            Assert.Contains(events, e => e.Kind == AgentExecutionEventKind.ToolCallCompleted && e.ToolName == "change_summary" && e.OutputJson!.Contains("63"));
+            Assert.NotNull(events[^1].ProviderSessionId);
+            if (session is not null) Assert.Equal(session, events[^1].ProviderSessionId);
+            session = events[^1].ProviderSessionId;
+        }
+    }
     [LocalCodexFact]
     // Verifies real CLI authentication, JSONL execution and persisted session recall only when explicitly enabled.
     public async Task LocalCli_ResumesPersistedSession()

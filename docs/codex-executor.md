@@ -100,8 +100,9 @@ is built during registration; CLI process creation happens only during execution
 Batch and streaming both consume the same JSONL path. Completed `agent_message`
 items become `AssistantDelta` events as they arrive; this is message-granularity
 streaming, not a promise of token deltas. Reasoning, native tool items and telemetry
-are not represented as Runiq tool calls. Runiq tools and active RAG configurations
-are explicitly rejected; Codex's own configured tools remain managed by Codex.
+are not represented as Runiq tool calls. Agent-bound Runiq tools are exposed through
+the per-run MCP bridge described below. Active RAG configurations are still rejected;
+Codex's own configured tools remain managed by Codex.
 
 A `turn.completed` record is provisional until EOF and a zero exit code. Malformed,
 duplicate or incomplete terminal output fails the run. Additive unknown event/item
@@ -176,7 +177,8 @@ Model execution explicitly rejects continuation with `AgentSessionNotSupported`.
 | Invalid JSONL, missing terminal, repeated terminal | `CodexOutputInvalid` |
 | Prompt / stdout limit exceeded | `CodexInputLimitExceeded` / `CodexOutputLimitExceeded` |
 | Invalid/mismatched, missing or concurrently active session | `CodexSessionInvalid` / `CodexSessionNotFound` / `CodexSessionBusy` |
-| Runiq tool/RAG binding or unsupported OS | `CodexCapabilityNotSupported` / `CodexPlatformNotSupported` |
+| Runiq RAG binding or unsupported OS | `CodexCapabilityNotSupported` / `CodexPlatformNotSupported` |
+| Local tool bridge startup/connection failure | `CodexToolBridgeFailed` |
 
 For example, a rejected `abcd` model produces:
 `Codex model 'abcd' is not available or is not supported by the current Codex CLI/account.`
@@ -218,7 +220,57 @@ a bidirectional protocol/lifecycle that this first non-interactive adapter does 
 need. Its experimental surfaces are not used. No MCP wrapper or extra API client is
 required for exec's persisted session continuation.
 
-## Implementation inventory and observed validation
+## Runiq tool bindings
+
+```csharp
+new Agent("assistant", "Assistant", "Use change_summary for supplied change counts.")
+    .UseCodex(options => options.Model = "gpt-6-sol")
+    .AddTool<ChangeSummaryTool>();
+```
+
+The existing `IRuniqTool<TInput,TOutput>` contract is unchanged. No extra MCP or
+executor registration is required. Only agents with tools start a loopback HTTP
+MCP endpoint, using the same official .NET MCP SDK version as `Runiq.AI.Mcp`.
+The existing MCP module discovers assembly-wide tools; it is not reused as a
+server registration because this connection must expose only the active agent's
+bindings and retain the caller's scoped `AgentToolInvoker`.
+
+The bridge listens on `127.0.0.1` with an OS-assigned port. A random per-run bearer
+token is passed only in the child process environment. Browser-origin requests and
+requests without that token are rejected. The reserved `runiq_agent_tools` server
+table is passed through `-c`, marked required, and refreshed on every execution or
+resume; nothing is written to the user's Codex configuration. The server table
+uses `url`, `bearer_token_env_var`, `required`, `default_tools_approval_mode` and
+`tool_timeout_sec` from the [official Codex MCP configuration](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+Use a CLI supporting these settings (local configuration checked with 0.154.0).
+
+Tool schemas reuse `ToolJsonSchemaGenerator`; execution reuses `AgentToolInvoker`.
+Calls within one run are serialized to protect scoped dependencies, while separate
+runs have separate endpoints and credentials. The host must keep the invoking DI
+scope alive until execution/stream disposal completes, as with model agents.
+Tool code runs in the host process with host permissions, **outside the CLI sandbox**.
+Only attach tools the agent is authorized to invoke; validate business input inside
+the tool. Registering tools authorizes their execution without interactive CLI approval.
+
+Tool start/completion/failure events are published once by the bridge using the
+existing runtime event and dashboard contracts. Native Codex tool telemetry is
+still ignored, avoiding duplicate Runiq events. The model decides whether to call
+a tool; deterministic execution does not guarantee that the model chooses it.
+
+Binding/execution errors become MCP `isError` results and `ToolCallFailed` events,
+so Codex can explain or recover from them. Cancellation and the overall executor
+timeout reach the tool's cancellation token. Tools must honor that token; arbitrary
+in-process code cannot be forcibly stopped. Cleanup waits for active invocations
+before returning control to the caller's scope. Listener disposal also runs on
+process failure and abandoned streams. Tool input/output sizes use existing
+`MaxEventCharacters`; cumulative tool output uses `MaxOutputCharacters`, separately
+from the CLI output budget. The event queue is bounded.
+
+RAG and Claude tool bindings are not changed. Tests use real HTTP MCP requests with
+a fake CLI to cover schema export, invocation, errors, isolation, resume and cleanup.
+The opt-in local tool test additionally checks the actual Codex-to-MCP path.
+
+## Implementation inventory and observed validation (initial executor)
 
 Files added:
 

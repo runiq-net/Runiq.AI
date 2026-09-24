@@ -17,6 +17,8 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Compile Include="..\..\samples\Runiq.AI.CodexAgent\Tools\ChangeSummaryTool.cs" Link="Samples\ChangeSummaryTool.cs" />
+    <Compile Include="..\..\samples\Runiq.AI.CodexAgent\Agents\*.cs" Link="Samples\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>
