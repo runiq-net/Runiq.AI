@@ -7,6 +7,33 @@ public sealed class ClaudeProtocolTests
 {
     private const string Session = "0199a213-81c0-7800-8aa1-bbab2a035a53";
 
+    [Theory]
+    [InlineData("failed")]
+    [InlineData("pending")]
+    [InlineData("needs-auth")]
+    // Verifies an attached Runiq bridge must be connected before Claude can proceed with a turn.
+    public void RequiredToolBridge_RejectsDisconnectedServer(string status)
+    {
+        var protocol = new ClaudeJsonProtocol(null, requireToolBridge: true);
+        var error = Assert.Throws<ClaudeException>(() => protocol.Apply(JsonSerializer.Serialize(new
+        {
+            type = "system", subtype = "init", session_id = Session,
+            mcp_servers = new[] { new { name = "runiq_agent_tools", status } }
+        })));
+        Assert.Equal("ClaudeToolBridgeFailed", error.Code);
+    }
+
+    [Fact]
+    // Verifies omitted server metadata cannot silently disable agent tools, while tool-free runs remain compatible.
+    public void RequiredToolBridge_RejectsMissingServerMetadata()
+    {
+        var init = JsonSerializer.Serialize(new { type = "system", subtype = "init", session_id = Session });
+        Assert.Equal("ClaudeToolBridgeFailed", Assert.Throws<ClaudeException>(() => new ClaudeJsonProtocol(null, true).Apply(init)).Code);
+        Assert.Null(new ClaudeJsonProtocol(null).Apply(init));
+        var result = JsonSerializer.Serialize(new { type = "result", subtype = "success", is_error = false, session_id = Session, result = "hello" });
+        Assert.Equal("ClaudeToolBridgeFailed", Assert.Throws<ClaudeException>(() => new ClaudeJsonProtocol(null, true).Apply(result)).Code);
+    }
+
     [Fact]
     // Verifies partial text is delivered immediately and complete assistant/result messages do not duplicate it.
     public void Streaming_MultipleMessagesAndToolBlocksPreserveTextExactlyOnce()

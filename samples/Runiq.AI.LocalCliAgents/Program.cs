@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Builder;
-using Runiq.AI.CodexAgent.Agents;
+using Runiq.AI.LocalCliAgents.Agents;
 using Runiq.AI.Core;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -8,6 +8,7 @@ builder.Services.AddRuniqServer(options =>
 {
     options.AddAgent(QuickProjectAssistant.Create());
     options.AddAgent(CodexAgent.Create());
+    options.AddAgent(ClaudeProjectAssistant.Create());
 });
 
 var app = builder.Build();
@@ -15,7 +16,7 @@ var app = builder.Build();
 app.UseRuniqDashboard(options =>
 {
     options.Path = "/dashboard";
-    options.Title = "Runiq Codex Project Assistants";
+    options.Title = "Runiq Local CLI Agents";
     options.Authentication(authentication => authentication.AllowAnonymous());
 });
 

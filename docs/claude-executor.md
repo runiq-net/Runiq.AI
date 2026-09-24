@@ -53,8 +53,8 @@ log in, inject keys or make independent model API calls.
 allow rules still apply. This is not Codex's read-only sandbox and does not guarantee
 a read-only filesystem. Configure Claude permissions under the trusted host account
 and project. Runiq never enables permission bypass. Claude's tools, hooks and MCP
-remain CLI-owned. Runiq tools and active RAG are rejected with
-`ClaudeCapabilityNotSupported`, rather than silently ignored or bridged.
+remain CLI-owned. Agent-bound Runiq tools use the automatic MCP bridge described
+below. Active RAG is still rejected with `ClaudeCapabilityNotSupported`.
 
 Discovery considers absolute PATH entries only. Windows supports native `claude.exe`
 and the npm `node_modules/@anthropic-ai/claude-code/bin/claude.exe` layout. `.cmd`
@@ -201,3 +201,62 @@ Updated:
 - `src/Runiq.AI.Agents/README.md`
 - `docs/codex-executor.md`
 - `docs/agent-execution-lifecycle.md`
+
+## Runiq tools and dashboard events
+
+Attach existing typed Runiq tools directly to a Claude agent:
+
+```csharp
+new Agent("assistant", "Assistant", "Use change_summary for supplied change counts.")
+    .UseClaude()
+    .AddTool<ChangeSummaryTool>();
+```
+
+`ChangeSummaryTool` is an example `IRuniqTool<TInput,TOutput>` implementation.
+`AddRuniqServer` handles executor registration; no additional MCP registration or
+user-managed server is required. Agents without tools start no bridge.
+
+A run-owned, authenticated loopback HTTP MCP endpoint exposes only that agent's
+bindings. The transport is shared with Codex and reuses `AgentToolInvoker`, input
+schemas, scoped dependencies, output limits, cancellation and cleanup. Calls within
+one run are serialized to protect scoped dependencies. Separate runs have separate
+credentials and endpoints. Tool code runs inside the host process with host
+permissions, and must honor cancellation.
+
+Claude receives an inline `--mcp-config` JSON object with a reserved
+`runiq_agent_tools` server, `type: http`, and an Authorization header referencing
+`${RUNIQ_CLI_TOOL_TOKEN}`. The random token exists only in the child environment,
+not command arguments or a persisted configuration file. `--allowedTools` lists
+only the agent's exact `mcp__runiq_agent_tools__<tool-name>` names. The existing
+`dontAsk` mode remains enabled; permission bypass is never used. Host-bound tool
+names must contain only ASCII letters, digits, underscores, dots or hyphens so
+that they cannot introduce permission wildcards. Existing CLI MCP configuration
+is preserved; the reserved bridge server is refreshed on every run and resume.
+
+These settings follow the official [MCP configuration](https://code.claude.com/docs/en/mcp)
+and [CLI reference](https://code.claude.com/docs/en/cli-reference). The local CLI
+version inspected was 2.1.199. A tool-enabled run requires the init event to report
+`runiq_agent_tools` as connected; missing, pending or failed connections return
+`ClaudeToolBridgeFailed` instead of silently continuing without registered tools.
+
+The bridge publishes `ToolCallStarted`, `ToolCallCompleted` and `ToolCallFailed`
+through the existing runtime/SSE contract. Dashboard tool cards display the tool
+name, input, result or safe failure. Native Claude MCP/tool telemetry is not
+republished as Runiq tool events, avoiding duplicate cards. Tool failures are also
+returned as MCP `isError` results so Claude can explain or recover from them.
+
+Example dashboard prompt for an agent bound to the Codex sample's change-summary tool:
+
+```text
+Use change_summary to summarize a.cs +45/-12 and b.cs +18/-4.
+Report the totals. Do not modify files.
+```
+
+Expected output: two files, 63 added lines and 16 deleted lines, with a completed
+tool card. A correct text answer alone does not prove tool execution.
+
+Deterministic tests use a fake Claude process with real local HTTP MCP requests
+and cover invocation, dashboard events, errors, scope isolation, resume, limits,
+cancellation, timeout and abandoned-stream cleanup. A separate
+`LocalCli_InvokesRuniqToolAndResumes` test is enabled with
+`RUNIQ_CLAUDE_INTEGRATION=1` and requires an authenticated installed CLI.

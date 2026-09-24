@@ -1,9 +1,9 @@
 using Runiq.AI.Agents;
 using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Agents.Tools;
-using Runiq.AI.CodexAgent.Tools;
+using Runiq.AI.LocalCliAgents.Tools;
 
-namespace Runiq.AI.CodexAgent.Agents;
+namespace Runiq.AI.LocalCliAgents.Agents;
 
 /// <summary>Defines a concise assistant with a deterministic change-summary tool.</summary>
 public static class QuickProjectAssistant

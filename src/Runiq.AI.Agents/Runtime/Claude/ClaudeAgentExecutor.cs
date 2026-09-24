@@ -1,6 +1,7 @@
 using Runiq.AI.Agents.Runtime.Cli;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Runiq.AI.Agents.Configuration;
@@ -16,7 +17,7 @@ internal sealed class ClaudeAgentExecutor(ICliProcessFactory processes, IOptions
     public async IAsyncEnumerable<AgentExecutionEvent> ExecuteAsync(AgentExecutionRequest request, AgentRunContext run,
         AgentToolInvoker toolInvoker, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        await using var events = ExecuteCoreAsync(request, run, cancellationToken).GetAsyncEnumerator(cancellationToken);
+        await using var events = ExecuteCoreAsync(request, run, toolInvoker, cancellationToken).GetAsyncEnumerator(cancellationToken);
         while (true)
         {
             AgentExecutionEvent? next;
@@ -39,11 +40,11 @@ internal sealed class ClaudeAgentExecutor(ICliProcessFactory processes, IOptions
         }
     }
 
-    private async IAsyncEnumerable<AgentExecutionEvent> ExecuteCoreAsync(AgentExecutionRequest request, AgentRunContext run,
+    private async IAsyncEnumerable<AgentExecutionEvent> ExecuteCoreAsync(AgentExecutionRequest request, AgentRunContext run, AgentToolInvoker toolInvoker,
         [EnumeratorCancellation] CancellationToken callerToken)
     {
         callerToken.ThrowIfCancellationRequested();
-        if (request.Agent.Tools.Count != 0 || request.Agent.Rag is { Enabled: true } || request.Query.IndexName is not null)
+        if (request.Agent.Rag is { Enabled: true } || request.Query.IndexName is not null)
             throw new ClaudeException("ClaudeCapabilityNotSupported");
         var configuration = options.Value;
         var sessionId = request.Query.ProviderSessionId;
@@ -57,7 +58,7 @@ internal sealed class ClaudeAgentExecutor(ICliProcessFactory processes, IOptions
         {
             using var timeout = new CancellationTokenSource(configuration.Timeout);
             using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(callerToken, timeout.Token);
-            await using var events = RunProcessAsync(command, prompt, configuration, sessionId, run, lifetime, ConfirmSession)
+            await using var events = RunWithToolsAsync(request.Agent, toolInvoker, command, prompt, configuration, sessionId, run, lifetime, ConfirmSession)
                 .GetAsyncEnumerator(lifetime.Token);
             while (true)
             {
@@ -93,6 +94,47 @@ internal sealed class ClaudeAgentExecutor(ICliProcessFactory processes, IOptions
         }
     }
 
+    private async IAsyncEnumerable<AgentExecutionEvent> RunWithToolsAsync(Agent agent, AgentToolInvoker invoker,
+        System.Diagnostics.ProcessStartInfo command, string prompt, ClaudeExecutorOptions configuration,
+        string? sessionId, AgentRunContext run, CancellationTokenSource lifetime, Action<string> confirmSession)
+    {
+        if (agent.Tools.Count == 0)
+        {
+            await foreach (var item in RunProcessAsync(command, prompt, configuration, sessionId, run, lifetime, confirmSession))
+                yield return item;
+            yield break;
+        }
+
+        var channel = Channel.CreateBounded<AgentExecutionEvent>(new BoundedChannelOptions(32)
+        {
+            SingleReader = true, FullMode = BoundedChannelFullMode.Wait
+        });
+        await using var bridge = await ClaudeToolBridge.StartAsync(agent, invoker, command, configuration, channel.Writer, lifetime.Token);
+        var pump = PumpAsync();
+        try
+        {
+            // Process cleanup cancels lifetime even on success; drain already-published events before observing completion.
+            await foreach (var item in channel.Reader.ReadAllAsync()) yield return item;
+        }
+        finally
+        {
+            await lifetime.CancelAsync();
+            await pump;
+        }
+
+        async Task PumpAsync()
+        {
+            Exception? failure = null;
+            try
+            {
+                await foreach (var item in RunProcessAsync(command, prompt, configuration, sessionId, run, lifetime, confirmSession))
+                    await channel.Writer.WriteAsync(item, lifetime.Token);
+            }
+            catch (Exception exception) { failure = exception; }
+            finally { channel.Writer.TryComplete(failure); }
+        }
+    }
+
     private async IAsyncEnumerable<AgentExecutionEvent> RunProcessAsync(System.Diagnostics.ProcessStartInfo command,
         string prompt, ClaudeExecutorOptions configuration, string? sessionId, AgentRunContext run,
         CancellationTokenSource lifetime, Action<string> confirmSession)
@@ -110,7 +152,7 @@ internal sealed class ClaudeAgentExecutor(ICliProcessFactory processes, IOptions
         {
             stderr = CliOutputReader.DrainErrorAsync(process.StandardError, lifetime.Token);
             input = process.WriteInputAsync(prompt, lifetime.Token);
-            var protocol = new ClaudeJsonProtocol(sessionId);
+            var protocol = new ClaudeJsonProtocol(sessionId, command.ArgumentList.Contains("--mcp-config"));
             await foreach (var line in CliOutputReader.ReadLinesAsync(process.StandardOutput,
                                configuration.MaxEventCharacters, configuration.MaxOutputCharacters, lifetime.Token))
             {
@@ -164,7 +206,8 @@ internal sealed class ClaudeAgentExecutor(ICliProcessFactory processes, IOptions
         "ClaudeSessionInvalid" => "The Claude session identifier is invalid or differs from the requested session.",
         "ClaudeSessionNotFound" => "The requested Claude session was not found.",
         "ClaudeSessionBusy" => "The Claude session is already executing in this host.",
-        "ClaudeCapabilityNotSupported" => "The Claude CLI executor does not support Runiq tool or RAG bindings.",
+        "ClaudeCapabilityNotSupported" => "The Claude CLI executor does not support Runiq RAG bindings.",
+        "ClaudeToolBridgeFailed" => "Claude could not connect to the local Runiq tool bridge. Check CLI MCP support and local networking.",
         "ClaudeProcessIoFailed" => "Communication with the Claude process failed.",
         "ClaudePlatformNotSupported" => "The local Claude process adapter currently supports Windows and Linux hosts.",
         _ => "Claude execution failed. Check the CLI installation and its local configuration."

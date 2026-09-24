@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { getAgents, type AgentMetadata } from '../api/agentMetadataApi';
 import { DataList, type DataListColumn } from '../components/DataList/DataList';
 import { getDashboardBasePath } from '../dashboardConfig';
+import { parseModelReference } from '../utils/modelReference';
 
 const agentColumns: DataListColumn<AgentMetadata>[] = [
   {
@@ -40,7 +41,7 @@ const agentColumns: DataListColumn<AgentMetadata>[] = [
     width: 'minmax(160px, 0.8fr)',
     render: (agent) => (
       <span className="inline-flex max-w-full truncate rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs text-zinc-700 transition group-hover:border-zinc-300 group-hover:text-zinc-950 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-400 dark:group-hover:border-zinc-700 dark:group-hover:text-zinc-200">
-        {agent.provider ? (agent.model || 'not configured') : getModel(agent.model)}
+        {agent.provider ? parseModelReference(agent.model, agent.provider).model : getModel(agent.model)}
       </span>
     ),
   },

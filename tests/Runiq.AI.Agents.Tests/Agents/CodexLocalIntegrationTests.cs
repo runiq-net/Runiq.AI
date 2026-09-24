@@ -15,7 +15,7 @@ public sealed class CodexLocalIntegrationTests
         var collection = new ServiceCollection().AddLogging();
         collection.AddRuniqServer(options => options.AddAgent(new Agent("tools", "Tools", "Always use change_summary for change totals.")
             .UseCodex(o => o.Model = Environment.GetEnvironmentVariable("RUNIQ_CODEX_MODEL") ?? "gpt-6-sol")
-            .AddTool<Runiq.AI.CodexAgent.Tools.ChangeSummaryTool>()));
+            .AddTool<Runiq.AI.LocalCliAgents.Tools.ChangeSummaryTool>()));
         collection.Configure<CodexExecutorOptions>(options =>
         {
             options.WorkingDirectory = Path.GetTempPath();

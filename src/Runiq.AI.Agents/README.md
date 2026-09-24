@@ -599,7 +599,8 @@ agents selecting `UseCodex(...)`; see [configuration, continuation and limits](.
 Local Claude Code execution is also registered automatically for `UseClaude()` agents; see
 [configuration and continuation](../../docs/claude-executor.md). Codex agents support
 existing `.AddTool<T>()` bindings through an automatic per-run loopback MCP bridge;
-tool events use the existing dashboard UI. Claude tool bindings remain unsupported.
+tool events use the existing dashboard UI. Claude agents support the same
+`.UseClaude().AddTool<T>()` pattern through that shared bridge.
 Direct `Agent.ExecuteAsync` and `Agent.ExecuteStreamAsync` retain
 their existing unsupported-direct-execution contract. Runtime execution continues through dependency
 injection. The executor types belong to Agents and reuse Core's `ModelReference` and `ProviderOptions`;

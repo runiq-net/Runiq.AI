@@ -1,12 +1,43 @@
 using Runiq.AI.Agents.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Runiq.AI.Agents.Runtime;
+using Runiq.AI.Agents.Tools;
 using Runiq.AI.Core;
 
 namespace Runiq.AI.Agents.Tests.Agents;
 
 public sealed class ClaudeLocalIntegrationTests
 {
+    [LocalClaudeFact]
+    // Verifies the real CLI invokes a Runiq tool and reconnects on resume when an authenticated local account is explicitly enabled.
+    public async Task LocalCli_InvokesRuniqToolAndResumes()
+    {
+        var services = new ServiceCollection().AddLogging();
+        services.AddRuniqServer(o => o.AddAgent(new Agent("tools", "Tools", "Always use change_summary for change counts.")
+            .UseClaude().AddTool<Runiq.AI.LocalCliAgents.Tools.ChangeSummaryTool>()));
+        services.Configure<ClaudeExecutorOptions>(o =>
+        {
+            o.WorkingDirectory = Path.GetTempPath();
+            o.ExecutablePath = Environment.GetEnvironmentVariable("RUNIQ_CLAUDE_EXECUTABLE");
+            o.Timeout = TimeSpan.FromMinutes(2);
+        });
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var runtime = scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>();
+        string? session = null;
+        for (var turn = 0; turn < 2; turn++)
+        {
+            var events = new List<AgentExecutionEvent>();
+            await foreach (var item in runtime.ExecuteStreamAsync("tools", new AgentQuery(
+                "Call change_summary for a.cs +45/-12 and b.cs +18/-4. Report its totals. Do not use other tools.")
+                { ProviderSessionId = session })) events.Add(item);
+            Assert.True(events[^1].Kind == AgentExecutionEventKind.Completed, events[^1].ErrorMessage);
+            Assert.Contains(events, e => e.Kind == AgentExecutionEventKind.ToolCallCompleted && e.ToolName == "change_summary" && e.OutputJson!.Contains("63"));
+            Assert.NotNull(events[^1].ProviderSessionId);
+            if (session is not null) Assert.Equal(session, events[^1].ProviderSessionId);
+            session = events[^1].ProviderSessionId;
+        }
+    }
     [LocalClaudeFact]
     // Verifies real CLI authentication, JSONL execution and persisted session recall only when explicitly enabled.
     public async Task LocalCli_ResumesPersistedSession()

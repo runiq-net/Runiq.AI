@@ -1,11 +1,11 @@
 using Runiq.AI.Agents.Configuration;
-using Runiq.AI.CodexAgent.Agents;
-using Runiq.AI.CodexAgent.Tools;
+using Runiq.AI.LocalCliAgents.Agents;
+using Runiq.AI.LocalCliAgents.Tools;
 using Runiq.AI.Core.Metadata;
 
 namespace Runiq.AI.Agents.Tests.Agents;
 
-public sealed class CodexSampleTests
+public sealed class LocalCliSampleTests
 {
     [Fact]
     // Verifies the documented prompt produces exact totals through the sample's actual deterministic tool.
@@ -30,11 +30,11 @@ public sealed class CodexSampleTests
     }
 
     [Fact]
-    // Verifies the two sample agents have independent model settings and only the quick assistant owns the tool.
+    // Verifies the sample keeps Codex model settings independent and binds the shared tool to both CLI assistants.
     public void Agents_HaveDistinctSettingsAndToolBindings()
     {
         var quick = QuickProjectAssistant.Create();
-        var reviewer = Runiq.AI.CodexAgent.Agents.CodexAgent.Create();
+        var reviewer = Runiq.AI.LocalCliAgents.Agents.CodexAgent.Create();
         Assert.NotEqual(quick.Executor!.Codex!.Model, reviewer.Executor!.Codex!.Model);
         Assert.Equal(CodexReasoningEffort.Medium, quick.Executor.Codex.ReasoningEffort);
         Assert.Equal(CodexServiceTier.Fast, quick.Executor.Codex.ServiceTier);
@@ -48,5 +48,9 @@ public sealed class CodexSampleTests
         Assert.Equal("change_summary", Assert.Single(metadata[0].Tools).Name);
         Assert.Equal(reviewer.Executor.Codex.Model, metadata[1].Model);
         Assert.Empty(metadata[1].Tools);
+        var claude = ClaudeProjectAssistant.Create();
+        Assert.Equal(AgentExecutorKind.Claude, claude.Executor!.Kind);
+        Assert.Equal("claude-project-assistant", claude.Id);
+        Assert.Equal("change_summary", Assert.Single(claude.Tools).Name);
     }
 }

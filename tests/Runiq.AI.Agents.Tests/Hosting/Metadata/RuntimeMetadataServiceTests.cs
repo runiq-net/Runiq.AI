@@ -5,6 +5,17 @@ namespace Runiq.AI.Agents.Tests.Hosting.Metadata;
 
 public sealed class RuntimeMetadataServiceTests
 {
+    [Fact]
+    // Verifies Claude identifies its CLI provider without inventing a locally selected model.
+    public void GetAgents_Claude_ProjectsProviderWithUnknownModel()
+    {
+        var agent = new Agent("claude", "Claude", "instructions").UseClaude();
+        var metadata = Assert.Single(new RuntimeMetadataService([agent]).GetAgents());
+        Assert.Equal("Claude CLI", metadata.Provider);
+        Assert.Null(metadata.Model);
+        Assert.Null(metadata.ReasoningEffort);
+    }
+
     [Theory]
     [InlineData("gpt-6-sol", CodexReasoningEffort.High, "high")]
     [InlineData("custom/model-name", CodexReasoningEffort.Medium, "medium")]
