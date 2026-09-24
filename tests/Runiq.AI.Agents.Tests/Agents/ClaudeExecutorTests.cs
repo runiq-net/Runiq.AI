@@ -65,6 +65,8 @@ public sealed class ClaudeExecutorTests
         Assert.DoesNotContain("hello", factory.Command!.ArgumentList);
         Assert.False(factory.Command.UseShellExecute);
         Assert.Contains("dontAsk", factory.Command.ArgumentList);
+        Assert.DoesNotContain("--mcp-config", factory.Command.ArgumentList);
+        Assert.False(factory.Command.Environment.ContainsKey(CliToolBridge.TokenVariable));
         var mapped = AgentChatStreamEventMapper.FromExecutionEvent(events[0]);
         Assert.Equal(Session, mapped.ProviderSessionId);
         Assert.Contains("providerSessionId", JsonSerializer.Serialize(mapped));

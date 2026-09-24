@@ -105,7 +105,12 @@ public sealed class LegacyModelCompatibilityTests
         Assert.DoesNotContain("secret-api-key", json);
         Assert.DoesNotContain("private-provider.invalid", json);
         Assert.DoesNotContain("ApiKey", json);
-        Assert.Equal(kind == AgentExecutorKind.Codex ? "Codex CLI" : null, metadata.Provider);
+        Assert.Equal(kind switch
+        {
+            AgentExecutorKind.Codex => "Codex CLI",
+            AgentExecutorKind.Claude => "Claude CLI",
+            _ => null
+        }, metadata.Provider);
         Assert.DoesNotContain("ProviderOptions", json);
     }
 

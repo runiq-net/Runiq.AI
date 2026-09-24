@@ -266,7 +266,8 @@ process failure and abandoned streams. Tool input/output sizes use existing
 `MaxEventCharacters`; cumulative tool output uses `MaxOutputCharacters`, separately
 from the CLI output budget. The event queue is bounded.
 
-RAG and Claude tool bindings are not changed. Tests use real HTTP MCP requests with
+Claude now uses the same internal transport for its own agent tool bindings; see
+[Claude executor tools](claude-executor.md). RAG remains unsupported. Tests use real HTTP MCP requests with
 a fake CLI to cover schema export, invocation, errors, isolation, resume and cleanup.
 The opt-in local tool test additionally checks the actual Codex-to-MCP path.
 

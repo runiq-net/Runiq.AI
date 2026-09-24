@@ -3,11 +3,12 @@ using System.Text.Json;
 namespace Runiq.AI.Agents.Runtime.Claude;
 
 /// <summary>Projects Claude's print-mode JSONL without duplicating partial and complete messages.</summary>
-internal sealed class ClaudeJsonProtocol(string? expectedSessionId)
+internal sealed class ClaudeJsonProtocol(string? expectedSessionId, bool requireToolBridge = false)
 {
     private bool terminal;
     private bool partialBlock;
     private bool emittedText;
+    private bool toolBridgeConnected;
     private readonly HashSet<string> messages = new(StringComparer.Ordinal);
     internal string? SessionId { get; private set; }
     internal bool Completed { get; private set; }
@@ -28,6 +29,12 @@ internal sealed class ClaudeJsonProtocol(string? expectedSessionId)
             {
                 if (SessionId is not null) throw new ClaudeException("ClaudeOutputInvalid");
                 ConfirmSession(root);
+                if (requireToolBridge && (!root.TryGetProperty("mcp_servers", out var servers) ||
+                    !servers.EnumerateArray().Any(server =>
+                        server.TryGetProperty("name", out var name) && name.GetString() == "runiq_agent_tools" &&
+                        server.TryGetProperty("status", out var status) && status.GetString() == "connected")))
+                    throw new ClaudeException("ClaudeToolBridgeFailed");
+                toolBridgeConnected = requireToolBridge;
             }
             else if (type == "result")
             {
@@ -35,6 +42,8 @@ internal sealed class ClaudeJsonProtocol(string? expectedSessionId)
                 terminal = true;
                 var subtype = Text(root, "subtype");
                 Completed = !root.GetProperty("is_error").GetBoolean() && subtype == "success";
+                if (Completed && requireToolBridge && !toolBridgeConnected)
+                    throw new ClaudeException("ClaudeToolBridgeFailed");
                 if (!Completed)
                 {
                     FailureCode = ClassifyFailure(root.ToString());
@@ -112,6 +121,8 @@ internal sealed class ClaudeJsonProtocol(string? expectedSessionId)
 
     internal static string ClassifyFailure(string diagnostic)
     {
+        if (Contains("runiq_agent_tools") && Contains("failed", "could not", "timeout", "timed out"))
+            return "ClaudeToolBridgeFailed";
         // Human CLI diagnostics are heuristic; raw output may contain secrets and is never surfaced.
         if (Contains("not logged in", "authentication", "unauthorized", "invalid api key", "please run /login", "login required", "oauth token"))
             return "ClaudeAuthenticationFailed";

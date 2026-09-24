@@ -12,12 +12,17 @@ using Runiq.AI.Agents.Runtime.Codex;
 using Runiq.AI.Agents.Tools;
 using Runiq.AI.Core;
 using Runiq.AI.Core.Agents;
-using Runiq.AI.CodexAgent.Agents;
+using Runiq.AI.LocalCliAgents.Agents;
 
 namespace Runiq.AI.Agents.Tests.Agents;
 
-public sealed class CodexToolBridgeTests
+public sealed class CodexToolBridgeTests : CliToolBridgeTests { protected override bool Claude => false; }
+public sealed class ClaudeToolBridgeTests : CliToolBridgeTests { protected override bool Claude => true; }
+
+public abstract class CliToolBridgeTests
 {
+    protected abstract bool Claude { get; }
+    private string Kind => Claude ? "Claude" : "Codex";
     [Fact]
     // Verifies the sample's actual tool returns the documented totals through runtime, HTTP MCP and fake CLI output.
     public async Task SampleTool_ExecutesEndToEnd()
@@ -33,7 +38,7 @@ public sealed class CodexToolBridgeTests
             Assert.False(result.IsError);
             return Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         });
-        await using var provider = Services(factory, agent: QuickProjectAssistant.Create());
+        await using var provider = Services(factory, agent: Claude ? new Agent("quick-project-assistant", "Quick", "Use tools").UseClaude().AddTool<Runiq.AI.LocalCliAgents.Tools.ChangeSummaryTool>() : QuickProjectAssistant.Create());
         await using var scope = provider.CreateAsyncScope();
         var result = await scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>().ExecuteAsync("quick-project-assistant", "Summarize these changes");
         Assert.Null(factory.Failure);
@@ -54,7 +59,7 @@ public sealed class CodexToolBridgeTests
         {
             var endpoint = Endpoint(command);
             endpoints.Add(endpoint.AbsoluteUri);
-            secrets.Add(command.Environment[CodexToolBridge.TokenVariable]!);
+            secrets.Add(command.Environment[CliToolBridge.TokenVariable]!);
             Assert.DoesNotContain(secrets[^1], string.Join(" ", command.ArgumentList));
             using var http = new HttpClient();
             Assert.Equal(HttpStatusCode.Unauthorized, (await http.GetAsync(endpoint, ct)).StatusCode);
@@ -82,8 +87,17 @@ public sealed class CodexToolBridgeTests
         Assert.Null(factory.Failure);
         Assert.Equal(2, scope.ServiceProvider.GetRequiredService<InvocationProbe>().Calls);
         Assert.NotEqual(secrets[0], secrets[1]);
-        Assert.Single(factory.Commands, c => c.ArgumentList.Contains("resume"));
-        Assert.All(factory.Commands, c => Assert.Contains("test-model", c.ArgumentList));
+        Assert.Single(factory.Commands, c => c.ArgumentList.Contains(Claude ? "--resume" : "resume"));
+        if (!Claude) Assert.All(factory.Commands, c => Assert.Contains("test-model", c.ArgumentList));
+        else Assert.All(factory.Commands, c =>
+        {
+            Assert.Equal("mcp__runiq_agent_tools__echo", c.ArgumentList[c.ArgumentList.IndexOf("--allowedTools") + 1]);
+            Assert.Contains("dontAsk", c.ArgumentList);
+            Assert.DoesNotContain("--dangerously-skip-permissions", c.ArgumentList);
+            using var config = JsonDocument.Parse(c.ArgumentList[c.ArgumentList.IndexOf("--mcp-config") + 1]);
+            Assert.Equal("Bearer ${RUNIQ_CLI_TOOL_TOKEN}", config.RootElement.GetProperty("mcpServers")
+                .GetProperty("runiq_agent_tools").GetProperty("headers").GetProperty("Authorization").GetString());
+        });
         using var after = new HttpClient();
         foreach (var endpoint in endpoints)
             await Assert.ThrowsAsync<HttpRequestException>(() => after.GetAsync(endpoint));
@@ -132,7 +146,7 @@ public sealed class CodexToolBridgeTests
         var execution = scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>().ExecuteAsync("agent", "wait", cancellation.Token);
         await probe.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
         if (!timeout) cancellation.Cancel();
-        if (timeout) Assert.Equal("CodexTimeout", (await execution.WaitAsync(TimeSpan.FromSeconds(10))).ErrorCode);
+        if (timeout) Assert.Equal(Kind + "Timeout", (await execution.WaitAsync(TimeSpan.FromSeconds(10))).ErrorCode);
         else await Assert.ThrowsAnyAsync<OperationCanceledException>(() => execution);
         Assert.True(probe.Stopped);
         using var http = new HttpClient();
@@ -152,7 +166,7 @@ public sealed class CodexToolBridgeTests
             await ready.Task.WaitAsync(ct);
             var other = commands.Single(c => !ReferenceEquals(c, command));
             using var http = new HttpClient();
-            http.DefaultRequestHeaders.Authorization = new("Bearer", other.Environment[CodexToolBridge.TokenVariable]);
+            http.DefaultRequestHeaders.Authorization = new("Bearer", other.Environment[CliToolBridge.TokenVariable]);
             Assert.Equal(HttpStatusCode.Unauthorized, (await http.GetAsync(Endpoint(command), ct)).StatusCode);
             await using var client = await ConnectAsync(command, ct);
             var name = Assert.Single(await client.ListToolsAsync(cancellationToken: ct)).Name;
@@ -211,7 +225,7 @@ public sealed class CodexToolBridgeTests
         await using var scope = provider.CreateAsyncScope();
         var result = await scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>().ExecuteAsync("agent", "hello");
         Assert.Null(factory.Failure);
-        Assert.Equal("CodexProcessFailed", result.ErrorCode);
+        Assert.Equal(Kind + "ProcessFailed", result.ErrorCode);
         using var http = new HttpClient();
         await Assert.ThrowsAsync<HttpRequestException>(() => http.GetAsync(Endpoint(Assert.Single(factory.Commands))));
     }
@@ -237,17 +251,25 @@ public sealed class CodexToolBridgeTests
         Assert.True(result.IsSuccess, result.ErrorMessage);
     }
 
-    private static ServiceProvider Services(ProtocolFactory factory, TimeSpan? timeout = null, Agent? agent = null)
+    private ServiceProvider Services(ProtocolFactory factory, TimeSpan? timeout = null, Agent? agent = null)
     {
+        factory.Claude = Claude;
         var services = new ServiceCollection().AddLogging();
         services.AddScoped<InvocationProbe>();
         services.AddRuniqServer(o =>
         {
-            o.AddAgent(agent ?? new Agent("agent", "Agent", "Use tools")
-                .UseCodex(o => o.Model = "test-model").AddTool<EchoTool>());
-            o.AddAgent(new Agent("other", "Other", "Use tools").UseCodex(o => o.Model = "other-model").AddTool<OtherTool>());
+            o.AddAgent(agent ?? Select(new Agent("agent", "Agent", "Use tools")).AddTool<EchoTool>());
+            o.AddAgent(Select(new Agent("other", "Other", "Use tools")).AddTool<OtherTool>());
         });
         services.Configure<CodexExecutorOptions>(o =>
+        {
+            o.ExecutablePath = Environment.ProcessPath!;
+            o.WorkingDirectory = Path.GetTempPath();
+            o.Timeout = timeout ?? TimeSpan.FromSeconds(20);
+            o.MaxEventCharacters = 4096;
+            o.MaxOutputCharacters = 8192;
+        });
+        services.Configure<ClaudeExecutorOptions>(o =>
         {
             o.ExecutablePath = Environment.ProcessPath!;
             o.WorkingDirectory = Path.GetTempPath();
@@ -259,8 +281,15 @@ public sealed class CodexToolBridgeTests
         return services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
     }
 
+    private Agent Select(Agent agent) => Claude ? agent.UseClaude() : agent.UseCodex(o => o.Model = "test-model");
+
     private static Uri Endpoint(ProcessStartInfo command)
     {
+        if (command.ArgumentList.Contains("--mcp-config"))
+        {
+            using var json = JsonDocument.Parse(command.ArgumentList[command.ArgumentList.IndexOf("--mcp-config") + 1]);
+            return new Uri(json.RootElement.GetProperty("mcpServers").GetProperty("runiq_agent_tools").GetProperty("url").GetString()!);
+        }
         var setting = command.ArgumentList.Single(a => a.StartsWith("mcp_servers.runiq_agent_tools="));
         return new Uri(setting.Split('"')[1]);
     }
@@ -269,7 +298,7 @@ public sealed class CodexToolBridgeTests
         new HttpClientTransport(new HttpClientTransportOptions
         {
             Endpoint = Endpoint(command),
-            AdditionalHeaders = new Dictionary<string, string> { ["Authorization"] = "Bearer " + command.Environment[CodexToolBridge.TokenVariable] }
+            AdditionalHeaders = new Dictionary<string, string> { ["Authorization"] = "Bearer " + command.Environment[CliToolBridge.TokenVariable] }
         }), cancellationToken: ct);
 
     public sealed class InvocationProbe
@@ -309,6 +338,7 @@ public sealed class CodexToolBridgeTests
     private sealed class ProtocolFactory(Func<ProcessStartInfo, CancellationToken, Task<string>> exchange, int exitCode = 0) : ICliProcessFactory
     {
         internal System.Collections.Concurrent.ConcurrentBag<ProcessStartInfo> Commands { get; } = [];
+        internal bool Claude { get; set; }
         internal Exception? Failure { get; private set; }
         public ICliProcess Start(ProcessStartInfo command, CancellationToken ct)
         {
@@ -317,11 +347,11 @@ public sealed class CodexToolBridgeTests
             {
                 try { return await exchange(command, token); }
                 catch (Exception ex) { Failure = ex; throw; }
-            }, command.ArgumentList.FirstOrDefault(a => Guid.TryParse(a, out _)) ?? Guid.NewGuid().ToString(), exitCode);
+            }, command.ArgumentList.FirstOrDefault(a => Guid.TryParse(a, out _)) ?? Guid.NewGuid().ToString(), exitCode, Claude);
         }
     }
 
-    private sealed class ProtocolProcess(Func<CancellationToken, Task<string>> exchange, string session, int exitCode) : ICliProcess
+    private sealed class ProtocolProcess(Func<CancellationToken, Task<string>> exchange, string session, int exitCode, bool claude) : ICliProcess
     {
         private readonly TaskCompletionSource<string> output = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TextReader StandardOutput => reader ??= new DeferredReader(output.Task);
@@ -332,6 +362,13 @@ public sealed class CodexToolBridgeTests
             try
             {
                 var text = await exchange(ct);
+                if (claude)
+                {
+                    output.TrySetResult(JsonSerializer.Serialize(new { type = "system", subtype = "init", session_id = session,
+                        mcp_servers = new[] { new { name = "runiq_agent_tools", status = "connected" } } }) + "\n" +
+                        JsonSerializer.Serialize(new { type = "result", subtype = "success", is_error = false, session_id = session, result = text }) + "\n");
+                    return;
+                }
                 output.TrySetResult($"{{\"type\":\"thread.started\",\"thread_id\":\"{session}\"}}\n{{\"type\":\"turn.started\"}}\n" +
                     JsonSerializer.Serialize(new { type = "item.completed", item = new { id = "1", type = "agent_message", text } }) + "\n{\"type\":\"turn.completed\"}\n");
             }

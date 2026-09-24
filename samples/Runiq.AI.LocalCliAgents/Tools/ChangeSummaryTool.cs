@@ -1,6 +1,6 @@
 using Runiq.AI.Agents.Tools;
 
-namespace Runiq.AI.CodexAgent.Tools;
+namespace Runiq.AI.LocalCliAgents.Tools;
 
 /// <summary>Calculates change totals from supplied data without reading or modifying files.</summary>
 [RuniqTool("change_summary", "Calculates total files, added lines and deleted lines from a supplied list of file changes.")]

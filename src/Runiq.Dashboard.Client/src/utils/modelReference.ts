@@ -8,7 +8,9 @@ export function parseModelReference(
   providerOverride?: string | null,
 ): ParsedModelReference {
   if (providerOverride) {
-    return { provider: providerOverride, model: modelReference || 'Not configured' };
+    // Claude delegates model selection to the local CLI; an absent model is intentional.
+    const fallbackModel = providerOverride === 'Claude CLI' ? 'CLI default' : 'Not configured';
+    return { provider: providerOverride, model: modelReference || fallbackModel };
   }
   if (!modelReference) {
     return {

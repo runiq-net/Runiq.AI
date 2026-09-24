@@ -43,7 +43,12 @@ internal sealed class RuntimeMetadataService : IRuntimeMetadataService
                             RagRerankerFailurePolicy.UseOriginalOrder).ToString())),
                 Tools: agent.Tools.Select(MapAgentTool).ToList())
             {
-                Provider = agent.Executor?.Kind == AgentExecutorKind.Codex ? "Codex CLI" : null
+                Provider = agent.Executor?.Kind switch
+                {
+                    AgentExecutorKind.Codex => "Codex CLI",
+                    AgentExecutorKind.Claude => "Claude CLI",
+                    _ => null
+                }
             })
             .ToList();
     }

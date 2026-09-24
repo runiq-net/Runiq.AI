@@ -1,24 +1,28 @@
-# Runiq Codex Project Assistants
+# Runiq Local CLI Agents
 
-Chat with two Codex agents in the Runiq dashboard: summarize file changes with a
+Chat with Codex and Claude agents in the Runiq dashboard: summarize file changes with a
 deterministic C# tool, or review code and get suggested fixes and tests.
 
 | Agent | Purpose | Model | Reasoning | Service tier |
 | --- | --- | --- | --- | --- |
 | QuickProjectAssistant | Summarizes supplied change counts using `change_summary` | `gpt-5.6-sol` | Medium | Fast |
 | CodeReviewer | Reviews code and suggests fixes and test cases | `gpt-6-astra` | High | Default |
+| ClaudeProjectAssistant | Summarizes supplied change counts using `change_summary` | Local Claude CLI setting | Local CLI setting | Local CLI setting |
 
 ## Run
 
-Requirements: .NET 10 SDK and a Codex CLI with Streamable HTTP MCP support,
-installed and signed in under the account running the sample. Linux also requires
-`setsid`. Both agents use **local Codex CLI authentication**; `OPENAI_API_KEY` is
-not required.
+Requirements: .NET 10 SDK and the CLI for the agents you want to use: Codex or
+Claude Code with HTTP MCP support, installed and signed in under the account
+running the sample. Linux also requires `setsid`. Agents use local CLI authentication;
+the sample does not require `OPENAI_API_KEY`.
+
+You can start the dashboard without either CLI installed. Installation and
+authentication errors appear when you send a request to the corresponding agent.
 
 From the repository root:
 
 ```sh
-dotnet run --project samples/Runiq.AI.CodexAgent --launch-profile http
+dotnet run --project samples/Runiq.AI.LocalCliAgents --launch-profile http
 ```
 
 Open [http://localhost:5298/dashboard](http://localhost:5298/dashboard) and select
@@ -65,6 +69,22 @@ Do not modify files.
 Expect a recommendation to multiply price by quantity, a corrected method, and
 test cases. CodeReviewer has no Runiq tools attached.
 
+## Try ClaudeProjectAssistant
+
+Select **ClaudeProjectAssistant** and send:
+
+```text
+Use change_summary to summarize a.cs +45/-12 and b.cs +18/-4.
+Report the totals in three short bullet points. Do not modify files.
+```
+
+With Claude Code installed and authenticated, expect a **Change Summary** tool card
+and totals of **2 files, 63 added lines, and 16 deleted lines**.
+If the CLI is not installed or cannot be found on PATH, the dashboard shows a
+Claude installation error. There is no fallback to Codex or another provider.
+After installing and signing in to Claude Code, restart the sample and retry.
+Authentication failures are reported separately from missing installation.
+
 ## Configure your agents
 
 Agent definitions live in `Agents/`. Select a model explicitly with `UseCodex`
@@ -81,12 +101,16 @@ and attach typed tools with `AddTool<T>`:
 ```
 
 `AddRuniqServer` registers the required executor and tool connection automatically.
-Model is required; reasoning defaults to **High** and service tier to **Default**.
+For Codex, model is required; reasoning defaults to **High** and service tier to **Default**.
 Default preserves local CLI tier settings. Model and Fast availability depend on
 your CLI/account; model rejections become meaningful Runiq runtime errors.
+
+The Claude agent uses `.UseClaude().AddTool<ChangeSummaryTool>()` and inherits
+model settings from the local Claude CLI.
 
 Include all relevant context in each prompt; this sample does not carry dashboard
 chat history between requests. The dashboard allows anonymous access for local use.
 
-See the [Codex executor guide](../../docs/codex-executor.md) for process settings,
+See the [Codex executor guide](../../docs/codex-executor.md) and
+[Claude executor guide](../../docs/claude-executor.md) for process settings,
 tool execution boundaries, session continuation, and troubleshooting.
