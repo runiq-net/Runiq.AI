@@ -96,6 +96,9 @@ const RAG_NO_CONTEXT_LABELS: Record<string, string> = {
   NoResults: 'No results',
   BelowRelevanceThreshold: 'Below relevance threshold',
   CandidatesRejected: 'Candidates rejected',
+  ContextBudgetExhausted: 'Context budget exhausted',
+  NotAnswerable: 'Not answerable',
+  RerankingFailed: 'Reranking failed',
 };
 
 const RAG_REJECTION_REASON_LABELS: Record<string, string> = {

@@ -59,14 +59,16 @@ export type AgentChatRagNoContextReason =
   | 'BelowRelevanceThreshold'
   | 'CandidatesRejected'
   | 'ContextBudgetExhausted'
-  | 'NotAnswerable';
+  | 'NotAnswerable'
+  | 'RerankingFailed';
 
 export type AgentChatRagContextExclusionReason =
   | 'TokenBudgetExceeded'
   | 'OverlappingContent'
   | 'SourceLimitExceeded'
   | 'SourceDiversityPreference'
-  | 'NotAnswerable';
+  | 'NotAnswerable'
+  | 'RerankingFailed';
 
 export type AgentChatRagContextExcludedResult = {
   documentId: string;
