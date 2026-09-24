@@ -7,6 +7,9 @@ namespace Runiq.AI.Agents
     /// </summary>
     public sealed class AgentExecutionResult
     {
+        /// <summary>Gets optional executor failure context retained from the terminal event.</summary>
+        public AgentExecutionErrorDetails? ErrorDetails { get; private init; }
+
         /// <summary>Gets explicitly supplied JSON with ownership independent of its original document.</summary>
         /// <remarks>Presence does not imply schema validation; response text is never parsed to infer JSON.</remarks>
         public JsonElement? StructuredOutput { get; }
@@ -30,9 +33,11 @@ namespace Runiq.AI.Agents
         public Runtime.AgentRunStatus Status { get; }
 
         internal AgentExecutionResult WithIdentity(string? runId, string? agentId,
-            DateTimeOffset? startedAt = null, DateTimeOffset? endedAt = null, string? providerSessionId = null) =>
+            DateTimeOffset? startedAt = null, DateTimeOffset? endedAt = null, string? providerSessionId = null,
+            AgentExecutionErrorDetails? errorDetails = null) =>
             new(Status, Message, ErrorCode, ErrorMessage, Steps, Rag, Citations, RagReadiness, StructuredOutput)
-            { RunId = runId, AgentId = agentId, StartedAt = startedAt, EndedAt = endedAt, ProviderSessionId = providerSessionId };
+            { RunId = runId, AgentId = agentId, StartedAt = startedAt, EndedAt = endedAt, ProviderSessionId = providerSessionId,
+                ErrorDetails = errorDetails ?? ErrorDetails };
 
         private AgentExecutionResult(
             Runtime.AgentRunStatus status,

@@ -16,6 +16,7 @@ public sealed class AgentExecutionResultBuilder
     private bool finalAnswerAdded;
     private string? failureCode;
     private string? failureMessage;
+    private AgentExecutionErrorDetails? errorDetails;
     private AgentRagExecutionMetadata? rag;
     private IReadOnlyList<AgentCitation> citations = [];
     private RagSearchBlocked? ragReadiness;
@@ -122,7 +123,7 @@ public sealed class AgentExecutionResultBuilder
                 steps,
                 rag,
                 ragReadiness);
-        return result.WithIdentity(runId, agentId, startedAt, endedAt, providerSessionId);
+        return result.WithIdentity(runId, agentId, startedAt, endedAt, providerSessionId, errorDetails);
     }
 
     private void AppendAssistantDelta(AgentExecutionEvent executionEvent)
@@ -287,6 +288,7 @@ public sealed class AgentExecutionResultBuilder
 
     private void AddFailureStep(AgentExecutionEvent executionEvent)
     {
+        errorDetails = executionEvent.ErrorDetails;
         failureCode = executionEvent.ErrorCode ?? "AgentExecutionFailed";
         failureMessage =
             executionEvent.ErrorMessage ??

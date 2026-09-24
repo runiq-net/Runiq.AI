@@ -6,8 +6,8 @@ namespace Runiq.AI.Core.Metadata;
 /// <param name="Id">The unique agent identifier.</param>
 /// <param name="Name">The display name of the agent.</param>
 /// <param name="Instructions">The instructions configured for the agent.</param>
-/// <param name="Model">The configured model identifier, or null for a non-model executor.</param>
-/// <param name="ReasoningEffort">The configured reasoning effort, or null for a non-model executor.</param>
+/// <param name="Model">The configured model identifier, including an explicit Codex model, or null when unavailable.</param>
+/// <param name="ReasoningEffort">The configured model or Codex reasoning effort, or null when unavailable.</param>
 /// <param name="Verbosity">The configured response verbosity, or null for a non-model executor.</param>
 /// <param name="Rag">The retrieval configuration exposed to the dashboard.</param>
 /// <param name="Tools">The tools attached to the agent.</param>
@@ -19,7 +19,11 @@ public sealed record AgentMetadataDto(
     string? ReasoningEffort,
     string? Verbosity,
     AgentRagMetadataDto Rag,
-    IReadOnlyList<AgentToolMetadataDto> Tools);
+    IReadOnlyList<AgentToolMetadataDto> Tools)
+{
+    /// <summary>Gets the execution-provider display override for a CLI model that is not a provider/model reference.</summary>
+    public string? Provider { get; init; }
+}
 
 /// <summary>
 /// Describes the framework-owned retrieval configuration shown by the agent inspector.

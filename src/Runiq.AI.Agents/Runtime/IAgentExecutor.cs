@@ -13,6 +13,8 @@ namespace Runiq.AI.Agents.Runtime;
 /// through a completion event. The runtime stamps identity, sequence and time, and consumes
 /// only the first terminal event. Implementations must honor cancellation and release resources
 /// when their event enumerator is disposed.
+/// User-provided implementations take precedence over framework CLI fallbacks regardless of
+/// registration order. Multiple user-provided implementations for the same kind are invalid.
 /// </remarks>
 public interface IAgentExecutor
 {
@@ -39,14 +41,19 @@ internal sealed class AgentExecutorResolver
     internal AgentExecutorResolver(IEnumerable<IAgentExecutor> registeredExecutors)
     {
         var byKind = new Dictionary<AgentExecutorKind, IAgentExecutor>();
+        var fallbacks = new Dictionary<AgentExecutorKind, IAgentExecutor>();
         foreach (var executor in registeredExecutors)
         {
             var kind = executor.Kind;
             if (!Enum.IsDefined(kind))
                 throw new InvalidOperationException($"Agent executor registration has invalid kind '{kind}'.");
-            if (!byKind.TryAdd(kind, executor))
+            var registrations = executor is IFallbackAgentExecutor ? fallbacks : byKind;
+            if (!registrations.TryAdd(kind, executor))
                 throw new InvalidOperationException($"Multiple agent executors are registered for kind '{kind}'. Register exactly one implementation per kind.");
         }
+        // Validate each group independently before filling gaps; custom duplicates must never be hidden.
+        foreach (var (kind, fallback) in fallbacks)
+            byKind.TryAdd(kind, fallback);
         executors = byKind;
     }
 

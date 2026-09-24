@@ -259,7 +259,7 @@ public sealed class AgentChatExecutionContractTests
     {
         var services = new ServiceCollection();
         var agent = new Agent("agent", "Agent", "instructions");
-        if (kind == AgentExecutorKind.Codex) agent.UseCodex();
+        if (kind == AgentExecutorKind.Codex) agent.UseCodex(options => options.Model = "gpt-6-sol");
         if (kind == AgentExecutorKind.Claude) agent.UseClaude();
         services.AddSingleton(agent);
         services.AddRuniqAgentServer();
@@ -283,7 +283,7 @@ public sealed class AgentChatExecutionContractTests
     private static ServiceCollection CreateServices(ControlledExecutor executor)
     {
         var services = new ServiceCollection();
-        services.AddSingleton(new Agent("agent", "Agent", "instructions").UseCodex());
+        services.AddSingleton(new Agent("agent", "Agent", "instructions").UseCodex(options => options.Model = "gpt-6-sol"));
         services.AddRuniqAgentServer();
         services.RemoveAll<IAgentExecutor>();
         services.AddScoped<IAgentExecutor>(_ => executor);

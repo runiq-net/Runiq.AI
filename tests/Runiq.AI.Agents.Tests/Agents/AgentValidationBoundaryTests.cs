@@ -25,7 +25,7 @@ public sealed class AgentValidationBoundaryTests
         Assert.DoesNotContain("private-api-key", invalid.ToString());
         Assert.DoesNotContain("private-url-token", invalid.ToString());
         Assert.Null(agent.Executor);
-        Assert.Same(agent, agent.UseCodex());
+        Assert.Same(agent, agent.UseCodex(options => options.Model = "gpt-6-sol"));
         Assert.Same(tool, Assert.Single(agent.Tools));
         var duplicate = Assert.Throws<InvalidOperationException>(() => agent.UseModel("openai/model", "private-api-key", settings));
         Assert.Contains(agent.Id, duplicate.Message);
@@ -50,7 +50,7 @@ public sealed class AgentValidationBoundaryTests
     {
         var agent = new Agent("agent", "Agent", "instructions").AddTool<NeverInvokedTool>()
             .UseRag(options => options.IndexName = "documents");
-        if (kind == AgentExecutorKind.Codex) agent.UseCodex();
+        if (kind == AgentExecutorKind.Codex) agent.UseCodex(options => options.Model = "gpt-6-sol");
         if (kind == AgentExecutorKind.Claude) agent.UseClaude();
         if (kind.HasValue) AgentValidator.ValidateRegisteredAgents([agent]);
         else

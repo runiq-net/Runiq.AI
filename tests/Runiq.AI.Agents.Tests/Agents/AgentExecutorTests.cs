@@ -18,7 +18,7 @@ public sealed class AgentExecutorTests
     // Verifies the complete README tool examples compile in both chaining orders without constructing or executing the tool.
     public void ReadmeToolExamples_OnlyRegisterDefinitions()
     {
-        var first = new Agent("first", "First", "Review.").UseCodex().AddTool<DefinitionOnlyTool>();
+        var first = new Agent("first", "First", "Review.").UseCodex(options => options.Model = "gpt-6-sol").AddTool<DefinitionOnlyTool>();
         var second = new Agent("second", "Second", "Review.").AddTool<DefinitionOnlyTool>().UseClaude();
         Assert.Equal(AgentExecutorKind.Codex, first.Executor!.Kind);
         Assert.Equal(AgentExecutorKind.Claude, second.Executor!.Kind);
@@ -111,7 +111,7 @@ public sealed class AgentExecutorTests
             Assert.Equal("key", agent.ApiKey);
             Assert.Equal("high", agent.ReasoningEffort);
             Assert.Equal("medium", agent.Verbosity);
-            Assert.Throws<InvalidOperationException>(() => agent.UseCodex());
+            Assert.Throws<InvalidOperationException>(() => agent.UseCodex(options => options.Model = "gpt-6-sol"));
         }
     }
 
@@ -225,7 +225,7 @@ public sealed class AgentExecutorTests
         Assert.Null(draft.Executor);
         Assert.Throws<InvalidOperationException>(() => new ServiceCollection().AddRuniqServer(options => options.AddAgent(draft)));
         Assert.Throws<InvalidOperationException>(() => AgentValidator.ValidateRegisteredAgents([
-            new Agent("same", "One", "").UseCodex(), new Agent("SAME", "Two", "").UseClaude()]));
+            new Agent("same", "One", "").UseCodex(options => options.Model = "gpt-6-sol"), new Agent("SAME", "Two", "").UseClaude()]));
 
         var agents = Enum.GetValues<AgentExecutorKind>()
             .Select(kind => Select(new Agent(kind.ToString(), kind.ToString(), "instructions"), kind)).ToArray();
@@ -235,7 +235,9 @@ public sealed class AgentExecutorTests
         Assert.Equal(agents, provider.GetServices<Agent>());
         var metadata = provider.GetRequiredService<IRuntimeMetadataService>().GetAgents();
         Assert.Equal("openai/model", metadata.Single(agent => agent.Id == "Model").Model);
-        Assert.All(metadata.Where(agent => agent.Id != "Model"), agent =>
+        Assert.Equal("gpt-6-sol", metadata.Single(agent => agent.Id == "Codex").Model);
+        Assert.Equal("Codex CLI", metadata.Single(agent => agent.Id == "Codex").Provider);
+        Assert.All(metadata.Where(agent => agent.Id == "Claude"), agent =>
         {
             Assert.Null(agent.Model);
             Assert.Null(agent.ReasoningEffort);
@@ -304,7 +306,7 @@ public sealed class AgentExecutorTests
     public void RequestedExamples_PreserveNamedConstructorAndDefaults()
     {
         var modelAgent = new Agent("support", "Support", "Soruları yanıtla.").UseModel("openai/model-name");
-        var codexAgent = new Agent("reviewer", "Reviewer", "Kodu incele.").UseCodex();
+        var codexAgent = new Agent("reviewer", "Reviewer", "Kodu incele.").UseCodex(options => options.Model = "gpt-6-sol");
         var claudeAgent = new Agent("analyst", "Analyst", "Analiz yap.").UseClaude();
         var existingAgent = new Agent(id: "support", name: "Support",
             instructions: "Soruları yanıtla.", model: "openai/model-name");
@@ -485,7 +487,7 @@ public sealed class AgentExecutorTests
         {
             options.AddAgent(agent);
             Assert.Null(agent.Executor);
-            agent.UseCodex();
+            agent.UseCodex(options => options.Model = "gpt-6-sol");
         });
         using var provider = services.BuildServiceProvider();
         Assert.Same(agent, Assert.Single(provider.GetServices<Agent>()));
@@ -494,7 +496,7 @@ public sealed class AgentExecutorTests
     private static Agent Select(Agent agent, AgentExecutorKind kind) => kind switch
     {
         AgentExecutorKind.Model => agent.UseModel("openai/model"),
-        AgentExecutorKind.Codex => agent.UseCodex(),
+        AgentExecutorKind.Codex => agent.UseCodex(options => options.Model = "gpt-6-sol"),
         AgentExecutorKind.Claude => agent.UseClaude(),
         _ => throw new ArgumentOutOfRangeException(nameof(kind))
     };

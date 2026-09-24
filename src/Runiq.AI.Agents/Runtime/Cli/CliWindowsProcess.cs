@@ -5,10 +5,10 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
 
-namespace Runiq.AI.Agents.Runtime.Codex;
+namespace Runiq.AI.Agents.Runtime.Cli;
 
 /// <summary>Owns a native Windows launch, including its job, redirected pipes and managed process handle.</summary>
-internal sealed class CodexWindowsProcess : IDisposable
+internal sealed class CliWindowsProcess : IDisposable
 {
     private const uint CreateSuspended = 0x00000004;
     private const uint CreateUnicodeEnvironment = 0x00000400;
@@ -20,19 +20,19 @@ internal sealed class CodexWindowsProcess : IDisposable
 
     private AnonymousPipeServerStream? stdin, stdout, stderr;
     internal Process Process { get; private set; } = null!;
-    internal CodexProcessContainment Containment { get; private set; } = null!;
+    internal CliProcessContainment Containment { get; private set; } = null!;
     internal StreamWriter Input { get; private set; } = null!;
     internal StreamReader Output { get; private set; } = null!;
     internal StreamReader Error { get; private set; } = null!;
 
-    private CodexWindowsProcess() { }
+    private CliWindowsProcess() { }
 
-    internal static CodexWindowsProcess Start(ProcessStartInfo start)
+    internal static CliWindowsProcess Start(ProcessStartInfo start)
     {
-        var launch = new CodexWindowsProcess();
+        var launch = new CliWindowsProcess();
         try
         {
-            launch.Containment = new CodexProcessContainment();
+            launch.Containment = new CliProcessContainment();
             launch.stdin = new AnonymousPipeServerStream(PipeDirection.Out, HandleInheritability.Inheritable);
             launch.stdout = new AnonymousPipeServerStream(PipeDirection.In, HandleInheritability.Inheritable);
             launch.stderr = new AnonymousPipeServerStream(PipeDirection.In, HandleInheritability.Inheritable);

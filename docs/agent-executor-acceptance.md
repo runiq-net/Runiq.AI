@@ -36,7 +36,7 @@ Implement the public `IAgentExecutor` with a stable `Kind` and one `ExecuteAsync
 event stream. Register the adapter in the host scope:
 
 ```csharp
-services.AddSingleton(new Agent("assistant", "Assistant", "Help the user").UseCodex());
+services.AddSingleton(new Agent("assistant", "Assistant", "Help the user").UseCodex(options => options.Model = "gpt-6-sol"));
 services.AddRuniqAgentServer();
 services.AddScoped<IAgentExecutor, MyCodexExecutor>();
 
@@ -45,11 +45,13 @@ var runtime = scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>();
 var result = await runtime.ExecuteAsync("assistant", new AgentQuery("Hello"), cancellationToken);
 ```
 
-`MyCodexExecutor` denotes a host-provided alternative to `AddRuniqCodexExecutor`;
+`MyCodexExecutor` denotes a custom implementation used with the low-level runtime registration above;
 register only one of these choices. Add the dependencies required by that implementation through
 constructor injection. Keep scoped dependencies out of singleton services. The
 default model executor remains registered alongside it. An unsupported kind does
-not fall back to the model. Duplicate kind registrations fail at runtime resolution;
+not fall back to the model. Custom adapters also work with `AddRuniqServer` agent registration:
+they override automatic Codex/Claude fallbacks regardless of registration order.
+Multiple custom adapters for the same kind still fail at runtime resolution;
 to replace the built-in model, explicitly remove its interface registration first.
 
 Inside the adapter:

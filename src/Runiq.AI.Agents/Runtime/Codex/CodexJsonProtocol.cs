@@ -11,6 +11,7 @@ internal sealed class CodexJsonProtocol(string? expectedSessionId)
     internal string? SessionId { get; private set; }
     internal bool Completed { get; private set; }
     internal string? FailureCode { get; private set; }
+    internal string? FailureDiagnostic { get; private set; }
 
     internal AgentExecutionEvent? Apply(string line)
     {
@@ -38,20 +39,25 @@ internal sealed class CodexJsonProtocol(string? expectedSessionId)
                     terminal = Completed = true;
                     break;
                 case "turn.failed":
-                    FailureCode = ClassifyFailure(RequiredString(root.GetProperty("error"), "message"));
+                    FailureDiagnostic = RequiredString(root.GetProperty("error"), "message");
+                    FailureCode = ClassifyFailure(FailureDiagnostic);
                     terminal = true;
                     break;
                 case "error":
                     // Exec can emit transient errors before retrying; only turn.failed or exit decides failure.
-                    FailureCode = ClassifyFailure(RequiredString(root, "message"));
+                    FailureDiagnostic = RequiredString(root, "message");
+                    FailureCode = ClassifyFailure(FailureDiagnostic);
                     break;
                 case "item.started":
                 case "item.updated":
                 case "item.completed":
-                    if (!started) throw new CodexException("CodexOutputInvalid");
                     var item = root.GetProperty("item");
                     var itemType = RequiredString(item, "type");
                     var itemId = RequiredString(item, "id");
+                    // Exec emits advisory error items after thread.started, even before turn.started
+                    // (for example missing local model metadata). They do not determine the turn outcome.
+                    if (itemType == "error" && SessionId is not null) break;
+                    if (!started) throw new CodexException("CodexOutputInvalid");
                     if (itemType == "agent_message" && type == "item.completed")
                     {
                         if (!completedMessages.Add(itemId)) throw new CodexException("CodexOutputInvalid");
@@ -80,7 +86,14 @@ internal sealed class CodexJsonProtocol(string? expectedSessionId)
 
     internal static string ClassifyFailure(string diagnostic)
     {
-        // CLI exec has no stable typed auth/config error codes. Match only known diagnostics, never expose raw text.
+        // Require both a setting and rejection wording; ordinary network/rate-limit failures are not model failures.
+        if (Contains("reasoning") && Contains("unsupported", "not supported", "invalid", "not support", "not allowed"))
+            return "CodexReasoningEffortNotSupported";
+        if (Contains("model") && Contains("model_not_found", "unsupported", "not supported", "does not support",
+                "not available", "unavailable", "does not exist", "not found", "invalid model", "unknown model",
+                "do not have access", "don't have access", "not permitted", "not allowed"))
+            return "CodexModelNotAvailable";
+        // CLI exec has no stable typed auth/config error codes. Never expose raw text in the user message.
         if (Contains("not logged in", "authentication", "unauthorized", "401", "login required", "refresh token"))
             return "CodexAuthenticationFailed";
         if (Contains("config.toml", "error loading config", "invalid configuration", "unexpected argument",

@@ -16,7 +16,7 @@ export function AgentOverviewTab({
   onOpenTools,
   onOpenTool,
 }: AgentOverviewTabProps) {
-  const modelReference = parseModelReference(agent.model);
+  const modelReference = parseModelReference(agent.model, agent.provider);
   const tools = agent.tools ?? [];
 
   return (

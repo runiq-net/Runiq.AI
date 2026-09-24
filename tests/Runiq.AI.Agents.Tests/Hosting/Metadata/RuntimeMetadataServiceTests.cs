@@ -5,6 +5,28 @@ namespace Runiq.AI.Agents.Tests.Hosting.Metadata;
 
 public sealed class RuntimeMetadataServiceTests
 {
+    [Theory]
+    [InlineData("gpt-6-sol", CodexReasoningEffort.High, "high")]
+    [InlineData("custom/model-name", CodexReasoningEffort.Medium, "medium")]
+    // Verifies Codex dashboard metadata preserves explicit model names and distinguishes the CLI from model providers.
+    public void GetAgents_Codex_ProjectsProviderAndAgentModel(string model, CodexReasoningEffort effort, string expectedEffort)
+    {
+        var agent = new Agent("codex", "Codex", "instructions").UseCodex(options =>
+        {
+            options.Model = model;
+            options.ReasoningEffort = effort;
+        });
+        var metadata = Assert.Single(new RuntimeMetadataService([agent]).GetAgents());
+        Assert.Equal("Codex CLI", metadata.Provider);
+        Assert.Equal(model, metadata.Model);
+        Assert.Equal(expectedEffort, metadata.ReasoningEffort);
+        Assert.Null(metadata.Verbosity);
+        var json = System.Text.Json.JsonSerializer.SerializeToElement(metadata,
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        Assert.Equal("Codex CLI", json.GetProperty("provider").GetString());
+        Assert.Equal(model, json.GetProperty("model").GetString());
+    }
+
     // Proves agent metadata exposes the effective reranking settings consumed by Running Behavior.
     [Fact]
     public void GetAgents_RerankingConfigured_ProjectsRunningBehaviorMetadata()

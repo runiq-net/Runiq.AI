@@ -30,7 +30,7 @@ const agentColumns: DataListColumn<AgentMetadata>[] = [
     width: 'minmax(140px, 0.7fr)',
     render: (agent) => (
       <span className="inline-flex max-w-full truncate rounded-full border border-zinc-200 bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-800 transition group-hover:border-zinc-300 group-hover:text-zinc-950 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300 dark:group-hover:border-zinc-700 dark:group-hover:text-zinc-100">
-        {getProvider(agent.model)}
+        {agent.provider ?? getProvider(agent.model)}
       </span>
     ),
   },
@@ -40,7 +40,7 @@ const agentColumns: DataListColumn<AgentMetadata>[] = [
     width: 'minmax(160px, 0.8fr)',
     render: (agent) => (
       <span className="inline-flex max-w-full truncate rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs text-zinc-700 transition group-hover:border-zinc-300 group-hover:text-zinc-950 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-400 dark:group-hover:border-zinc-700 dark:group-hover:text-zinc-200">
-        {getModel(agent.model)}
+        {agent.provider ? (agent.model || 'not configured') : getModel(agent.model)}
       </span>
     ),
   },

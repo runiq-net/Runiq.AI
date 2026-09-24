@@ -1,25 +1,25 @@
 using System.Diagnostics;
 using System.ComponentModel;
 
-namespace Runiq.AI.Agents.Runtime.Codex;
+namespace Runiq.AI.Agents.Runtime.Cli;
 
-internal sealed class CodexProcessFactory : ICodexProcessFactory
+internal sealed class CliProcessFactory : ICliProcessFactory
 {
-    public ICodexProcess Start(ProcessStartInfo startInfo, CancellationToken cancellationToken)
+    public ICliProcess Start(ProcessStartInfo startInfo, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        CodexProcessContainment.Prepare(startInfo);
+        CliProcessContainment.Prepare(startInfo);
         if (OperatingSystem.IsWindows())
         {
-            var started = CodexWindowsProcess.Start(startInfo);
-            try { return new CodexProcess(started, cancellationToken); }
+            var started = CliWindowsProcess.Start(startInfo);
+            try { return new CliProcess(started, cancellationToken); }
             catch { started.Dispose(); throw; }
         }
         var process = new Process { StartInfo = startInfo };
         try
         {
-            if (!process.Start()) throw new InvalidOperationException("Codex process did not start.");
-            return new CodexProcess(process, cancellationToken);
+            if (!process.Start()) throw new InvalidOperationException("CLI process did not start.");
+            return new CliProcess(process, cancellationToken);
         }
         catch
         {
@@ -30,20 +30,20 @@ internal sealed class CodexProcessFactory : ICodexProcessFactory
         }
     }
 
-    internal sealed class CodexProcess : ICodexProcess
+    internal sealed class CliProcess : ICliProcess
     {
         private readonly Process process;
         private readonly CancellationTokenRegistration cancellation;
-        private readonly CodexProcessContainment containment;
+        private readonly CliProcessContainment containment;
         private readonly Task exit;
         private readonly object processLock = new();
         private bool disposed;
-        private readonly CodexWindowsProcess? windows;
+        private readonly CliWindowsProcess? windows;
         private readonly StreamWriter input;
         private readonly TextReader output;
         private readonly TextReader error;
 
-        internal CodexProcess(CodexWindowsProcess started, CancellationToken token)
+        internal CliProcess(CliWindowsProcess started, CancellationToken token)
         {
             windows = started;
             process = started.Process;
@@ -55,13 +55,13 @@ internal sealed class CodexProcessFactory : ICodexProcessFactory
             cancellation = token.Register(Terminate);
         }
 
-        internal CodexProcess(Process process, CancellationToken token)
+        internal CliProcess(Process process, CancellationToken token)
         {
             this.process = process;
             input = process.StandardInput;
             output = process.StandardOutput;
             error = process.StandardError;
-            containment = new CodexProcessContainment(process);
+            containment = new CliProcessContainment(process);
             exit = ObserveExitAsync();
             // Cancellation must kill the process even while a stream consumer is not requesting another event.
             cancellation = token.Register(Terminate);

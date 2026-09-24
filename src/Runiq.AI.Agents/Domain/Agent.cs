@@ -153,21 +153,29 @@ public class Agent
         SelectExecutor(() => new AgentExecutorConfiguration(AgentExecutorKind.Model,
             new AgentModelConfiguration(model, apiKey, provider, reasoningEffort, verbosity)));
 
-    /// <summary>Selects Codex execution, which requires a host-registered executor implementation.</summary>
+    /// <summary>Selects Codex execution with an explicit model and a host-registered executor implementation.</summary>
     /// <remarks>
     /// Does not require a CLI installation and does not start processes, send network requests,
     /// or authenticate. No timeout, sandbox, or session behavior is configured.
-    /// Enable the local CLI adapter with AddRuniqCodexExecutor in the host; Runiq tools are not bridged to Codex.
+    /// AddRuniqServer automatically registers the local CLI adapter for this agent; Runiq tools are not bridged to Codex.
     /// </remarks>
+    /// <param name="configure">Sets the required model and optional reasoning effort and service tier.</param>
     /// <returns>The same agent instance.</returns>
+    /// <exception cref="ArgumentException">The callback is null, the model is blank, or an enum value is undefined.</exception>
     /// <exception cref="InvalidOperationException">An executor has already been selected.</exception>
-    public Agent UseCodex() => SelectExecutor(() => new AgentExecutorConfiguration(AgentExecutorKind.Codex));
+    public Agent UseCodex(Action<CodexAgentOptions> configure) => SelectExecutor(() =>
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        var options = new CodexAgentOptions();
+        configure(options);
+        return new AgentExecutorConfiguration(AgentExecutorKind.Codex, codex: new CodexAgentConfiguration(options));
+    });
 
     /// <summary>Selects Claude execution, which requires a host-registered executor implementation.</summary>
     /// <remarks>
     /// Does not require a CLI installation and does not start processes, send network requests,
     /// or authenticate. No timeout, sandbox, or session behavior is configured.
-    /// This records an execution preference only; no built-in Claude adapter or tool bridge is supplied.
+    /// AddRuniqServer automatically registers the local CLI adapter for this agent; Runiq tools are not bridged to Claude.
     /// </remarks>
     /// <returns>The same agent instance.</returns>
     /// <exception cref="InvalidOperationException">An executor has already been selected.</exception>

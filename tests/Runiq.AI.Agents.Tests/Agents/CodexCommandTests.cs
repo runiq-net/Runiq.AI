@@ -25,7 +25,7 @@ public sealed class CodexCommandTests
             case "total-limit": options.MaxOutputCharacters = 1; break;
             case "executable": options.ExecutablePath = "codex.cmd"; break;
         }
-        Assert.Equal("CodexConfigurationInvalid", Assert.Throws<CodexException>(() => CodexCommand.Create(options, null)).Code);
+        Assert.Equal("CodexConfigurationInvalid", Assert.Throws<CodexException>(() => CodexCommand.Create(options, new CodexAgentConfiguration(new CodexAgentOptions { Model = "gpt-6-sol" }), null)).Code);
     }
 
     [Fact]
@@ -46,7 +46,7 @@ public sealed class CodexCommandTests
         var options = Options();
         options.Sandbox = sandbox;
         options.SkipGitRepositoryCheck = true;
-        var command = CodexCommand.Create(options, null);
+        var command = CodexCommand.Create(options, new CodexAgentConfiguration(new CodexAgentOptions { Model = "gpt-6-sol" }), null);
         Assert.Equal(options.WorkingDirectory, command.WorkingDirectory);
         Assert.Contains($"sandbox_mode=\"{expected}\"", command.ArgumentList);
         Assert.Contains("approval_policy=\"never\"", command.ArgumentList);

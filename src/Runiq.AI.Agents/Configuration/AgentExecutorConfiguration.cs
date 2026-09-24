@@ -10,17 +10,19 @@ public enum AgentExecutorKind
     Model,
     /// <summary>Requests Codex execution; the local CLI adapter requires explicit host registration.</summary>
     Codex,
-    /// <summary>Requests Claude execution; no built-in implementation is supplied.</summary>
+    /// <summary>Requests opt-in local Claude Code CLI execution.</summary>
     Claude
 }
 
 /// <summary>Describes the single executor selected through an agent's Use methods.</summary>
 public sealed class AgentExecutorConfiguration
 {
-    internal AgentExecutorConfiguration(AgentExecutorKind kind, AgentModelConfiguration? model = null)
+    internal AgentExecutorConfiguration(AgentExecutorKind kind, AgentModelConfiguration? model = null,
+        CodexAgentConfiguration? codex = null)
     {
         Kind = kind;
         Model = model;
+        Codex = codex;
     }
 
     /// <summary>Gets the selected executor kind.</summary>
@@ -28,6 +30,9 @@ public sealed class AgentExecutorConfiguration
 
     /// <summary>Gets model-specific settings, or null for Codex and Claude.</summary>
     public AgentModelConfiguration? Model { get; }
+
+    /// <summary>Gets the immutable agent-level Codex settings, or null for other executors.</summary>
+    public CodexAgentConfiguration? Codex { get; }
 }
 
 /// <summary>Contains the validated settings used only by a model executor.</summary>

@@ -11,6 +11,7 @@ export type AgentMetadata = {
   name: string;
   instructions?: string;
   model?: string | null;
+  provider?: string | null;
   reasoningEffort?: string | null;
   verbosity?: string | null;
   rag: {

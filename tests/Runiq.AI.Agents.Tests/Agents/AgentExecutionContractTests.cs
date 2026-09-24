@@ -715,7 +715,7 @@ public sealed class AgentExecutionContractTests
         switch (kind)
         {
             case AgentExecutorKind.Model: agent.UseModel("openai/model", "key"); break;
-            case AgentExecutorKind.Codex: agent.UseCodex(); break;
+            case AgentExecutorKind.Codex: agent.UseCodex(options => options.Model = "gpt-6-sol"); break;
             case AgentExecutorKind.Claude: agent.UseClaude(); break;
         }
         // Invalid RAG settings would fail if an unsupported selection reached the model pipeline.
