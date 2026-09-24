@@ -374,6 +374,7 @@ public sealed class AgentExecutionRuntime
         {
             RunId = run.RunId,
             AgentId = run.AgentId,
+            ProviderSessionId = run.ProviderSessionId,
             StartedAt = run.StartedAt,
             EndedAt = run.EndedAt,
             SequenceNumber = run.NextEventSequence(),

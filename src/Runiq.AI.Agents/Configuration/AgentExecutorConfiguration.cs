@@ -8,7 +8,7 @@ public enum AgentExecutorKind
 {
     /// <summary>Executes through the model provider pipeline.</summary>
     Model,
-    /// <summary>Requests Codex execution; no built-in implementation is supplied.</summary>
+    /// <summary>Requests Codex execution; the local CLI adapter requires explicit host registration.</summary>
     Codex,
     /// <summary>Requests Claude execution; no built-in implementation is supplied.</summary>
     Claude

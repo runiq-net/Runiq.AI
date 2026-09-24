@@ -20,6 +20,11 @@ public sealed record AgentChatResponse(
     [JsonInclude]
     public string? RunId { get; internal init; }
 
+    /// <summary>Gets the confirmed provider session identifier, when the executor supports continuation.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonInclude]
+    public string? ProviderSessionId { get; internal init; }
+
     /// <summary>Gets the agent definition identifier associated with this run.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonInclude]

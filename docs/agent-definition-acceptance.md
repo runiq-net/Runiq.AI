@@ -26,8 +26,9 @@ configuration and follow the documented conflict-first error priority.
 
 The acceptance tests use local definitions, controlled dependencies and scripted
 clients. They do not require real keys, provider connections or Codex/Claude CLIs.
-Built-in Codex/Claude execution remains unimplemented; the existing custom-executor
-registry is not disabled. No tool bridge, Studio feature or workflow change is added.
+Definition-only hosts still have no registered Codex/Claude executor. The subsequent
+[local Codex adapter](codex-executor.md) is opt-in; the custom-executor registry is
+unchanged. No tool bridge, Studio feature or workflow change is added.
 
 ## Public XML documentation inventory
 

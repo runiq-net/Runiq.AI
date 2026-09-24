@@ -102,6 +102,7 @@ public sealed class AgentChatApiHandler
                 .ToArray())
         {
             RunId = result.RunId,
+            ProviderSessionId = result.ProviderSessionId,
             AgentId = result.AgentId,
             StartedAt = result.StartedAt,
             EndedAt = result.EndedAt,

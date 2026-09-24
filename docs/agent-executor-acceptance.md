@@ -1,8 +1,9 @@
 # Shared executor acceptance and adapter guide
 
 The shared contracts are implemented by the existing runtime, result builder and
-model executor. Real Codex/Claude adapters, persistence, approval/resumption,
-workflow changes and Studio monitoring are outside this feature.
+model executor. The subsequent opt-in [local Codex adapter](codex-executor.md)
+adds CLI execution and confirmed session continuation. Claude adapters, Runiq-owned
+persistence, interactive approvals, workflow changes and Studio monitoring remain outside this feature.
 
 ## Acceptance evidence
 
@@ -44,8 +45,8 @@ var runtime = scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>();
 var result = await runtime.ExecuteAsync("assistant", new AgentQuery("Hello"), cancellationToken);
 ```
 
-`MyCodexExecutor` denotes a future host-provided implementation, not a bundled
-adapter. Add the SDK/client dependencies required by that implementation through
+`MyCodexExecutor` denotes a host-provided alternative to `AddRuniqCodexExecutor`;
+register only one of these choices. Add the dependencies required by that implementation through
 constructor injection. Keep scoped dependencies out of singleton services. The
 default model executor remains registered alongside it. An unsupported kind does
 not fall back to the model. Duplicate kind registrations fail at runtime resolution;

@@ -68,6 +68,7 @@ internal static class AgentChatStreamEventMapper
         return mapped with
         {
             RunId = executionEvent.RunId,
+            ProviderSessionId = executionEvent.ProviderSessionId,
             AgentId = executionEvent.AgentId,
             StartedAt = executionEvent.StartedAt,
             EndedAt = executionEvent.EndedAt,

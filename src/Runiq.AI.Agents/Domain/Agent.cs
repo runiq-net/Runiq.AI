@@ -157,7 +157,7 @@ public class Agent
     /// <remarks>
     /// Does not require a CLI installation and does not start processes, send network requests,
     /// or authenticate. No timeout, sandbox, or session behavior is configured.
-    /// This records an execution preference only; no built-in Codex adapter or tool bridge is supplied.
+    /// Enable the local CLI adapter with AddRuniqCodexExecutor in the host; Runiq tools are not bridged to Codex.
     /// </remarks>
     /// <returns>The same agent instance.</returns>
     /// <exception cref="InvalidOperationException">An executor has already been selected.</exception>

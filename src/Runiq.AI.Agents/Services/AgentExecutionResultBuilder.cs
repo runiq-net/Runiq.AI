@@ -21,6 +21,7 @@ public sealed class AgentExecutionResultBuilder
     private RagSearchBlocked? ragReadiness;
     private string? runId;
     private string? agentId;
+    private string? providerSessionId;
     private DateTimeOffset? startedAt;
     private DateTimeOffset? endedAt;
     private JsonElement? structuredOutput;
@@ -49,6 +50,9 @@ public sealed class AgentExecutionResultBuilder
             lastSequence = executionEvent.SequenceNumber.Value;
             runId = executionEvent.RunId;
             agentId = executionEvent.AgentId;
+            if (providerSessionId is not null && executionEvent.ProviderSessionId != providerSessionId)
+                throw new InvalidOperationException("A run cannot change its provider session identity.");
+            providerSessionId = executionEvent.ProviderSessionId;
             startedAt = executionEvent.StartedAt;
             endedAt = executionEvent.EndedAt;
         }
@@ -118,7 +122,7 @@ public sealed class AgentExecutionResultBuilder
                 steps,
                 rag,
                 ragReadiness);
-        return result.WithIdentity(runId, agentId, startedAt, endedAt);
+        return result.WithIdentity(runId, agentId, startedAt, endedAt, providerSessionId);
     }
 
     private void AppendAssistantDelta(AgentExecutionEvent executionEvent)

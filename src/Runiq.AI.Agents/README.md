@@ -583,8 +583,9 @@ at registration. Neither failure consumes the unfinished definition's ability to
 | RAG embedding registration | Reads `ProviderName` for every RAG agent | Inspects model configuration before registering OpenAI embedding clients. |
 | `RuntimeMetadataService` | Reads non-null model and generation aliases | Reads optional model configuration without inventing a model. Model-only DTO fields are nullable; existing model values are unchanged. |
 
-No Codex or Claude adapter is bundled. No CLI execution, tool bridge, Studio UI or
-workflow behavior is implemented. Direct `Agent.ExecuteAsync` and `Agent.ExecuteStreamAsync` retain
+Local Codex CLI execution is available through the opt-in `AddRuniqCodexExecutor`
+registration; see [configuration, continuation and limits](../../docs/codex-executor.md).
+No Claude adapter, Runiq tool bridge or new Studio UI is supplied. Direct `Agent.ExecuteAsync` and `Agent.ExecuteStreamAsync` retain
 their existing unsupported-direct-execution contract. Runtime execution continues through dependency
 injection. The executor types belong to Agents and reuse Core's `ModelReference` and `ProviderOptions`;
 no new dependency or parallel agent model is introduced. Workflow adapters already delegate execution
@@ -593,8 +594,8 @@ to the Agents runtime and require no changes.
 ## Execution lifecycle
 
 Every runtime invocation creates a fresh `RunId`. Runtime events and results expose
-that identifier together with `AgentId` and `Status`. `ProviderSessionId` is reserved
-and remains null; `RunId` cannot resume a provider session. Reusing an `AgentQuery`
+that identifier together with `AgentId` and `Status`. `ProviderSessionId` carries the
+confirmed Codex thread ID when available and otherwise remains null; `RunId` cannot resume a provider session. Reusing an `AgentQuery`
 starts a new run, including when calls overlap. Configure agents before executing
 them and do not mutate their definitions during execution.
 
@@ -632,8 +633,8 @@ cancellation for both public APIs. The scoped resolver rejects multiple registra
 for the same kind when resolved, rather than choosing the last. The built-in model
 registration is idempotent across repeated hosting registration. Missing selection
 returns `AgentExecutorMissing`; missing implementation returns `AgentExecutorNotSupported`.
-No Codex/Claude implementation is bundled, so those selections remain unsupported unless
-the host explicitly registers an implementation. No model fallback is performed.
+Codex requires `AddRuniqCodexExecutor` or a custom executor registration; Claude
+requires a custom implementation. No model fallback is performed.
 
 Existing overloads and result/event factories remain available; standalone factory
 products have null run identity. See the repository's
