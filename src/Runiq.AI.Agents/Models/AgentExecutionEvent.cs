@@ -7,6 +7,9 @@ namespace Runiq.AI.Agents;
 /// </summary>
 public sealed record AgentExecutionEvent
 {
+    /// <summary>Gets optional executor failure context, separate from the user-facing message.</summary>
+    public AgentExecutionErrorDetails? ErrorDetails { get; internal init; }
+
     /// <summary>Gets the one-based publication sequence within a run, or null before runtime publication.</summary>
     public long? SequenceNumber { get; internal init; }
 

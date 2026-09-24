@@ -27,8 +27,9 @@ internal sealed class RuntimeMetadataService : IRuntimeMetadataService
                 Id: agent.Id,
                 Name: agent.Name,
                 Instructions: agent.Instructions,
-                Model: agent.Executor?.Model?.Model,
-                ReasoningEffort: agent.Executor?.Model?.ReasoningEffort,
+                Model: agent.Executor?.Codex?.Model ?? agent.Executor?.Model?.Model,
+                ReasoningEffort: agent.Executor?.Codex?.ReasoningEffort.ToString().ToLowerInvariant()
+                    ?? agent.Executor?.Model?.ReasoningEffort,
                 Verbosity: agent.Executor?.Model?.Verbosity,
                 Rag: new AgentRagMetadataDto(
                     Enabled: agent.Rag?.Enabled == true,
@@ -40,7 +41,10 @@ internal sealed class RuntimeMetadataService : IRuntimeMetadataService
                         Timeout: agent.Rag?.Reranking.Timeout ?? TimeSpan.FromSeconds(5),
                         FailurePolicy: (agent.Rag?.Reranking.FailurePolicy ??
                             RagRerankerFailurePolicy.UseOriginalOrder).ToString())),
-                Tools: agent.Tools.Select(MapAgentTool).ToList()))
+                Tools: agent.Tools.Select(MapAgentTool).ToList())
+            {
+                Provider = agent.Executor?.Kind == AgentExecutorKind.Codex ? "Codex CLI" : null
+            })
             .ToList();
     }
 

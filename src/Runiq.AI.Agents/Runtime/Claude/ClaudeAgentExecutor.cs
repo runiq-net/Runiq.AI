@@ -6,12 +6,12 @@ using Microsoft.Extensions.Options;
 using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Agents.Tools;
 
-namespace Runiq.AI.Agents.Runtime.Codex;
+namespace Runiq.AI.Agents.Runtime.Claude;
 
-internal sealed class CodexAgentExecutor(ICliProcessFactory processes, IOptions<CodexExecutorOptions> options,
-    CodexSessionGate sessions, ILogger<CodexAgentExecutor> logger) : IAgentExecutor
+internal sealed class ClaudeAgentExecutor(ICliProcessFactory processes, IOptions<ClaudeExecutorOptions> options,
+    ClaudeSessionGate sessions, ILogger<ClaudeAgentExecutor> logger) : IAgentExecutor
 {
-    public AgentExecutorKind Kind => AgentExecutorKind.Codex;
+    public AgentExecutorKind Kind => AgentExecutorKind.Claude;
 
     public async IAsyncEnumerable<AgentExecutionEvent> ExecuteAsync(AgentExecutionRequest request, AgentRunContext run,
         AgentToolInvoker toolInvoker, [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -27,23 +27,12 @@ internal sealed class CodexAgentExecutor(ICliProcessFactory processes, IOptions<
             }
             catch (CliProcessException exception)
             {
-                logger.LogWarning("Codex execution ended with {ErrorCode} for run {RunId}.", "Codex" + exception.Code, run.RunId);
-                next = AgentExecutionEvent.Failed(FailureMessage("Codex" + exception.Code), "Codex" + exception.Code);
+                next = AgentExecutionEvent.Failed(FailureMessage("Claude" + exception.Code), "Claude" + exception.Code);
             }
-            catch (CodexException exception)
+            catch (ClaudeException exception)
             {
-                logger.LogWarning("Codex execution ended with {ErrorCode} for run {RunId}.", exception.Code, run.RunId);
-                var model = request.Agent.Executor!.Codex!.Model;
-                var message = exception.Code switch
-                {
-                    "CodexModelNotAvailable" => $"Codex model '{model}' is not available or is not supported by the current Codex CLI/account.",
-                    "CodexReasoningEffortNotSupported" => $"Codex reasoning effort '{request.Agent.Executor.Codex.ReasoningEffort}' is not supported for model '{model}' by the current Codex CLI/account.",
-                    _ => FailureMessage(exception.Code)
-                };
-                next = AgentExecutionEvent.Failed(message, exception.Code) with
-                {
-                    ErrorDetails = new AgentExecutionErrorDetails(Kind, model, exception.ExitCode, exception.Diagnostic)
-                };
+                logger.LogWarning("Claude execution ended with {ErrorCode} for run {RunId}.", exception.Code, run.RunId);
+                next = AgentExecutionEvent.Failed(FailureMessage(exception.Code), exception.Code);
             }
             yield return next;
             if (next.Status != AgentRunStatus.Running) yield break;
@@ -55,14 +44,14 @@ internal sealed class CodexAgentExecutor(ICliProcessFactory processes, IOptions<
     {
         callerToken.ThrowIfCancellationRequested();
         if (request.Agent.Tools.Count != 0 || request.Agent.Rag is { Enabled: true } || request.Query.IndexName is not null)
-            throw new CodexException("CodexCapabilityNotSupported");
+            throw new ClaudeException("ClaudeCapabilityNotSupported");
         var configuration = options.Value;
         var sessionId = request.Query.ProviderSessionId;
-        var command = CodexCommand.Create(configuration, request.Agent.Executor!.Codex!, sessionId);
+        var command = ClaudeCommand.Create(configuration, sessionId);
         var prompt = $"Agent instructions:\n{request.Agent.Instructions}\n\nUser request:\n{request.Query.Message}";
-        if (prompt.Length > configuration.MaxEventCharacters) throw new CodexException("CodexInputLimitExceeded");
+        if (prompt.Length > configuration.MaxEventCharacters) throw new ClaudeException("ClaudeInputLimitExceeded");
         if (sessionId is not null && !sessions.TryEnter(sessionId.ToLowerInvariant()))
-            throw new CodexException("CodexSessionBusy");
+            throw new ClaudeException("ClaudeSessionBusy");
         var lockedSession = sessionId?.ToLowerInvariant();
         try
         {
@@ -81,10 +70,10 @@ internal sealed class CodexAgentExecutor(ICliProcessFactory processes, IOptions<
                 catch (Exception exception) when (exception is OperationCanceledException or IOException or ObjectDisposedException)
                 {
                     callerToken.ThrowIfCancellationRequested();
-                    throw new CodexException(timeout.IsCancellationRequested ? "CodexTimeout" : "CodexProcessIoFailed");
+                    throw new ClaudeException(timeout.IsCancellationRequested ? "ClaudeTimeout" : "ClaudeProcessIoFailed");
                 }
                 callerToken.ThrowIfCancellationRequested();
-                if (timeout.IsCancellationRequested) throw new CodexException("CodexTimeout");
+                if (timeout.IsCancellationRequested) throw new ClaudeException("ClaudeTimeout");
                 yield return next;
             }
         }
@@ -97,7 +86,7 @@ internal sealed class CodexAgentExecutor(ICliProcessFactory processes, IOptions<
         {
             if (lockedSession is null)
             {
-                if (!sessions.TryEnter(confirmed.ToLowerInvariant())) throw new CodexException("CodexSessionBusy");
+                if (!sessions.TryEnter(confirmed.ToLowerInvariant())) throw new ClaudeException("ClaudeSessionBusy");
                 lockedSession = confirmed.ToLowerInvariant();
             }
             run.SetProviderSessionId(confirmed);
@@ -105,21 +94,23 @@ internal sealed class CodexAgentExecutor(ICliProcessFactory processes, IOptions<
     }
 
     private async IAsyncEnumerable<AgentExecutionEvent> RunProcessAsync(System.Diagnostics.ProcessStartInfo command,
-        string prompt, CodexExecutorOptions configuration, string? sessionId, AgentRunContext run,
+        string prompt, ClaudeExecutorOptions configuration, string? sessionId, AgentRunContext run,
         CancellationTokenSource lifetime, Action<string> confirmSession)
     {
         ICliProcess process;
         try { process = processes.Start(command, lifetime.Token); }
         catch (Win32Exception exception) when (exception.NativeErrorCode is 2 or 3)
-        { throw new CodexException("CodexExecutableNotFound"); }
+        { throw new ClaudeException("ClaudeExecutableNotFound"); }
         catch (Exception exception) when (exception is Win32Exception or InvalidOperationException or UnauthorizedAccessException)
-        { throw new CodexException("CodexProcessStartFailed"); }
+        { throw new ClaudeException("ClaudeProcessStartFailed"); }
 
-        var stderr = CliOutputReader.DrainErrorAsync(process.StandardError, lifetime.Token);
-        var input = process.WriteInputAsync(prompt, lifetime.Token);
+        Task<string> stderr = Task.FromResult(string.Empty);
+        Task input = Task.CompletedTask;
         try
         {
-            var protocol = new CodexJsonProtocol(sessionId);
+            stderr = CliOutputReader.DrainErrorAsync(process.StandardError, lifetime.Token);
+            input = process.WriteInputAsync(prompt, lifetime.Token);
+            var protocol = new ClaudeJsonProtocol(sessionId);
             await foreach (var line in CliOutputReader.ReadLinesAsync(process.StandardOutput,
                                configuration.MaxEventCharacters, configuration.MaxOutputCharacters, lifetime.Token))
             {
@@ -132,11 +123,11 @@ internal sealed class CodexAgentExecutor(ICliProcessFactory processes, IOptions<
             // A completed JSON event is provisional until the actual process exits successfully.
             if (exitCode != 0)
             {
-                logger.LogWarning("Codex exited with code {ExitCode} for run {RunId}.", exitCode, run.RunId);
-                throw ProcessFailure(protocol, exitCode, diagnostic);
+                logger.LogWarning("Claude exited with code {ExitCode} for run {RunId}.", exitCode, run.RunId);
+                throw new ClaudeException(protocol.FailureCode ?? ClaudeJsonProtocol.ClassifyFailure(diagnostic));
             }
             await input;
-            if (!protocol.Completed) throw ProcessFailure(protocol, exitCode, diagnostic);
+            if (!protocol.Completed) throw new ClaudeException(protocol.FailureCode ?? "ClaudeOutputInvalid");
             yield return AgentExecutionEvent.Completed();
         }
         finally
@@ -152,17 +143,6 @@ internal sealed class CodexAgentExecutor(ICliProcessFactory processes, IOptions<
         }
     }
 
-    private static CodexException ProcessFailure(CodexJsonProtocol protocol, int exitCode, string stderr)
-    {
-        // Keep both bounded diagnostic sources, but do not publish them as the user-facing error.
-        var diagnostic = string.Join("\n", new[] { protocol.FailureDiagnostic, stderr }
-            .Where(value => !string.IsNullOrEmpty(value)));
-        var code = CodexJsonProtocol.ClassifyFailure(diagnostic);
-        if (code == "CodexProcessFailed" && exitCode == 0 && protocol.FailureCode is null)
-            code = "CodexOutputInvalid";
-        return new CodexException(code, exitCode, diagnostic);
-    }
-
     private static async Task ObservePumpAsync(Task task)
     {
         try { await task; }
@@ -172,21 +152,21 @@ internal sealed class CodexAgentExecutor(ICliProcessFactory processes, IOptions<
 
     private static string FailureMessage(string code) => code switch
     {
-        "CodexNotInstalled" => "Codex was not found on PATH. Install the CLI or configure its native executable path.",
-        "CodexExecutableNotFound" => "The configured Codex executable was not found.",
-        "CodexAuthenticationFailed" => "Codex authentication failed. Sign in using the CLI under the host account.",
-        "CodexConfigurationInvalid" => "Codex configuration is invalid. Check the workspace, sandbox and CLI configuration.",
-        "CodexProcessStartFailed" => "The Codex process could not be started.",
-        "CodexTimeout" => "Codex exceeded the configured execution timeout.",
-        "CodexOutputInvalid" => "Codex returned malformed or incomplete execution output.",
-        "CodexOutputLimitExceeded" => "Codex output exceeded the configured limit.",
-        "CodexInputLimitExceeded" => "The Codex prompt exceeded the configured limit.",
-        "CodexSessionInvalid" => "The Codex session identifier is invalid or differs from the requested session.",
-        "CodexSessionNotFound" => "The requested Codex session was not found.",
-        "CodexSessionBusy" => "The Codex session is already executing in this host.",
-        "CodexCapabilityNotSupported" => "The Codex CLI executor does not support Runiq tool or RAG bindings.",
-        "CodexProcessIoFailed" => "Communication with the Codex process failed.",
-        "CodexPlatformNotSupported" => "The local Codex process adapter currently supports Windows and Linux hosts.",
-        _ => "Codex execution failed. Check the CLI installation and its local configuration."
+        "ClaudeNotInstalled" => "Claude was not found on PATH. Install the CLI or configure its native executable path.",
+        "ClaudeExecutableNotFound" => "The configured Claude executable was not found.",
+        "ClaudeAuthenticationFailed" => "Claude authentication failed. Sign in using the CLI under the host account.",
+        "ClaudeConfigurationInvalid" => "Claude configuration is invalid. Check the workspace and CLI settings.",
+        "ClaudeProcessStartFailed" => "The Claude process could not be started.",
+        "ClaudeTimeout" => "Claude exceeded the configured execution timeout.",
+        "ClaudeOutputInvalid" => "Claude returned malformed or incomplete execution output.",
+        "ClaudeOutputLimitExceeded" => "Claude output exceeded the configured limit.",
+        "ClaudeInputLimitExceeded" => "The Claude prompt exceeded the configured limit.",
+        "ClaudeSessionInvalid" => "The Claude session identifier is invalid or differs from the requested session.",
+        "ClaudeSessionNotFound" => "The requested Claude session was not found.",
+        "ClaudeSessionBusy" => "The Claude session is already executing in this host.",
+        "ClaudeCapabilityNotSupported" => "The Claude CLI executor does not support Runiq tool or RAG bindings.",
+        "ClaudeProcessIoFailed" => "Communication with the Claude process failed.",
+        "ClaudePlatformNotSupported" => "The local Claude process adapter currently supports Windows and Linux hosts.",
+        _ => "Claude execution failed. Check the CLI installation and its local configuration."
     };
 }

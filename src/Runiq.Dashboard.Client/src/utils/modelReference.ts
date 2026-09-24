@@ -5,7 +5,11 @@ export type ParsedModelReference = {
 
 export function parseModelReference(
   modelReference: string | null | undefined,
+  providerOverride?: string | null,
 ): ParsedModelReference {
+  if (providerOverride) {
+    return { provider: providerOverride, model: modelReference || 'Not configured' };
+  }
   if (!modelReference) {
     return {
       provider: 'Not configured',

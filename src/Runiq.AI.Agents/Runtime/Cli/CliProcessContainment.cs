@@ -3,10 +3,10 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
-namespace Runiq.AI.Agents.Runtime.Codex;
+namespace Runiq.AI.Agents.Runtime.Cli;
 
 /// <summary>Keeps ordinary CLI descendants owned after their parent exits or the consumer abandons a run.</summary>
-internal sealed class CodexProcessContainment : IDisposable
+internal sealed class CliProcessContainment : IDisposable
 {
     private readonly SafeFileHandle? job;
     private readonly int? processGroup;
@@ -14,10 +14,10 @@ internal sealed class CodexProcessContainment : IDisposable
     internal static void Prepare(ProcessStartInfo start)
     {
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
-            throw new CodexException("CodexPlatformNotSupported");
+            throw new CliProcessException("PlatformNotSupported");
         if (!OperatingSystem.IsLinux()) return;
         var setsid = new[] { "/usr/bin/setsid", "/bin/setsid" }.FirstOrDefault(File.Exists)
-            ?? throw new CodexException("CodexConfigurationInvalid");
+            ?? throw new CliProcessException("ConfigurationInvalid");
         var executable = start.FileName;
         var arguments = start.ArgumentList.ToArray();
         start.FileName = setsid;
@@ -27,12 +27,12 @@ internal sealed class CodexProcessContainment : IDisposable
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
     }
 
-    internal CodexProcessContainment(Process process) => processGroup = process.Id;
+    internal CliProcessContainment(Process process) => processGroup = process.Id;
 
     // Windows membership is supplied to CreateProcessW, never assigned to an already running process.
     internal SafeFileHandle Job => job ?? throw new InvalidOperationException("No Windows job exists.");
 
-    internal CodexProcessContainment()
+    internal CliProcessContainment()
     {
         job = CreateJobObject(IntPtr.Zero, null);
         try

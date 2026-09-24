@@ -21,7 +21,7 @@ public sealed class AgentRunContextTests
         using var services = new ServiceCollection().BuildServiceProvider();
         using var cancellation = new CancellationTokenSource();
         var executor = new ContextExecutor();
-        var agent = new Agent("agent", "Agent", "instructions").UseCodex();
+        var agent = new Agent("agent", "Agent", "instructions").UseCodex(options => options.Model = "gpt-6-sol");
         var query = new AgentQuery(mode) { IndexName = "override-index" };
         var runtime = CreateRuntime(agent, executor, services);
         var stream = runtime.ExecuteStreamAsync(agent.Id, query, cancellationToken: cancellation.Token);
@@ -77,7 +77,7 @@ public sealed class AgentRunContextTests
         using var services = new ServiceCollection().BuildServiceProvider();
         using var cancellation = new CancellationTokenSource();
         var executor = new ContextExecutor();
-        var agent = new Agent("agent", "Agent", "instructions").UseCodex();
+        var agent = new Agent("agent", "Agent", "instructions").UseCodex(options => options.Model = "gpt-6-sol");
         var stream = CreateRuntime(agent, executor, services).ExecuteStreamAsync(agent.Id, new AgentQuery("same input"));
         await using var first = stream.GetAsyncEnumerator(cancellation.Token);
         await using var second = stream.GetAsyncEnumerator();

@@ -46,8 +46,9 @@ reaches exactly one terminal state; the first terminal transition wins. There is
 no approval-waiting state or Runiq-owned persistence. Session continuation is an
 executor capability: the opt-in Codex adapter resumes the CLI's persisted sessions.
 Runtime owns lifecycle and executor resolution; the model executor retains the
-existing provider-neutral model, RAG and tool orchestration. The Codex adapter requires
-explicit registration; Claude remains host-supplied. Unregistered kinds retain the unsupported error code with no model fallback.
+existing provider-neutral model, RAG and tool orchestration. The Codex and Claude adapters are registered automatically when agents selecting
+them are added through `AddRuniqServer`. Low-level runtimes with missing executor
+implementations retain the unsupported error code with no model fallback.
 
 Every runtime event and returned result carries the same run identity. Existing
 event ordering is retained; no start event is inserted. A fully consumed normal
@@ -211,8 +212,9 @@ selection returns `AgentExecutorMissing`; an absent implementation returns
 are configuration errors at runtime resolution, rather than per-run failure results.
 
 Missing selection is `AgentExecutorMissing`. A selected kind without a registered
-implementation is `AgentExecutorNotSupported`; default Codex and Claude selections
-therefore remain unsupported without model fallback. An explicitly registered
+implementation is `AgentExecutorNotSupported` in a manually assembled runtime.
+`AddRuniqServer` discovers Codex/Claude selections and registers their built-in
+adapters automatically, preserving the no-model-fallback rule. A registered
 implementation is dispatched by kind, before any built-in RAG or provider work.
 Executor startup, iteration and cleanup failures use the existing generic failure
 contract and correlated server logging. Cancellation retains the exception-based

@@ -1,14 +1,14 @@
 using System.Diagnostics;
 
-namespace Runiq.AI.Agents.Runtime.Codex;
+namespace Runiq.AI.Agents.Runtime.Cli;
 
 // The only extra abstraction is the OS process boundary, so contract tests need no CLI or credentials.
-internal interface ICodexProcessFactory
+internal interface ICliProcessFactory
 {
-    ICodexProcess Start(ProcessStartInfo startInfo, CancellationToken cancellationToken);
+    ICliProcess Start(ProcessStartInfo startInfo, CancellationToken cancellationToken);
 }
 
-internal interface ICodexProcess : IAsyncDisposable
+internal interface ICliProcess : IAsyncDisposable
 {
     TextReader StandardOutput { get; }
     TextReader StandardError { get; }

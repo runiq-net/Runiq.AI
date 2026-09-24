@@ -74,7 +74,7 @@ public sealed class LegacyModelCompatibilityTests
         var agent = new Agent("agent", "Agent", "instructions");
         if (kind == AgentExecutorKind.Model)
             agent.UseModel("openai/model", "secret-api-key", new ProviderOptions { Url = "https://private-provider.invalid" });
-        if (kind == AgentExecutorKind.Codex) agent.UseCodex();
+        if (kind == AgentExecutorKind.Codex) agent.UseCodex(options => options.Model = "gpt-6-sol");
         if (kind == AgentExecutorKind.Claude) agent.UseClaude();
         Assert.Equal(kind, agent.Executor?.Kind);
         var getters = new Func<object>[] { () => agent.Model, () => agent.ModelReference, () => agent.ProviderName,
@@ -98,14 +98,15 @@ public sealed class LegacyModelCompatibilityTests
             }
         }
         var metadata = Assert.Single(new RuntimeMetadataService([agent]).GetAgents());
-        Assert.Equal(kind == AgentExecutorKind.Model ? "openai/model" : null, metadata.Model);
-        Assert.Equal(kind == AgentExecutorKind.Model ? "minimal" : null, metadata.ReasoningEffort);
+        Assert.Equal(kind switch { AgentExecutorKind.Model => "openai/model", AgentExecutorKind.Codex => "gpt-6-sol", _ => null }, metadata.Model);
+        Assert.Equal(kind switch { AgentExecutorKind.Model => "minimal", AgentExecutorKind.Codex => "high", _ => null }, metadata.ReasoningEffort);
         Assert.Equal(kind == AgentExecutorKind.Model ? "low" : null, metadata.Verbosity);
         var json = JsonSerializer.Serialize(metadata);
         Assert.DoesNotContain("secret-api-key", json);
         Assert.DoesNotContain("private-provider.invalid", json);
         Assert.DoesNotContain("ApiKey", json);
-        Assert.DoesNotContain("Provider", json);
+        Assert.Equal(kind == AgentExecutorKind.Codex ? "Codex CLI" : null, metadata.Provider);
+        Assert.DoesNotContain("ProviderOptions", json);
     }
 
     private sealed class PositionalAgent() : Agent("agent", "Agent", "instructions", "openai/model");

@@ -1,6 +1,6 @@
 namespace Runiq.AI.Agents.Configuration;
 
-/// <summary>Configures the explicitly enabled local Codex CLI executor.</summary>
+/// <summary>Configures the agent-selected local Codex CLI executor.</summary>
 public sealed class CodexExecutorOptions
 {
     /// <summary>Gets or sets an absolute native executable path; null discovers codex on PATH.</summary>
@@ -8,6 +8,7 @@ public sealed class CodexExecutorOptions
     public string? ExecutablePath { get; set; }
 
     /// <summary>Gets or sets the absolute repository directory used for new and resumed executions.</summary>
+    /// <remarks>An empty value uses the host content root, or the current directory when no host environment is registered.</remarks>
     public string WorkingDirectory { get; set; } = string.Empty;
 
     /// <summary>Gets or sets the maximum duration of one CLI invocation, including output consumption.</summary>

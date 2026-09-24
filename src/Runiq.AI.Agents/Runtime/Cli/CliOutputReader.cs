@@ -1,9 +1,9 @@
 using System.Runtime.CompilerServices;
 using System.Text;
 
-namespace Runiq.AI.Agents.Runtime.Codex;
+namespace Runiq.AI.Agents.Runtime.Cli;
 
-internal static class CodexOutputReader
+internal static class CliOutputReader
 {
     internal static async IAsyncEnumerable<string> ReadLinesAsync(TextReader reader, int lineLimit, int totalLimit,
         [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -15,7 +15,7 @@ internal static class CodexOutputReader
         while ((count = await reader.ReadAsync(buffer.AsMemory(), cancellationToken)) != 0)
         {
             total += count;
-            if (total > totalLimit) throw new CodexException("CodexOutputLimitExceeded");
+            if (total > totalLimit) throw new CliProcessException("OutputLimitExceeded");
             for (var index = 0; index < count; index++)
             {
                 if (buffer[index] == '\n')
@@ -26,7 +26,7 @@ internal static class CodexOutputReader
                 }
                 else
                 {
-                    if (line.Length >= lineLimit) throw new CodexException("CodexOutputLimitExceeded");
+                    if (line.Length >= lineLimit) throw new CliProcessException("OutputLimitExceeded");
                     line.Append(buffer[index]);
                 }
             }

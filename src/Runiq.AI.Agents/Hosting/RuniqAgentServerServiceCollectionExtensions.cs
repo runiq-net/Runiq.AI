@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Runiq.AI.Agents;
+using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Agents.Providers.OpenAI;
 using Runiq.AI.Agents.Providers;
 using Runiq.AI.Agents.Runtime;
@@ -29,7 +30,7 @@ namespace Runiq.AI.Core;
 public static class RuniqAgentServerServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers Core server services plus host-defined agent, tool, and context space definitions.
+    /// Registers Core server services, host definitions, and the local CLI executors selected by registered agents.
     /// </summary>
     /// <param name="services">The host application's service collection.</param>
     /// <param name="configure">A callback that adds agents, tools, and context spaces to the server options.</param>
@@ -60,6 +61,12 @@ public static class RuniqAgentServerServiceCollectionExtensions
 
         services.AddRuniqServer();
         services.AddRuniqAgentServer();
+
+        foreach (var kind in options.Agents.Select(agent => agent.Executor!.Kind).Distinct())
+        {
+            if (kind == AgentExecutorKind.Codex) services.RegisterCodexExecutor();
+            if (kind == AgentExecutorKind.Claude) services.RegisterClaudeExecutor();
+        }
 
         return services;
     }

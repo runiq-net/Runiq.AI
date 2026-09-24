@@ -6,7 +6,7 @@ namespace Runiq.AI.Agents.Runtime.Codex;
 
 internal static class CodexCommand
 {
-    internal static ProcessStartInfo Create(CodexExecutorOptions options, string? sessionId)
+    internal static ProcessStartInfo Create(CodexExecutorOptions options, CodexAgentConfiguration agent, string? sessionId)
     {
         if (!Path.IsPathFullyQualified(options.WorkingDirectory) || !Directory.Exists(options.WorkingDirectory) ||
             options.Timeout <= TimeSpan.Zero || options.Timeout.TotalMilliseconds > uint.MaxValue - 1 ||
@@ -39,8 +39,18 @@ internal static class CodexCommand
         if (sessionId is not null)
         {
             start.ArgumentList.Add("resume");
-            start.ArgumentList.Add(sessionId);
         }
+        // Resume accepts its own model flag; explicit overrides preserve the agent's settings across turns.
+        start.ArgumentList.Add("--model");
+        start.ArgumentList.Add(agent.Model);
+        start.ArgumentList.Add("-c");
+        start.ArgumentList.Add($"model_reasoning_effort=\"{agent.ReasoningEffort.ToString().ToLowerInvariant()}\"");
+        if (agent.ServiceTier == CodexServiceTier.Fast)
+        {
+            start.ArgumentList.Add("-c");
+            start.ArgumentList.Add("service_tier=\"fast\"");
+        }
+        if (sessionId is not null) start.ArgumentList.Add(sessionId);
         // Prompts are written to stdin, never interpreted by a shell or exposed in process arguments.
         start.ArgumentList.Add("-");
         return start;
@@ -85,7 +95,9 @@ internal static class CodexCommand
     }
 }
 
-internal sealed class CodexException(string code) : Exception(code)
+internal sealed class CodexException(string code, int? exitCode = null, string? diagnostic = null) : Exception(code)
 {
     internal string Code { get; } = code;
+    internal int? ExitCode { get; } = exitCode;
+    internal string? Diagnostic { get; } = diagnostic;
 }

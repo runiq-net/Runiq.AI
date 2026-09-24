@@ -1,3 +1,4 @@
+using Runiq.AI.Agents.Runtime.Cli;
 using System.Diagnostics;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
@@ -7,7 +8,7 @@ using Runiq.AI.Agents.Runtime.Codex;
 
 namespace Runiq.AI.Agents.Tests.Agents;
 
-public sealed class CodexProcessTests
+public sealed class CliProcessTests
 {
     [Fact]
     // Verifies actual redirected pipes support stdin, concurrent stderr draining and exit-code propagation without Codex.
@@ -17,8 +18,8 @@ public sealed class CodexProcessTests
             "$line = [Console]::ReadLine(); [Console]::Out.WriteLine($line); [Console]::Error.Write(('x' * 100000)); exit 7",
             "read line; printf '%s\\n' \"$line\"; head -c 100000 /dev/zero >&2; exit 7");
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        await using var process = new CodexProcessFactory().Start(start, deadline.Token);
-        var error = CodexOutputReader.DrainErrorAsync(process.StandardError, deadline.Token);
+        await using var process = new CliProcessFactory().Start(start, deadline.Token);
+        var error = CliOutputReader.DrainErrorAsync(process.StandardError, deadline.Token);
         await process.WriteInputAsync("literal $() ; & <input>\n", deadline.Token);
         Assert.Equal("literal $() ; & <input>", await process.StandardOutput.ReadLineAsync(deadline.Token));
         Assert.Equal(7, await process.WaitForExitAsync(deadline.Token));
@@ -35,7 +36,7 @@ public sealed class CodexProcessTests
             "$child = Start-Process powershell.exe -ArgumentList '-NoProfile -NonInteractive -Command Start-Sleep 120' -WindowStyle Hidden -PassThru; [Console]::Out.WriteLine($child.Id); Start-Sleep 120",
             "sleep 120 & echo $!; wait");
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        var process = new CodexProcessFactory().Start(start, deadline.Token);
+        var process = new CliProcessFactory().Start(start, deadline.Token);
         Process? child = null;
         try
         {
@@ -69,7 +70,7 @@ public sealed class CodexProcessTests
             "$child = Start-Process powershell.exe -ArgumentList '-NoProfile -NonInteractive -Command Start-Sleep 120' -WindowStyle Hidden -PassThru; [Console]::Out.WriteLine($child.Id); Start-Sleep 1; exit 0",
             "sleep 120 & echo $!; sleep 1; exit 0");
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        await using var process = new CodexProcessFactory().Start(start, deadline.Token);
+        await using var process = new CliProcessFactory().Start(start, deadline.Token);
         var id = int.Parse((await process.StandardOutput.ReadLineAsync(deadline.Token))!);
         using var child = Process.GetProcessById(id);
         Assert.Equal(0, await process.WaitForExitAsync(deadline.Token));
@@ -90,7 +91,7 @@ public sealed class CodexProcessTests
             "");
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         using var lifetime = new CancellationTokenSource();
-        using var started = CodexWindowsProcess.Start(start);
+        using var started = CliWindowsProcess.Start(start);
         using var child = Process.GetProcessById(int.Parse((await started.Output.ReadLineAsync(deadline.Token))!));
         try
         {
@@ -106,7 +107,7 @@ public sealed class CodexProcessTests
                 Assert.False(child.HasExited);
             }
 
-            await using (var wrapper = new CodexProcessFactory.CodexProcess(started, lifetime.Token))
+            await using (var wrapper = new CliProcessFactory.CliProcess(started, lifetime.Token))
             {
                 if (completion == "cancel") await lifetime.CancelAsync();
                 if (completion == "timeout") lifetime.CancelAfter(TimeSpan.FromMilliseconds(1));
@@ -132,7 +133,7 @@ public sealed class CodexProcessTests
         var start = Command("exit 0", "");
         if (invalidDirectory) start.WorkingDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         else start.FileName = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".exe");
-        var error = Assert.Throws<Win32Exception>(() => new CodexProcessFactory().Start(start, CancellationToken.None));
+        var error = Assert.Throws<Win32Exception>(() => new CliProcessFactory().Start(start, CancellationToken.None));
         Assert.Equal(expectedCode, error.NativeErrorCode);
     }
 
@@ -146,7 +147,7 @@ public sealed class CodexProcessTests
         start.StandardOutputEncoding = Encoding.UTF8;
         start.Environment["RUNIQ_NATIVE_TEST"] = "Türkçe 日本語 " + value;
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        await using var process = new CodexProcessFactory().Start(start, deadline.Token);
+        await using var process = new CliProcessFactory().Start(start, deadline.Token);
         Assert.Equal("quoted \\", await process.StandardOutput.ReadLineAsync(deadline.Token));
         Assert.Equal("Türkçe 日本語 " + value, await process.StandardOutput.ReadLineAsync(deadline.Token));
         Assert.Equal(Path.TrimEndingDirectorySeparator(start.WorkingDirectory),
@@ -163,7 +164,7 @@ public sealed class CodexProcessTests
     [InlineData("a\\\"b", "\"a\\\\\\\"b\"")]
     // Protects the Windows argv escaping rules required when bypassing Process.Start.
     public void WindowsArguments_EscapeQuotesAndBackslashes(string argument, string expected)
-        => Assert.Equal(expected, CodexWindowsProcess.QuoteArgument(argument));
+        => Assert.Equal(expected, CliWindowsProcess.QuoteArgument(argument));
 
     private sealed class WindowsTheoryAttribute : TheoryAttribute
     {
