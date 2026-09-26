@@ -6,7 +6,7 @@ namespace Runiq.AI.Agents.Runtime.Claude;
 
 internal static class ClaudeCommand
 {
-    internal static ProcessStartInfo Create(ClaudeExecutorOptions options, string? sessionId)
+    internal static ProcessStartInfo Create(ClaudeExecutorOptions options, ClaudeAgentConfiguration agent, string? sessionId)
     {
         if (string.IsNullOrWhiteSpace(options.WorkingDirectory) ||
             !Path.IsPathFullyQualified(options.WorkingDirectory) || !Directory.Exists(options.WorkingDirectory) ||
@@ -30,10 +30,15 @@ internal static class ClaudeCommand
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8
         };
-        // Use the CLI account/configuration as-is; no API client or separate credentials are introduced.
+        // Keep CLI authentication intact, but prevent inherited effort from overriding this agent's explicit choice.
+        start.Environment.Remove("CLAUDE_CODE_EFFORT_LEVEL");
         foreach (var argument in new[] { "--print", "--output-format", "stream-json", "--verbose",
                      "--include-partial-messages", "--permission-mode", "dontAsk" })
             start.ArgumentList.Add(argument);
+        start.ArgumentList.Add("--model");
+        start.ArgumentList.Add(agent.Model);
+        start.ArgumentList.Add("--effort");
+        start.ArgumentList.Add(agent.ReasoningEffort.ToString().ToLowerInvariant());
         if (sessionId is not null)
         {
             start.ArgumentList.Add("--resume");

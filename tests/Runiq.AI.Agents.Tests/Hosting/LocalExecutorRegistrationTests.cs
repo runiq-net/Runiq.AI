@@ -33,7 +33,7 @@ public sealed class LocalExecutorRegistrationTests
             services.AddRuniqServer(options =>
             {
                 options.AddAgent(new Agent($"codex-{index}", "Codex", "").UseCodex(o => o.Model = "model"));
-                options.AddAgent(new Agent($"claude-{index}", "Claude", "").UseClaude());
+                options.AddAgent(new Agent($"claude-{index}", "Claude", "").UseClaude(claude => claude.Model = "sonnet"));
             });
         }
         if (!customBefore) RegisterCustom();
@@ -79,7 +79,7 @@ public sealed class LocalExecutorRegistrationTests
         if (customBefore) RegisterCustom();
         var agent = new Agent("local", "Local", "");
         if (kind == AgentExecutorKind.Codex) agent.UseCodex(o => o.Model = "model");
-        else agent.UseClaude();
+        else agent.UseClaude(claude => claude.Model = "sonnet");
         services.AddRuniqServer(o => o.AddAgent(agent));
         if (!customBefore) RegisterCustom();
         using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
@@ -119,7 +119,7 @@ public sealed class LocalExecutorRegistrationTests
         var services = new ServiceCollection().AddLogging();
         var agent = new Agent("local", "Local", "");
         if (codex) agent.UseCodex(options => options.Model = "model");
-        else agent.UseClaude();
+        else agent.UseClaude(claude => claude.Model = "sonnet");
         services.AddRuniqServer(options => options.AddAgent(agent));
         var missingExecutable = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".exe");
         services.Configure<CodexExecutorOptions>(options => options.ExecutablePath = missingExecutable);
@@ -139,7 +139,7 @@ public sealed class LocalExecutorRegistrationTests
             services.AddRuniqServer(options =>
             {
                 options.AddAgent(new Agent("codex", "Codex", "").UseCodex(o => o.Model = "model"));
-                options.AddAgent(new Agent("claude", "Claude", "").UseClaude());
+                options.AddAgent(new Agent("claude", "Claude", "").UseClaude(claude => claude.Model = "sonnet"));
             })).Build();
         var expected = host.Services.GetRequiredService<IHostEnvironment>().ContentRootPath;
         Assert.Equal(expected, host.Services.GetRequiredService<IOptions<CodexExecutorOptions>>().Value.WorkingDirectory);
@@ -160,7 +160,7 @@ public sealed class LocalExecutorRegistrationTests
             services.AddRuniqServer(options =>
             {
                 if (codex) options.AddAgent(new Agent($"codex-{index}", "Codex", "").UseCodex(o => o.Model = "future-model"));
-                if (claude) options.AddAgent(new Agent($"claude-{index}", "Claude", "").UseClaude());
+                if (claude) options.AddAgent(new Agent($"claude-{index}", "Claude", "").UseClaude(claude => claude.Model = "sonnet"));
                 options.AddAgent(new Agent($"model-{index}", "Model", "").UseModel("openai/model"));
             });
         }
@@ -200,7 +200,7 @@ public sealed class LocalExecutorRegistrationTests
             services.AddRuniqServer(options =>
             {
                 options.AddAgent(new Agent("codex", "Codex", "").UseCodex(o => o.Model = "model-a"));
-                options.AddAgent(new Agent("claude", "Claude", "").UseClaude());
+                options.AddAgent(new Agent("claude", "Claude", "").UseClaude(claude => claude.Model = "sonnet"));
             });
             if (!configureBefore) Configure(services);
         }).Build();
@@ -224,7 +224,7 @@ public sealed class LocalExecutorRegistrationTests
         services.AddRuniqServer(options =>
         {
             options.AddAgent(new Agent("codex", "Codex", "").UseCodex(o => o.Model = "model"));
-            options.AddAgent(new Agent("claude", "Claude", "").UseClaude());
+            options.AddAgent(new Agent("claude", "Claude", "").UseClaude(claude => claude.Model = "sonnet"));
         });
         using var provider = services.BuildServiceProvider();
         Assert.Equal(Directory.GetCurrentDirectory(), provider.GetRequiredService<IOptions<CodexExecutorOptions>>().Value.WorkingDirectory);

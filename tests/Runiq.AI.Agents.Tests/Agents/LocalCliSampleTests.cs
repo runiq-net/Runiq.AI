@@ -50,6 +50,8 @@ public sealed class LocalCliSampleTests
         Assert.Empty(metadata[1].Tools);
         var claude = ClaudeProjectAssistant.Create();
         Assert.Equal(AgentExecutorKind.Claude, claude.Executor!.Kind);
+        Assert.Equal("sonnet", claude.Executor.Claude!.Model);
+        Assert.Equal(ClaudeReasoningEffort.High, claude.Executor.Claude.ReasoningEffort);
         Assert.Equal("claude-project-assistant", claude.Id);
         Assert.Equal("change_summary", Assert.Single(claude.Tools).Name);
     }

@@ -6,14 +6,19 @@ namespace Runiq.AI.Agents.Tests.Hosting.Metadata;
 public sealed class RuntimeMetadataServiceTests
 {
     [Fact]
-    // Verifies Claude identifies its CLI provider without inventing a locally selected model.
-    public void GetAgents_Claude_ProjectsProviderWithUnknownModel()
+    // Verifies Claude metadata exposes its explicit model and reasoning settings without provider credentials.
+    public void GetAgents_Claude_ProjectsProviderAndAgentModel()
     {
-        var agent = new Agent("claude", "Claude", "instructions").UseClaude();
+        var agent = new Agent("claude", "Claude", "instructions").UseClaude(claude => claude.Model = "sonnet");
         var metadata = Assert.Single(new RuntimeMetadataService([agent]).GetAgents());
         Assert.Equal("Claude CLI", metadata.Provider);
-        Assert.Null(metadata.Model);
-        Assert.Null(metadata.ReasoningEffort);
+        Assert.Equal("sonnet", metadata.Model);
+        Assert.Equal("high", metadata.ReasoningEffort);
+        Assert.Null(metadata.Verbosity);
+        var json = System.Text.Json.JsonSerializer.SerializeToElement(metadata,
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        Assert.Equal("sonnet", json.GetProperty("model").GetString());
+        Assert.Equal("high", json.GetProperty("reasoningEffort").GetString());
     }
 
     [Theory]

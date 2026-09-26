@@ -1,8 +1,38 @@
 # Local Claude Code executor
 
-`UseClaude()` selects the existing `IAgentExecutor` contract. Adding that agent
+`UseClaude(options => options.Model = "sonnet")` selects the existing `IAgentExecutor` contract. Adding that agent
 through `AddRuniqServer` automatically registers the local CLI adapter; no separate
 executor registration, API client or API key option is needed.
+
+## Agent model configuration
+
+`UseClaude(Action<ClaudeAgentOptions>)` requires an explicit model name or alias.
+The parameterless overload has been removed; migrate existing `UseClaude()` calls:
+
+```csharp
+agent.UseClaude(options =>
+{
+    options.Model = "sonnet";
+    options.ReasoningEffort = ClaudeReasoningEffort.High;
+});
+```
+
+Null callbacks, blank models and undefined reasoning values fail at definition time without
+selecting an executor. Settings are copied into immutable `agent.Executor.Claude`.
+Reasoning defaults to `High`; supported configuration values are `Low`, `Medium`, `High`,
+`XHigh` and `Max`. The CLI decides model availability and supported effort levels; Runiq
+does not maintain a compatibility catalog. There is no Claude service-tier option.
+
+Every invocation, including resume, sends `--model <model>` and `--effort <lowercase effort>`.
+`CLAUDE_CODE_EFFORT_LEVEL` is removed from the child environment so it cannot override the
+agent's explicit selection. CLI policy may still limit effective effort. Authentication,
+permissions, tool bridging and host process options retain their existing behavior.
+Studio metadata exposes the configured model and requested reasoning effort.
+
+The flags follow the official [CLI reference](https://code.claude.com/docs/en/cli-reference)
+and [effort configuration](https://code.claude.com/docs/en/model-config#adjust-effort-level).
+
+## Host registration
 
 ```csharp
 using Runiq.AI.Agents;
@@ -11,7 +41,7 @@ using Runiq.AI.Agents.Runtime;
 using Runiq.AI.Core;
 
 builder.Services.AddRuniqServer(server => server.AddAgent(
-    new Agent("coder", "Coder", "Inspect this project and explain your findings.").UseClaude()));
+    new Agent("coder", "Coder", "Inspect this project and explain your findings.").UseClaude(options => options.Model = "sonnet")));
 // Optional host/process overrides; executor registration is automatic.
 builder.Services.Configure<ClaudeExecutorOptions>(options =>
 {
@@ -42,11 +72,11 @@ is built during registration; CLI process creation happens only during execution
 ## CLI, authentication and permissions
 
 The adapter launches `claude --print --output-format stream-json --verbose
---include-partial-messages --permission-mode dontAsk`. Agent instructions precede
+--include-partial-messages --permission-mode dontAsk --model <model> --effort <effort>`. Agent instructions precede
 the request in stdin; neither is interpreted by a shell or placed in arguments.
 CLI/project instructions retain Claude's normal precedence. The child inherits
-the current account's home, environment and Claude configuration unchanged, including
-any authentication mechanism already configured. Runiq does not read credentials,
+the current account's home and Claude configuration, including its authentication,
+with agent model/effort overrides and the effort environment exclusion described above. Runiq does not read credentials,
 log in, inject keys or make independent model API calls.
 
 `dontAsk` denies actions requiring interactive approval; existing Claude permission
@@ -208,7 +238,7 @@ Attach existing typed Runiq tools directly to a Claude agent:
 
 ```csharp
 new Agent("assistant", "Assistant", "Use change_summary for supplied change counts.")
-    .UseClaude()
+    .UseClaude(options => options.Model = "sonnet")
     .AddTool<ChangeSummaryTool>();
 ```
 

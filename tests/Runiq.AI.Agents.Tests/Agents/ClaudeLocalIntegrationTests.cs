@@ -14,7 +14,7 @@ public sealed class ClaudeLocalIntegrationTests
     {
         var services = new ServiceCollection().AddLogging();
         services.AddRuniqServer(o => o.AddAgent(new Agent("tools", "Tools", "Always use change_summary for change counts.")
-            .UseClaude().AddTool<Runiq.AI.LocalCliAgents.Tools.ChangeSummaryTool>()));
+            .UseClaude(claude => claude.Model = "sonnet").AddTool<Runiq.AI.LocalCliAgents.Tools.ChangeSummaryTool>()));
         services.Configure<ClaudeExecutorOptions>(o =>
         {
             o.WorkingDirectory = Path.GetTempPath();
@@ -47,7 +47,7 @@ public sealed class ClaudeLocalIntegrationTests
         {
             var collection = new ServiceCollection().AddLogging();
             collection.AddRuniqServer(options => options.AddAgent(new Agent("claude", "Claude",
-                "Do not use tools, read files, change files, or run commands. Answer only the user's memory question.").UseClaude()));
+                "Do not use tools, read files, change files, or run commands. Answer only the user's memory question.").UseClaude(claude => claude.Model = "sonnet")));
             collection.Configure<ClaudeExecutorOptions>(options =>
             {
                 options.WorkingDirectory = workspace.FullName;

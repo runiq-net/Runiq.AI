@@ -38,7 +38,7 @@ public abstract class CliToolBridgeTests
             Assert.False(result.IsError);
             return Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         });
-        await using var provider = Services(factory, agent: Claude ? new Agent("quick-project-assistant", "Quick", "Use tools").UseClaude().AddTool<Runiq.AI.LocalCliAgents.Tools.ChangeSummaryTool>() : QuickProjectAssistant.Create());
+        await using var provider = Services(factory, agent: Claude ? new Agent("quick-project-assistant", "Quick", "Use tools").UseClaude(claude => claude.Model = "sonnet").AddTool<Runiq.AI.LocalCliAgents.Tools.ChangeSummaryTool>() : QuickProjectAssistant.Create());
         await using var scope = provider.CreateAsyncScope();
         var result = await scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>().ExecuteAsync("quick-project-assistant", "Summarize these changes");
         Assert.Null(factory.Failure);
@@ -281,7 +281,7 @@ public abstract class CliToolBridgeTests
         return services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
     }
 
-    private Agent Select(Agent agent) => Claude ? agent.UseClaude() : agent.UseCodex(o => o.Model = "test-model");
+    private Agent Select(Agent agent) => Claude ? agent.UseClaude(claude => claude.Model = "sonnet") : agent.UseCodex(o => o.Model = "test-model");
 
     private static Uri Endpoint(ProcessStartInfo command)
     {

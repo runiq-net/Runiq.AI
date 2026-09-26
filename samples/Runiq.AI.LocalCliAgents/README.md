@@ -7,7 +7,7 @@ deterministic C# tool, or review code and get suggested fixes and tests.
 | --- | --- | --- | --- | --- |
 | QuickProjectAssistant | Summarizes supplied change counts using `change_summary` | `gpt-5.6-sol` | Medium | Fast |
 | CodeReviewer | Reviews code and suggests fixes and test cases | `gpt-6-astra` | High | Default |
-| ClaudeProjectAssistant | Summarizes supplied change counts using `change_summary` | Local Claude CLI setting | Local CLI setting | Local CLI setting |
+| ClaudeProjectAssistant | Summarizes supplied change counts using `change_summary` | `sonnet` | High | Not configured by Runiq |
 
 ## Run
 
@@ -105,8 +105,20 @@ For Codex, model is required; reasoning defaults to **High** and service tier to
 Default preserves local CLI tier settings. Model and Fast availability depend on
 your CLI/account; model rejections become meaningful Runiq runtime errors.
 
-The Claude agent uses `.UseClaude().AddTool<ChangeSummaryTool>()` and inherits
-model settings from the local Claude CLI.
+The Claude agent selects its model and reasoning effort explicitly:
+
+```csharp
+.UseClaude(options =>
+{
+    options.Model = "sonnet";
+    options.ReasoningEffort = ClaudeReasoningEffort.High;
+})
+.AddTool<ChangeSummaryTool>();
+```
+
+Claude requires a model and defaults to High reasoning. It uses existing CLI authentication;
+there is no parameterless `UseClaude()` overload or Claude service-tier option. The selected
+model and effort are also passed on resumed turns and displayed in Studio metadata.
 
 Include all relevant context in each prompt; this sample does not carry dashboard
 chat history between requests. The dashboard allows anonymous access for local use.

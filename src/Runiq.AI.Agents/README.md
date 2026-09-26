@@ -47,7 +47,7 @@ This constructor selects model-provider execution. Its arguments are:
 - `apiKey`: provider credential
 
 Alternatively, create an agent with `id`, `name` and `instructions`, then select exactly
-one executor with `UseModel(...)`, `UseCodex(...)` or `UseClaude()`. Complete the selection
+one executor with `UseModel(...)`, `UseCodex(...)` or `UseClaude(options => options.Model = "sonnet")`. Complete the selection
 before registration. An agent cannot switch executors after a successful selection.
 
 ### Codex CLI
@@ -85,8 +85,8 @@ See the [Codex executor guide](../../docs/codex-executor.md) for configuration a
 
 ### Claude CLI
 
-`UseClaude()` runs the locally installed Claude Code CLI and inherits its model and
-authentication configuration. It has no agent-level model, reasoning or API key options:
+`UseClaude(...)` runs the locally installed Claude Code CLI with an explicit model and
+reasoning effort. It uses existing CLI authentication and needs no agent API key:
 
 ```csharp
 using Runiq.AI.Agents;
@@ -95,8 +95,19 @@ var claudeAgent = new Agent(
         id: "claude-analyst",
         name: "Claude Analyst",
         instructions: "Explain the supplied code and suggest test cases.")
-    .UseClaude();
+    .UseClaude(options =>
+    {
+        options.Model = "sonnet";
+        options.ReasoningEffort = Runiq.AI.Agents.Configuration.ClaudeReasoningEffort.High;
+    });
 ```
+
+The callback and a non-blank `Model` are required; the former parameterless `UseClaude()`
+has been removed. Migrate existing calls to `UseClaude(options => options.Model = "sonnet")`.
+`ReasoningEffort` defaults to `High` and accepts `Low`, `Medium`, `High`, `XHigh`, or `Max`.
+Settings are copied into `agent.Executor!.Claude` and sent on every turn, including resume.
+Model names/aliases and effort support are validated by the CLI. Claude has no Runiq
+`ServiceTier` option. See the [CLI reference](https://code.claude.com/docs/en/cli-reference).
 
 The adapter uses non-interactive `dontAsk` permission mode: actions that require approval
 are denied, while existing CLI allow rules still apply. This mode does not guarantee a
@@ -508,7 +519,7 @@ var draft = new Agent(id: "draft", name: "Draft", instructions: "Answer question
 var modelAgent = new Agent("support", "Support", "Answer questions.")
     .UseModel("openai/model-name");
 var codexAgent = new Agent("reviewer", "Reviewer", "Review code.").UseCodex(options => options.Model = "gpt-6-astra");
-var claudeAgent = new Agent("analyst", "Analyst", "Analyze.").UseClaude();
+var claudeAgent = new Agent("analyst", "Analyst", "Analyze.").UseClaude(options => options.Model = "sonnet");
 
 // Existing constructor calls, including derived agent constructors, remain valid.
 var existingAgent = new Agent(
@@ -540,7 +551,7 @@ using Runiq.AI.Agents;
 using Runiq.AI.Agents.Tools;
 
 var first = new Agent("first", "First", "Review.").UseCodex(options => options.Model = "gpt-6-astra").AddTool<MyTool>();
-var second = new Agent("second", "Second", "Review.").AddTool<MyTool>().UseClaude();
+var second = new Agent("second", "Second", "Review.").AddTool<MyTool>().UseClaude(options => options.Model = "sonnet");
 
 /// <summary>Returns input unchanged when invoked by a supported execution path.</summary>
 [RuniqTool(name: "echo", description: "Echoes input.")]
@@ -569,7 +580,7 @@ All three selection methods return the original `Agent`, so calls can continue w
 or `UseRag(...)`. Definition and selection only perform local validation and configuration: they
 send no network requests, start no processes, and perform no authentication. Codex and Claude CLI
 installations are not prerequisites for definition or registration. `UseCodex(...)` and
-`UseClaude()` configure no timeout, sandbox or session behavior; host executor options own
+`UseClaude(options => options.Model = "sonnet")` configure no timeout, sandbox or session behavior; host executor options own
 process settings. The model-specific `ProviderOptions.Timeout` remains unchanged.
 
 Every successful selection is final: repeat selections, changes between executors and concurrent
@@ -579,8 +590,8 @@ The error identifies the agent and its existing executor. Invalid first selectio
 `ArgumentException` with the agent ID, original parameter name and validation cause; the executor,
 tools and RAG settings remain unchanged. A corrected selection can still complete the definition.
 Selected executor configuration classes are sealed, have no public constructors or setters,
-and cannot be assigned to an agent. The mutable `CodexAgentOptions` callback values are
-validated and copied into an immutable `CodexAgentConfiguration` snapshot.
+and cannot be assigned to an agent. Mutable `CodexAgentOptions` and `ClaudeAgentOptions`
+callback values are validated and copied into their immutable executor configuration snapshots.
 Identity, instructions, tool registrations and RAG configuration remain on the same `Agent` instance.
 
 ### Fluent definition acceptance evidence
@@ -604,13 +615,15 @@ registered by `AddRuniqServer` perform execution later.
 The definition tests require neither credentials nor a Codex/Claude CLI. Effective
 request equivalence uses an in-memory scripted chat client, not a real provider.
 
-`Executor` is null until selection; `Executor.Model` is null for Codex and Claude. All model-specific
-state lives in `AgentModelConfiguration`. Existing `Agent` model properties remain read-only aliases
+`Executor` is null until selection; `Executor.Model` is null for Codex and Claude. Model-provider
+state lives in `AgentModelConfiguration`; CLI settings live in `Executor.Codex` or `Executor.Claude`.
+Existing `Agent` model properties remain read-only aliases
 with their original types and values for model agents. On non-model or incomplete definitions,
 `Model`, `ModelReference`, `ProviderName`, `ModelName`, `ReasoningEffort` and `Verbosity` throw
 `InvalidOperationException`; `ApiKey` and `Provider` return null. Use `Executor` when inspecting
 arbitrary definitions. Codex metadata exposes its selected model and reasoning effort,
-with null verbosity; Claude metadata has null model, reasoning effort and verbosity.
+with null verbosity; Claude metadata likewise exposes its explicit model and reasoning effort,
+with null verbosity.
 Their metadata provider labels are `Codex CLI` and `Claude CLI`.
 
 Safe inspection across all executor choices:
@@ -712,15 +725,15 @@ at registration. Neither failure consumes the unfinished definition's ability to
 | `AgentValidator` / `AddRuniqServer` | Checks duplicate IDs and provider URL/timeout | After the callback, requires an executor, rejects duplicate IDs, and retains model provider checks. Codex/Claude need no provider or key. |
 | `AgentExecutionRuntime` | RAG, model resolution, endpoint, API key, generation options and chat request all assume model execution | Rejects missing (`AgentExecutorMissing`) or unsupported (`AgentExecutorNotSupported`) executors before RAG or provider resolution. Existing model API-key validation and execution order remain intact. Direct runtime definitions are checked too. |
 | RAG embedding registration | Reads `ProviderName` for every RAG agent | Inspects model configuration before registering OpenAI embedding clients. |
-| `RuntimeMetadataService` | Reads non-null model and generation aliases | Reads model or Codex configuration safely. Codex exposes model/reasoning settings; Claude leaves those fields null. Both CLI kinds expose a provider display label; existing model values are unchanged. |
+| `RuntimeMetadataService` | Reads non-null model and generation aliases | Reads model, Codex or Claude configuration safely. Both CLI kinds expose explicit model/reasoning settings and a provider display label; existing model values are unchanged. |
 
 Local Codex CLI execution is registered automatically by `AddRuniqServer` for
 agents selecting `UseCodex(...)`; see [configuration, continuation and limits](../../docs/codex-executor.md).
-Local Claude Code execution is also registered automatically for `UseClaude()` agents; see
+Local Claude Code execution is also registered automatically for `UseClaude(options => options.Model = "sonnet")` agents; see
 [configuration and continuation](../../docs/claude-executor.md). Codex agents support
 existing `.AddTool<T>()` bindings through an automatic per-run loopback MCP bridge;
 tool events use the existing dashboard UI. Claude agents support the same
-`.UseClaude().AddTool<T>()` pattern through that shared bridge.
+`.UseClaude(options => options.Model = "sonnet").AddTool<T>()` pattern through that shared bridge.
 Direct `Agent.ExecuteAsync` and `Agent.ExecuteStreamAsync` retain
 their existing unsupported-direct-execution contract. Runtime execution continues through dependency
 injection. The executor types belong to Agents and reuse Core's `ModelReference` and `ProviderOptions`;

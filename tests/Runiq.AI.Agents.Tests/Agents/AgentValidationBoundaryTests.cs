@@ -51,7 +51,7 @@ public sealed class AgentValidationBoundaryTests
         var agent = new Agent("agent", "Agent", "instructions").AddTool<NeverInvokedTool>()
             .UseRag(options => options.IndexName = "documents");
         if (kind == AgentExecutorKind.Codex) agent.UseCodex(options => options.Model = "gpt-6-sol");
-        if (kind == AgentExecutorKind.Claude) agent.UseClaude();
+        if (kind == AgentExecutorKind.Claude) agent.UseClaude(claude => claude.Model = "sonnet");
         if (kind.HasValue) AgentValidator.ValidateRegisteredAgents([agent]);
         else
         {
