@@ -171,15 +171,23 @@ public class Agent
         return new AgentExecutorConfiguration(AgentExecutorKind.Codex, codex: new CodexAgentConfiguration(options));
     });
 
-    /// <summary>Selects Claude execution, which requires a host-registered executor implementation.</summary>
+    /// <summary>Selects Claude CLI execution with an explicit model and optional reasoning effort.</summary>
     /// <remarks>
     /// Does not require a CLI installation and does not start processes, send network requests,
     /// or authenticate. No timeout, sandbox, or session behavior is configured.
-    /// AddRuniqServer automatically registers the local CLI adapter for this agent; Runiq tools are not bridged to Claude.
+    /// AddRuniqServer automatically registers the local CLI adapter and the bridge for attached Runiq tools.
     /// </remarks>
+    /// <param name="configure">Sets the required model and optional reasoning effort.</param>
     /// <returns>The same agent instance.</returns>
+    /// <exception cref="ArgumentException">The callback is null, the model is blank, or the reasoning effort is undefined.</exception>
     /// <exception cref="InvalidOperationException">An executor has already been selected.</exception>
-    public Agent UseClaude() => SelectExecutor(() => new AgentExecutorConfiguration(AgentExecutorKind.Claude));
+    public Agent UseClaude(Action<ClaudeAgentOptions> configure) => SelectExecutor(() =>
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        var options = new ClaudeAgentOptions();
+        configure(options);
+        return new AgentExecutorConfiguration(AgentExecutorKind.Claude, claude: new ClaudeAgentConfiguration(options));
+    });
 
     private Agent SelectExecutor(Func<AgentExecutorConfiguration> createConfiguration)
     {

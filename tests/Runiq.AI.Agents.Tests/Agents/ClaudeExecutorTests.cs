@@ -81,12 +81,16 @@ public sealed class ClaudeExecutorTests
         await using var scope = services.CreateAsyncScope();
         var runtime = scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>();
         var initial = await runtime.ExecuteAsync("claude", "first");
+        Assert.Equal("sonnet", factory.Command!.ArgumentList[factory.Command.ArgumentList.IndexOf("--model") + 1]);
+        Assert.Equal("high", factory.Command.ArgumentList[factory.Command.ArgumentList.IndexOf("--effort") + 1]);
         var resumed = await runtime.ExecuteAsync("claude", new AgentQuery("follow-up") { ProviderSessionId = initial.ProviderSessionId });
         Assert.True(resumed.IsSuccess);
         Assert.Equal(Session, resumed.ProviderSessionId);
         Assert.NotEqual(initial.RunId, resumed.RunId);
         Assert.Equal(new[] { "--resume", Session }, factory.Command!.ArgumentList.TakeLast(2));
         Assert.DoesNotContain("--continue", factory.Command.ArgumentList);
+        Assert.Equal("sonnet", factory.Command.ArgumentList[factory.Command.ArgumentList.IndexOf("--model") + 1]);
+        Assert.Equal("high", factory.Command.ArgumentList[factory.Command.ArgumentList.IndexOf("--effort") + 1]);
     }
 
     [Theory]
@@ -220,7 +224,7 @@ public sealed class ClaudeExecutorTests
     public async Task Registration_IsAutomaticAndIdempotent()
     {
         var services = new ServiceCollection().AddLogging();
-        services.AddRuniqServer(options => options.AddAgent(new Agent("claude", "Claude", "instructions").UseClaude()));
+        services.AddRuniqServer(options => options.AddAgent(new Agent("claude", "Claude", "instructions").UseClaude(claude => claude.Model = "sonnet")));
         await using (var baseline = services.BuildServiceProvider())
         {
             await using var scope = baseline.CreateAsyncScope();
@@ -314,7 +318,7 @@ public sealed class ClaudeExecutorTests
     private static ServiceProvider Services(FakeFactory factory, Action<ClaudeExecutorOptions>? configure = null)
     {
         var services = new ServiceCollection().AddLogging();
-        services.AddRuniqServer(options => options.AddAgent(new Agent("claude", "Claude", "instructions").UseClaude()));
+        services.AddRuniqServer(options => options.AddAgent(new Agent("claude", "Claude", "instructions").UseClaude(claude => claude.Model = "sonnet")));
         services.Configure<ClaudeExecutorOptions>(options =>
         {
             options.WorkingDirectory = Path.GetTempPath();

@@ -23,7 +23,7 @@ public sealed class ClaudeCommandTests
             case "total-limit": options.MaxOutputCharacters = 1; break;
             case "executable": options.ExecutablePath = "claude.cmd"; break;
         }
-        Assert.Equal("ClaudeConfigurationInvalid", Assert.Throws<ClaudeException>(() => ClaudeCommand.Create(options, null)).Code);
+        Assert.Equal("ClaudeConfigurationInvalid", Assert.Throws<ClaudeException>(() => ClaudeCommand.Create(options, AgentSettings(), null)).Code);
     }
 
     [Fact]
@@ -40,10 +40,10 @@ public sealed class ClaudeCommandTests
     public void Command_UsesNativePrintMode()
     {
         var options = Options();
-        var command = ClaudeCommand.Create(options, null);
+        var command = ClaudeCommand.Create(options, AgentSettings(), null);
         Assert.Equal(options.WorkingDirectory, command.WorkingDirectory);
         Assert.Equal(new[] { "--print", "--output-format", "stream-json", "--verbose",
-            "--include-partial-messages", "--permission-mode", "dontAsk" }, command.ArgumentList);
+            "--include-partial-messages", "--permission-mode", "dontAsk", "--model", "sonnet", "--effort", "high" }, command.ArgumentList);
         Assert.True(command.RedirectStandardInput);
         Assert.False(command.UseShellExecute);
     }
@@ -61,6 +61,9 @@ public sealed class ClaudeCommandTests
         }
         finally { directory.Delete(recursive: true); }
     }
+
+    private static ClaudeAgentConfiguration AgentSettings() =>
+        new Agent("claude", "Claude", "").UseClaude(options => options.Model = "sonnet").Executor!.Claude!;
 
     private static ClaudeExecutorOptions Options() => new()
     {

@@ -48,7 +48,7 @@ internal sealed class ClaudeAgentExecutor(ICliProcessFactory processes, IOptions
             throw new ClaudeException("ClaudeCapabilityNotSupported");
         var configuration = options.Value;
         var sessionId = request.Query.ProviderSessionId;
-        var command = ClaudeCommand.Create(configuration, sessionId);
+        var command = ClaudeCommand.Create(configuration, request.Agent.Executor!.Claude!, sessionId);
         var prompt = $"Agent instructions:\n{request.Agent.Instructions}\n\nUser request:\n{request.Query.Message}";
         if (prompt.Length > configuration.MaxEventCharacters) throw new ClaudeException("ClaudeInputLimitExceeded");
         if (sessionId is not null && !sessions.TryEnter(sessionId.ToLowerInvariant()))

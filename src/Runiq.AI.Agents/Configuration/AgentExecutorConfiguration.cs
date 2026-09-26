@@ -18,11 +18,12 @@ public enum AgentExecutorKind
 public sealed class AgentExecutorConfiguration
 {
     internal AgentExecutorConfiguration(AgentExecutorKind kind, AgentModelConfiguration? model = null,
-        CodexAgentConfiguration? codex = null)
+        CodexAgentConfiguration? codex = null, ClaudeAgentConfiguration? claude = null)
     {
         Kind = kind;
         Model = model;
         Codex = codex;
+        Claude = claude;
     }
 
     /// <summary>Gets the selected executor kind.</summary>
@@ -33,6 +34,9 @@ public sealed class AgentExecutorConfiguration
 
     /// <summary>Gets the immutable agent-level Codex settings, or null for other executors.</summary>
     public CodexAgentConfiguration? Codex { get; }
+
+    /// <summary>Gets the immutable agent-level Claude settings, or null for other executors.</summary>
+    public ClaudeAgentConfiguration? Claude { get; }
 }
 
 /// <summary>Contains the validated settings used only by a model executor.</summary>

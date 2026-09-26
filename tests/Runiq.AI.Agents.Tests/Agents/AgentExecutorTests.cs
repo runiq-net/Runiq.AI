@@ -19,7 +19,7 @@ public sealed class AgentExecutorTests
     public void ReadmeToolExamples_OnlyRegisterDefinitions()
     {
         var first = new Agent("first", "First", "Review.").UseCodex(options => options.Model = "gpt-6-sol").AddTool<DefinitionOnlyTool>();
-        var second = new Agent("second", "Second", "Review.").AddTool<DefinitionOnlyTool>().UseClaude();
+        var second = new Agent("second", "Second", "Review.").AddTool<DefinitionOnlyTool>().UseClaude(claude => claude.Model = "sonnet");
         Assert.Equal(AgentExecutorKind.Codex, first.Executor!.Kind);
         Assert.Equal(AgentExecutorKind.Claude, second.Executor!.Kind);
         foreach (var agent in new[] { first, second })
@@ -171,7 +171,7 @@ public sealed class AgentExecutorTests
         Assert.Same(tool, Assert.Single(agent.Tools));
         Assert.Same(rag, agent.Rag);
         Assert.Equal("instructions", agent.Instructions);
-        Assert.Same(agent, agent.UseClaude());
+        Assert.Same(agent, agent.UseClaude(claude => claude.Model = "sonnet"));
     }
 
     [Fact]
@@ -225,7 +225,7 @@ public sealed class AgentExecutorTests
         Assert.Null(draft.Executor);
         Assert.Throws<InvalidOperationException>(() => new ServiceCollection().AddRuniqServer(options => options.AddAgent(draft)));
         Assert.Throws<InvalidOperationException>(() => AgentValidator.ValidateRegisteredAgents([
-            new Agent("same", "One", "").UseCodex(options => options.Model = "gpt-6-sol"), new Agent("SAME", "Two", "").UseClaude()]));
+            new Agent("same", "One", "").UseCodex(options => options.Model = "gpt-6-sol"), new Agent("SAME", "Two", "").UseClaude(claude => claude.Model = "sonnet")]));
 
         var agents = Enum.GetValues<AgentExecutorKind>()
             .Select(kind => Select(new Agent(kind.ToString(), kind.ToString(), "instructions"), kind)).ToArray();
@@ -239,8 +239,8 @@ public sealed class AgentExecutorTests
         Assert.Equal("Codex CLI", metadata.Single(agent => agent.Id == "Codex").Provider);
         Assert.All(metadata.Where(agent => agent.Id == "Claude"), agent =>
         {
-            Assert.Null(agent.Model);
-            Assert.Null(agent.ReasoningEffort);
+            Assert.Equal("sonnet", agent.Model);
+            Assert.Equal("high", agent.ReasoningEffort);
             Assert.Null(agent.Verbosity);
         });
     }
@@ -307,7 +307,7 @@ public sealed class AgentExecutorTests
     {
         var modelAgent = new Agent("support", "Support", "Soruları yanıtla.").UseModel("openai/model-name");
         var codexAgent = new Agent("reviewer", "Reviewer", "Kodu incele.").UseCodex(options => options.Model = "gpt-6-sol");
-        var claudeAgent = new Agent("analyst", "Analyst", "Analiz yap.").UseClaude();
+        var claudeAgent = new Agent("analyst", "Analyst", "Analiz yap.").UseClaude(claude => claude.Model = "sonnet");
         var existingAgent = new Agent(id: "support", name: "Support",
             instructions: "Soruları yanıtla.", model: "openai/model-name");
 
@@ -497,7 +497,7 @@ public sealed class AgentExecutorTests
     {
         AgentExecutorKind.Model => agent.UseModel("openai/model"),
         AgentExecutorKind.Codex => agent.UseCodex(options => options.Model = "gpt-6-sol"),
-        AgentExecutorKind.Claude => agent.UseClaude(),
+        AgentExecutorKind.Claude => agent.UseClaude(claude => claude.Model = "sonnet"),
         _ => throw new ArgumentOutOfRangeException(nameof(kind))
     };
 
