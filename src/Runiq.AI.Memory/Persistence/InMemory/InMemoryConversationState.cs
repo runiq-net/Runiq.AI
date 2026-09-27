@@ -12,6 +12,7 @@ internal sealed class InMemoryConversationState
     {
         internal object Gate { get; } = new();
         internal MemoryConversation Conversation { get; set; } = conversation;
+        internal Dictionary<string, MemoryTurn> Turns { get; } = new(StringComparer.Ordinal);
         internal List<StoredMemoryMessage> Messages { get; } = [];
         internal Dictionary<string, (string Payload, MemoryAppendResult Result)> Receipts { get; } = new(StringComparer.Ordinal);
     }

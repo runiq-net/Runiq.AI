@@ -24,6 +24,11 @@ public sealed class AgentQuery
     /// native session before supplying it. Enabled framework Memory rejects mixed provider-session input.</remarks>
     public string? ProviderSessionId { get; init; }
 
+    /// <summary>Gets or initializes a caller-retained logical Memory turn identity; defaults to the fresh RunId.</summary>
+    /// <remarks>Reuse with the returned ThreadId detects duplicate invocations and rejects them before model/tool execution.
+    /// It does not resume execution or guarantee exactly-once external side effects.</remarks>
+    public string? MemoryTurnId { get; init; }
+
     /// <summary>Gets or initializes an untrusted Memory resource/thread reference for host authorization.</summary>
     /// <remarks>Contains no verified caller identity. Null ThreadId requests a new thread; provider sessions are independent.</remarks>
     public Runiq.AI.Memory.Models.MemoryReference? Memory { get; init; }

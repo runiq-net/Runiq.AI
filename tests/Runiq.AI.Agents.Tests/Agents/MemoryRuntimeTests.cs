@@ -27,7 +27,7 @@ public sealed class MemoryRuntimeTests
         using var provider = CreateServices(agent, probe).BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         using var scope = provider.CreateScope();
         var runtime = scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>();
-        var query = new AgentQuery("question") { Memory = new("project", "thread") };
+        var query = new AgentQuery("question") { Memory = new("project", allowed ? null : "thread") };
         var results = new[] { await runtime.ExecuteAsync(agent, query), await runtime.ExecuteAsync(agent.Id, query) };
         var events = await Collect(runtime.ExecuteStreamAsync(agent.Id, query));
         Assert.All(results, result => Assert.Equal(allowed, result.IsSuccess));
@@ -40,7 +40,7 @@ public sealed class MemoryRuntimeTests
         else Assert.All(probe.Requests, request =>
         {
             Assert.Equal("caller", request.Memory!.Identity.CallerId);
-            Assert.Equal("thread", request.Memory.Ownership.ThreadId);
+            Assert.False(string.IsNullOrWhiteSpace(request.Memory.Ownership.ThreadId));
             Assert.Same(query, request.Query);
         });
 
@@ -68,6 +68,7 @@ public sealed class MemoryRuntimeTests
     }
 
     [Theory]
+    [InlineData("store", "MemoryServicesMissing")]
     [InlineData("identity", "MemoryServicesMissing")]
     [InlineData("authorization", "MemoryServicesMissing")]
     [InlineData("ownership", "MemoryServicesMissing")]
@@ -78,6 +79,7 @@ public sealed class MemoryRuntimeTests
         var agent = CreateAgent();
         var probe = new Probe();
         var services = CreateServices(agent, probe);
+        if (missing == "store") services.RemoveAll<IMemoryConversationStore>();
         if (missing == "identity") services.RemoveAll<IMemoryIdentityResolver>();
         if (missing == "authorization") services.RemoveAll<MemoryAuthorizationService>();
         if (missing == "ownership") services.RemoveAll<IMemoryOwnershipLookup>();
@@ -131,11 +133,13 @@ public sealed class MemoryRuntimeTests
         var probe = new Probe();
         using var provider = CreateServices(CreateAgent(), probe).BuildServiceProvider();
         using var scope = provider.CreateScope();
-        var stream = scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>().ExecuteStreamAsync("agent", Query());
+        var stream = scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>().ExecuteStreamAsync("agent", new AgentQuery("question") { Memory = new("project") });
         Assert.Equal(0, probe.IdentityCalls);
         var enumerator = stream.GetAsyncEnumerator();
         Assert.True(await enumerator.MoveNextAsync());
         Assert.Equal(1, probe.IdentityCalls);
+        Assert.Equal(AgentExecutionEventKind.ConversationStarted, enumerator.Current.Kind);
+        Assert.True(await enumerator.MoveNextAsync());
         await enumerator.DisposeAsync();
         Assert.Equal(1, probe.Disposals);
         Assert.Equal(AgentRunStatus.Cancelled, Assert.Single(probe.Runs).Status);
@@ -196,7 +200,7 @@ public sealed class MemoryRuntimeTests
     }
 
     [Fact]
-    // A successful foundation decision reaches the built-in model without manufacturing history or a provider session.
+    // An authorized new conversation reaches the built-in model and returns a durable thread without a provider session.
     public async Task BuiltInModel_AllowedExecutionPreservesOutput()
     {
         var probe = new Probe();
@@ -205,7 +209,7 @@ public sealed class MemoryRuntimeTests
         services.AddScoped<IChatClientResolver>(_ => client);
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
-        var result = await scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>().ExecuteAsync("agent", Query());
+        var result = await scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>().ExecuteAsync("agent", new AgentQuery("question") { Memory = new("project") });
         Assert.True(result.IsSuccess, result.ErrorMessage);
         Assert.Equal("answer", result.Message);
         Assert.Null(result.ProviderSessionId);
@@ -242,7 +246,7 @@ public sealed class MemoryRuntimeTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddRuniqServer(x => x.AddAgent(agent));
-        services.AddRuniqMemory();
+        services.AddRuniqMemoryInMemory();
         services.AddScoped<IMemoryIdentityResolver>(_ => probe);
         services.AddScoped<IMemoryOwnershipLookup>(_ => probe);
         services.AddScoped<IMemoryAccessPolicy>(_ => probe);

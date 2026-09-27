@@ -75,6 +75,17 @@ internal sealed class InMemoryConversationStore(InMemoryConversationState state,
         }
     }
 
+    /// <inheritdoc />
+    public async ValueTask<IReadOnlyList<MemoryTurn>> ReadTurnsAsync(MemoryContext context, CancellationToken cancellationToken = default)
+    {
+        var entry = await GetAuthorizedAsync(context, cancellationToken);
+        lock (entry.Gate)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Array.AsReadOnly(entry.Turns.Values.ToArray());
+        }
+    }
+
     public async ValueTask<MemoryAppendResult> AppendAsync(MemoryContext context, MemoryAppendRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -89,12 +100,14 @@ internal sealed class InMemoryConversationStore(InMemoryConversationState state,
                 return receipt.Payload == payload ? receipt.Result : throw new MemoryStoreException(MemoryStoreError.IdempotencyConflict);
             if (entry.Conversation.Version != request.ExpectedVersion)
                 throw new MemoryStoreException(MemoryStoreError.VersionConflict);
+            TurnValidation.ValidateAppend(entry.Turns.Values, entry.Messages.Select(m => m.Content), request);
             MessageValidation.ValidateAppend(entry.Messages.Select(m => m.Content), request);
             var result = new MemoryAppendResult(checked(request.ExpectedVersion + 1), checked(request.ExpectedVersion + request.Messages.Count));
             var batch = request.Messages.Select((m, i) => new StoredMemoryMessage(context.Ownership.ThreadId,
                 result.FirstSequence + i, MemoryMessageSerializer.CurrentVersion, m)).ToArray();
             cancellationToken.ThrowIfCancellationRequested();
             entry.Messages.AddRange(batch);
+            if (request.Turn is { } turn) entry.Turns[turn.TurnId] = turn;
             entry.Receipts.Add(request.IdempotencyKey, (payload, result));
             entry.Conversation = entry.Conversation with { Version = result.Version };
             return result;

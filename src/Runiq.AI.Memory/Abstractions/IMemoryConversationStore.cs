@@ -5,7 +5,7 @@ namespace Runiq.AI.Memory.Abstractions;
 /// <summary>Persists conversations with authoritative scope checks and atomic, ordered appends.</summary>
 /// <remarks>Contexts are revalidated per operation. Denied or absent content raises AccessDenied.
 /// Cancellation before commit leaves no writes; an uncertain commit must be retried with the original request.
-/// No operation activates agent history replay. Providers never silently fall back to another store.</remarks>
+/// Providers never silently fall back to another store. Turn state is committed with messages and receipts.</remarks>
 public interface IMemoryConversationStore
 {
     /// <summary>Atomically creates the proposed ownership at version zero, or returns the identical existing binding.</summary>
@@ -37,6 +37,12 @@ public interface IMemoryConversationStore
     /// <returns>Immutable message snapshots; later appends may appear on subsequent pages.</returns>
     ValueTask<IReadOnlyList<StoredMemoryMessage>> ReadMessagesAsync(MemoryContext context, long afterSequence = 0,
         int limit = 100, CancellationToken cancellationToken = default);
+
+    /// <summary>Reads authorized lifecycle snapshots. Unfinished and unsuccessful turns must not be replayed as completed output.</summary>
+    /// <param name="context">The context revalidated against authoritative ownership.</param>
+    /// <param name="cancellationToken">Cancels the read and access checks.</param>
+    /// <returns>Immutable turn snapshots; legacy messages have no associated turn.</returns>
+    ValueTask<IReadOnlyList<MemoryTurn>> ReadTurnsAsync(MemoryContext context, CancellationToken cancellationToken = default);
 
     /// <summary>Commits all messages and the retry receipt together after authoritative authorization.</summary>
     /// <param name="context">The authorized conversation context.</param>

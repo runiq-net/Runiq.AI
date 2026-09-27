@@ -21,6 +21,7 @@ public sealed class AgentExecutionResultBuilder
     private IReadOnlyList<AgentCitation> citations = [];
     private RagSearchBlocked? ragReadiness;
     private string? runId;
+    private string? threadId;
     private string? agentId;
     private string? providerSessionId;
     private DateTimeOffset? startedAt;
@@ -50,6 +51,7 @@ public sealed class AgentExecutionResultBuilder
                 throw new InvalidOperationException("Run events must be applied in contiguous publication order.");
             lastSequence = executionEvent.SequenceNumber.Value;
             runId = executionEvent.RunId;
+            threadId = executionEvent.ThreadId;
             agentId = executionEvent.AgentId;
             if (providerSessionId is not null && executionEvent.ProviderSessionId != providerSessionId)
                 throw new InvalidOperationException("A run cannot change its provider session identity.");
@@ -123,7 +125,7 @@ public sealed class AgentExecutionResultBuilder
                 steps,
                 rag,
                 ragReadiness);
-        return result.WithIdentity(runId, agentId, startedAt, endedAt, providerSessionId, errorDetails);
+        return result.WithIdentity(runId, agentId, startedAt, endedAt, providerSessionId, errorDetails, threadId);
     }
 
     private void AppendAssistantDelta(AgentExecutionEvent executionEvent)

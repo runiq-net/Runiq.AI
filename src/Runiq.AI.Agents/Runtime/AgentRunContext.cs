@@ -34,6 +34,9 @@ public sealed class AgentRunContext
     /// <summary>Gets the opaque identifier of one invocation, never a Memory ThreadId or provider session-resumption key.</summary>
     public string RunId { get; }
 
+    /// <summary>Gets the persisted authorized thread identity, including on cancellation after creation.</summary>
+    public string? ThreadId { get; internal set; }
+
     /// <summary>Gets the reusable agent definition identifier.</summary>
     public string AgentId { get; }
 

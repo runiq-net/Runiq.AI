@@ -34,6 +34,9 @@ public sealed record AgentExecutionEvent
     /// <summary>Gets the agent definition identifier, or null for a standalone factory event.</summary>
     public string? AgentId { get; internal init; }
 
+    /// <summary>Gets the persisted authorized conversation identifier, or null before creation or when Memory is disabled.</summary>
+    public string? ThreadId { get; internal init; }
+
     /// <summary>Gets the confirmed provider session identifier, or null when unavailable.</summary>
     public string? ProviderSessionId { get; internal init; }
 
@@ -44,6 +47,8 @@ public sealed record AgentExecutionEvent
         AgentExecutionEventKind.Failed => Runtime.AgentRunStatus.Failed,
         _ => Runtime.AgentRunStatus.Running
     };
+
+    internal static AgentExecutionEvent ConversationStarted() => new(AgentExecutionEventKind.ConversationStarted, null);
 
     private AgentExecutionEvent(
         AgentExecutionEventKind Kind,
@@ -328,5 +333,8 @@ public enum AgentExecutionEventKind
     /// <summary>
     /// A RAG search lifecycle event with a structured <see cref="AgentExecutionEvent.RagSearch"/> payload.
     /// </summary>
-    RagSearch = 6
+    RagSearch = 6,
+
+    /// <summary>The authorized conversation is persisted; ThreadId is available before model execution.</summary>
+    ConversationStarted = 7
 }

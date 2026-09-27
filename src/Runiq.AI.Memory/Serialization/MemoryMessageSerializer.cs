@@ -47,5 +47,7 @@ public static class MemoryMessageSerializer
 
     // Stable equality includes expected version, batch order, every message field, and exact string/offset representation.
     internal static string RequestPayload(MemoryAppendRequest request) =>
-        JsonSerializer.Serialize(new { request.ExpectedVersion, request.Messages }, Options);
+        request.Turn is null
+            ? JsonSerializer.Serialize(new { request.ExpectedVersion, request.Messages }, Options)
+            : JsonSerializer.Serialize(new { request.ExpectedVersion, request.Messages, request.Turn }, Options);
 }

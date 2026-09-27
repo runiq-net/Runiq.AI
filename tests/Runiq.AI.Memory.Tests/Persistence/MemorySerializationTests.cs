@@ -6,6 +6,32 @@ namespace Runiq.AI.Memory.Tests.Persistence;
 
 public sealed class MemorySerializationTests
 {
+    [Theory]
+    [InlineData("{}", 1)]
+    [InlineData("null", 1)]
+    [InlineData("not json", 1)]
+    [InlineData("{}", 2)]
+    // Turn payload versions and required identity fields fail closed independently of message format versions.
+    public void InvalidTurnPayload_FailsExplicitly(string payload, int version)
+    {
+        Assert.Equal(MemoryStoreError.InvalidPayload,
+            Assert.Throws<MemoryStoreException>(() => MemoryTurnSerializer.Deserialize(payload, version)).Error);
+    }
+
+    [Fact]
+    // A terminal turn round trip preserves original offsets and rejects unknown or duplicate fields.
+    public void TurnPayload_RetainsLifecycleAndRejectsAmbiguity()
+    {
+        var time = new DateTimeOffset(2026, 9, 27, 12, 0, 0, TimeSpan.FromHours(3)).AddTicks(1234567);
+        var turn = new MemoryTurn("turn", "run", 17, time, MemoryTurnStatus.Cancelled, time.AddSeconds(1));
+        var payload = MemoryTurnSerializer.Serialize(turn);
+        var restored = MemoryTurnSerializer.Deserialize(payload, 1);
+        Assert.Equal(turn, restored);
+        Assert.True(turn.StartedAt.EqualsExact(restored.StartedAt));
+        Assert.Throws<MemoryStoreException>(() => MemoryTurnSerializer.Deserialize("{\"Extra\":true," + payload[1..], 1));
+        Assert.Throws<MemoryStoreException>(() => MemoryTurnSerializer.Deserialize("{\"TurnId\":\"other\"," + payload[1..], 1));
+    }
+
     [Fact]
     // The initial format remains readable without depending on the SQL migration version.
     public void VersionOneFixture_RetainsAllFields()

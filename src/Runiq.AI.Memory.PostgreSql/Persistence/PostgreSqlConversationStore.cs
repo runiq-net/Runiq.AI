@@ -114,6 +114,33 @@ internal sealed class PostgreSqlConversationStore(MemoryDatabase database, IMemo
             return await ReadMessagesAsync(connection, null, context, afterSequence, limit, cancellationToken);
         });
 
+    /// <inheritdoc />
+    public ValueTask<IReadOnlyList<MemoryTurn>> ReadTurnsAsync(MemoryContext context, CancellationToken cancellationToken = default) =>
+        MemoryDatabase.ExecuteAsync<IReadOnlyList<MemoryTurn>>(async () =>
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            await using var connection = await database.DataSource.OpenConnectionAsync(cancellationToken);
+            await AuthorizeAsync(connection, null, context, false, cancellationToken);
+            return await ReadTurnsAsync(connection, null, context, cancellationToken);
+        });
+
+    private async Task<IReadOnlyList<MemoryTurn>> ReadTurnsAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction,
+        MemoryContext context, CancellationToken cancellationToken)
+    {
+        await using var command = database.Command(connection, transaction,
+            "SELECT payload,payload_version,turn_id FROM __SCHEMA__.turns WHERE boundary_id=@boundary AND thread_id=@thread",
+            ("boundary", context.Identity.BoundaryId), ("thread", context.Ownership.ThreadId));
+        var turns = new List<MemoryTurn>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var turn = MemoryTurnSerializer.Deserialize(reader.GetString(0), reader.GetInt32(1));
+            if (turn.TurnId != reader.GetString(2)) throw new MemoryStoreException(MemoryStoreError.InvalidPayload);
+            turns.Add(turn);
+        }
+        return turns.AsReadOnly();
+    }
+
     public ValueTask<MemoryAppendResult> AppendAsync(MemoryContext context, MemoryAppendRequest request,
         CancellationToken cancellationToken = default) => MemoryDatabase.ExecuteAsync(async () =>
         {
@@ -138,6 +165,8 @@ internal sealed class PostgreSqlConversationStore(MemoryDatabase database, IMemo
             }
             if (conversation.Version != request.ExpectedVersion) throw new MemoryStoreException(MemoryStoreError.VersionConflict);
             var existing = await ReadMessagesAsync(connection, transaction, context, 0, null, cancellationToken);
+            var turns = await ReadTurnsAsync(connection, transaction, context, cancellationToken);
+            TurnValidation.ValidateAppend(turns, existing.Select(m => m.Content), request);
             MessageValidation.ValidateAppend(existing.Select(m => m.Content), request);
             var result = new MemoryAppendResult(checked(request.ExpectedVersion + 1), checked(request.ExpectedVersion + request.Messages.Count));
             for (var index = 0; index < request.Messages.Count; index++)
@@ -150,6 +179,15 @@ internal sealed class PostgreSqlConversationStore(MemoryDatabase database, IMemo
                     ("id", message.MessageId), ("run", message.RunId), ("sequence", result.FirstSequence + index),
                     ("format", MemoryMessageSerializer.CurrentVersion), ("payload", MemoryMessageSerializer.Serialize(message)));
                 await insert.ExecuteNonQueryAsync(cancellationToken);
+            }
+            if (request.Turn is { } turn)
+            {
+                await using var writeTurn = database.Command(connection, transaction,
+                    "INSERT INTO __SCHEMA__.turns (boundary_id,thread_id,turn_id,payload,payload_version) VALUES (@boundary,@thread,@turn,@payload,@format) " +
+                    "ON CONFLICT (boundary_id,thread_id,turn_id) DO UPDATE SET payload=EXCLUDED.payload,payload_version=EXCLUDED.payload_version",
+                    ("boundary", context.Identity.BoundaryId), ("thread", context.Ownership.ThreadId),
+                    ("turn", turn.TurnId), ("payload", MemoryTurnSerializer.Serialize(turn)), ("format", MemoryTurnSerializer.CurrentVersion));
+                await writeTurn.ExecuteNonQueryAsync(cancellationToken);
             }
             await using (var finish = database.Command(connection, transaction, """
                 UPDATE __SCHEMA__.conversations SET version=@version WHERE boundary_id=@boundary AND thread_id=@thread;

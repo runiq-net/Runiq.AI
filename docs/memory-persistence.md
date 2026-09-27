@@ -2,7 +2,7 @@
 
 #218–#224 deliver conversation/message storage. Dependency order is #218 → #219;
 #218 → #220 → #221; #219/#221 → #222 → #223 → #224. Agent model history replay and
-runtime persistence orchestration remain in #201. Retention and deletion UI remain
+runtime persistence orchestration are documented in [#201 conversations](memory-conversations.md). Retention and deletion UI remain
 in #204. Merely referencing packages or selecting a provider does not enable agents.
 
 ## Packages and ownership
@@ -292,3 +292,21 @@ Build/test logs, TRX reports, compiled consumer and local packages are under
 `%TEMP%/runiq-issue200-validation`, outside the review tree. The initial failed run and
 the final successful run are both retained. Nothing was committed, pushed, published,
 deployed or changed on GitHub; issue completion here describes the local implementation.
+
+
+## Turn lifecycle (#201 / #226)
+
+Migration `002_turns.sql` adds neutral turn state without rewriting message JSON v1 or
+existing append receipts. `MemoryAppendRequest.Turn` commits with its ordered message
+batch and receipt. A new running turn requires exactly one user message at the expected
+conversation version. Only its owning invocation may append while it is running.
+Assistant tool calls precede results; completion rejects unresolved calls. Terminal writes
+may be empty: their receipt has `FirstSequence = Version + 1`, with no new message sequence.
+The conversation version remains the last message sequence, as in #200.
+
+An interrupted process leaves a durable `Running` turn. Failed/cancelled output remains
+associated with that outcome; it is never evidence of a completed answer. No automatic
+lease expiry or tool re-execution is provided. All turn reads and writes revalidate existing
+ownership and access policy. Existing messages lacking turn state retain their storage
+representation and retry receipts; their outcome is unknown and they are excluded from
+runtime replay. Retention/deletion in #204 must include turn state and append receipts.

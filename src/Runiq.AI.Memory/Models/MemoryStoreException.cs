@@ -20,7 +20,9 @@ public enum MemoryStoreError
     /// <summary>The database schema is incompatible with this provider.</summary>
     IncompatibleSchema,
     /// <summary>Storage failed; retry the original request after resolving the underlying failure.</summary>
-    StorageFailure
+    StorageFailure,
+    /// <summary>Another turn owns the conversation, or the requested lifecycle transition is invalid.</summary>
+    TurnConflict
 }
 
 /// <summary>Reports a neutral storage outcome without requiring a database client dependency.</summary>

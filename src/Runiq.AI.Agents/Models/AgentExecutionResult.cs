@@ -26,6 +26,9 @@ namespace Runiq.AI.Agents
         /// <summary>Gets the UTC terminal transition time, or null for a standalone factory result.</summary>
         public DateTimeOffset? EndedAt { get; private init; }
 
+        /// <summary>Gets the persisted authorized conversation identifier, or null before creation or when Memory is disabled.</summary>
+        public string? ThreadId { get; private init; }
+
         /// <summary>Gets the confirmed provider session identifier, or null when unavailable.</summary>
         public string? ProviderSessionId { get; private init; }
 
@@ -34,9 +37,9 @@ namespace Runiq.AI.Agents
 
         internal AgentExecutionResult WithIdentity(string? runId, string? agentId,
             DateTimeOffset? startedAt = null, DateTimeOffset? endedAt = null, string? providerSessionId = null,
-            AgentExecutionErrorDetails? errorDetails = null) =>
+            AgentExecutionErrorDetails? errorDetails = null, string? threadId = null) =>
             new(Status, Message, ErrorCode, ErrorMessage, Steps, Rag, Citations, RagReadiness, StructuredOutput)
-            { RunId = runId, AgentId = agentId, StartedAt = startedAt, EndedAt = endedAt, ProviderSessionId = providerSessionId,
+            { RunId = runId, AgentId = agentId, ThreadId = threadId, StartedAt = startedAt, EndedAt = endedAt, ProviderSessionId = providerSessionId,
                 ErrorDetails = errorDetails ?? ErrorDetails };
 
         private AgentExecutionResult(

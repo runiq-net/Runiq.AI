@@ -82,10 +82,12 @@ public sealed class MemoryAuthorizationTests
     public void Registration_RequiresExplicitHostAdapters()
     {
         var services = new ServiceCollection().AddRuniqMemory().AddRuniqMemory();
-        Assert.Single(services);
-        Assert.Equal(ServiceLifetime.Scoped, services[0].Lifetime);
+        Assert.Equal(ServiceLifetime.Scoped, Assert.Single(services, d => d.ServiceType == typeof(MemoryAuthorizationService)).Lifetime);
+        Assert.Equal(ServiceLifetime.Scoped, Assert.Single(services, d => d.ServiceType == typeof(MemoryConversationService)).Lifetime);
         using var provider = services.BuildServiceProvider();
         Assert.Null(provider.GetService<IMemoryIdentityResolver>());
+        Assert.Null(provider.GetService<IMemoryConversationStore>());
+        Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService<MemoryConversationService>());
         Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService<MemoryAuthorizationService>());
     }
 

@@ -153,7 +153,8 @@ public static class RuniqAgentServerServiceCollectionExtensions
             provider.GetRequiredService<AgentToolInvoker>(),
             provider.GetRequiredService<ILogger<AgentExecutionRuntime>>(),
             () => new MemoryRuntimeServices(provider.GetService<IMemoryIdentityResolver>(),
-                provider.GetService<MemoryAuthorizationService>())));
+                provider.GetService<MemoryAuthorizationService>(),
+                () => provider.GetService<IMemoryConversationStore>() is null ? null : provider.GetRequiredService<MemoryConversationService>())));
         services.AddScoped<AgentChatApiHandler>();
 
         return services;

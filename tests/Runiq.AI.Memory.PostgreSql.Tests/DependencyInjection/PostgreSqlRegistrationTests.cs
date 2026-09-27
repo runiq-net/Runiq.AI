@@ -95,7 +95,7 @@ public sealed class PostgreSqlRegistrationTests
         await host.GetRequiredService<PostgreSqlMemoryMigrator>().MigrateAsync();
         Assert.Equal(history, await ragFixture.ExecuteAsync("SELECT json_agg(t ORDER BY version)::text FROM __SCHEMA__.schema_migrations t"));
         Assert.Equal("unchanged", await ragFixture.ExecuteAsync("SELECT content_hash FROM __SCHEMA__.rag_documents WHERE document_id='sentinel'"));
-        Assert.Equal(1L, await memoryFixture.ExecuteAsync("SELECT count(*) FROM __SCHEMA__.migration_history"));
+        Assert.Equal(2L, await memoryFixture.ExecuteAsync("SELECT count(*) FROM __SCHEMA__.migration_history"));
     }
 
     private sealed class Policy : IMemoryAccessPolicy

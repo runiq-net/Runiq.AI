@@ -1,7 +1,8 @@
 # Runiq.AI.Memory
 
 Memory identity, opt-in configuration, ownership authorization, and conversation persistence.
-Includes explicit volatile in-memory persistence (#200). Model history replay remains in #201.
+Includes explicit volatile in-memory persistence (#200), neutral turn lifecycle, paged history loading,
+and append services (#201). See [programmatic conversations](../../docs/memory-conversations.md).
 
 Dependency direction: `Agents -> Memory -> Core`. Memory has no Agents, HTTP request,
 RAG, or SQL contracts. Existing Core hosting dependencies remain unchanged.
@@ -44,7 +45,7 @@ The two `Host*` types above are application implementations, not shipped provide
 `IMemoryAccessPolicy.CanAccessResourceAsync` authorizes the caller's domain membership;
 `IMemoryOwnershipLookup.FindAsync` reads authoritative metadata without transcript content.
 Register host adapters as scoped (singleton adapters are appropriate only when stateless and
-safe for concurrent callers). `AddRuniqMemory` registers scoped authorization, is
+safe for concurrent callers). `AddRuniqMemory` registers scoped authorization and conversation services, is
 idempotent, and does no network, database, model, or migration work.
 
 For standalone use, resolve `MemoryAuthorizationService` inside a DI scope and call:
@@ -70,7 +71,7 @@ No message content is read by this operation.
 
 `new MemoryOptions()` selects thread scope. `new MemoryOptions(MemoryScope.Resource)`
 permits scoped conversation listing across threads in the same authorized resource and agent scope;
-it does not implement model history replay. Both require an explicit
+runtime replay remains isolated to the explicitly selected thread. Both require an explicit
 `MemoryReference`. A null `ThreadId` requests a new conversation; an existing ID must
 already have authoritative metadata. Never treat an unknown ID as a create request.
 
@@ -95,7 +96,7 @@ Source files and namespaces follow the existing RAG package's responsibility lay
 | `Models` | `MemoryAccessScope`, `MemoryContext`, `MemoryIdentity`, `MemoryReference`, `MemoryThreadOwnership` |
 | `Abstractions` | `IMemoryAccessPolicy`, `IMemoryIdentityResolver`, `IMemoryOwnershipLookup` |
 | `Configuration` | `MemoryOptions`, `MemoryScope` (in MemoryOptions.cs) |
-| `Services` | `MemoryAuthorizationService` |
+| `Services` | `MemoryAuthorizationService`, `MemoryConversationService`, `MemoryTurnSession` |
 | `DependencyInjection` | `MemoryServiceCollectionExtensions` |
 | `Validation` | Internal `MemoryIdentifier` |
 
