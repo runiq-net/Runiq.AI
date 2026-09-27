@@ -20,8 +20,13 @@ public sealed class AgentQuery
     public string Message { get; }
 
     /// <summary>Gets or initializes an explicit provider session to resume, when supported by the executor.</summary>
-    /// <remarks>This is not a RunId. The trusted host must authorize access to the session before supplying it.</remarks>
+    /// <remarks>This is neither a RunId nor a Memory ThreadId. The trusted host must authorize access to the
+    /// native session before supplying it. Enabled framework Memory rejects mixed provider-session input.</remarks>
     public string? ProviderSessionId { get; init; }
+
+    /// <summary>Gets or initializes an untrusted Memory resource/thread reference for host authorization.</summary>
+    /// <remarks>Contains no verified caller identity. Null ThreadId requests a new thread; provider sessions are independent.</remarks>
+    public Runiq.AI.Memory.Models.MemoryReference? Memory { get; init; }
 
     /// <summary>
     /// Gets or initializes the vector index name override used for this agent RAG query.

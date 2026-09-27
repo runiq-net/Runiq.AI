@@ -23,6 +23,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Runiq.AI.Core\Runiq.AI.Core.csproj" />
+    <ProjectReference Include="..\Runiq.AI.Memory\Runiq.AI.Memory.csproj" />
     <!-- Intentional: RAG integration uses only retrieval abstractions and query models from Runiq.AI.Rag. -->
     <ProjectReference Include="..\Runiq.AI.Rag\Runiq.AI.Rag.csproj" />
   </ItemGroup>

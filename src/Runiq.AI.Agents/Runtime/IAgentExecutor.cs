@@ -21,6 +21,11 @@ public interface IAgentExecutor
     /// <summary>Gets the single executor kind handled by this registered implementation.</summary>
     AgentExecutorKind Kind { get; }
 
+    /// <summary>Gets whether this model executor explicitly accepts authorized Memory foundation context.</summary>
+    /// <remarks>Defaults to false for custom executors. This declares foundation support, not persisted history replay.
+    /// Codex and Claude kinds remain unsupported even if this property returns true.</remarks>
+    bool SupportsMemoryFoundation => false;
+
     /// <summary>Executes one request using identity owned by the runtime.</summary>
     /// <param name="request">The reusable definition and complete per-call query.</param>
     /// <param name="run">The runtime-owned context for this invocation.</param>

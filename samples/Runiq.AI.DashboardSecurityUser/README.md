@@ -85,3 +85,16 @@ dotnet run --project samples/Runiq.AI.DashboardSecurityUser/Runiq.AI.DashboardSe
 ## Production Notes
 
 This sample keeps the user store in memory only to keep the dashboard security flow easy to read. A production application should use its normal authentication provider, user store, cookie settings, HTTPS policy, and operational security controls.
+
+## Memory ownership is a separate authorization boundary
+
+This sample's cookie authentication protects access to the Dashboard. A successful
+login does not authorize a particular Memory conversation or domain resource. Memory
+is disabled by default and this sample does not enable it. To integrate a host-owned
+Memory flow, map the authenticated principal with AddRuniqHttpMemoryIdentity and
+supply scoped ownership and resource-membership adapters; a resource may represent
+a project rather than a user. Never authorize by a body/header user ID alone.
+
+See the [authenticated HTTP Memory example](../../src/Runiq.AI.Agents/README.md#authenticated-http-hosts).
+The existing Dashboard chat contract has no conversation fields in #199; hosted
+conversation APIs/navigation belong to #203, and durable history to #200/#201.

@@ -12,6 +12,9 @@ using Runiq.AI.Rag.Abstractions.Retrieval;
 using Runiq.AI.Rag.Abstractions.Reranking;
 using Runiq.AI.Rag.Configuration;
 using Runiq.AI.Rag.Runtime;
+using Runiq.AI.Memory.Abstractions;
+using Runiq.AI.Memory.Models;
+using Runiq.AI.Memory.Services;
 
 namespace Runiq.AI.Agents.Runtime;
 
@@ -24,12 +27,15 @@ namespace Runiq.AI.Agents.Runtime;
 /// no terminal event or result is returned for a cancelled run. Unexpected executor failures
 /// and empty responses are reported as failed events or results. Disposing an unfinished
 /// stream cancels its run and releases the executor.
+/// Enabled Memory requires scoped host services and successful identity/ownership preflight before dispatch.
+/// Disabled Memory resolves no Memory services; foundation failures use safe failed-event/result codes.
 /// </remarks>
 public sealed class AgentExecutionRuntime
 {
     private readonly IEnumerable<Agent> agents;
     private readonly AgentToolInvoker toolInvoker;
     private readonly AgentExecutorResolver executorResolver;
+    private readonly Func<MemoryRuntimeServices>? resolveMemoryServices;
     private readonly ILogger<AgentExecutionRuntime> logger = NullLogger<AgentExecutionRuntime>.Instance;
 
     /// <summary>
@@ -87,13 +93,16 @@ public sealed class AgentExecutionRuntime
     /// <param name="executorResolver">The executor resolver supplied by the host container.</param>
     /// <param name="toolInvoker">The tool invoker used unless a streaming call supplies an override.</param>
     /// <param name="logger">The server logger that records original execution and cleanup exceptions.</param>
+    /// <param name="resolveMemoryServices">Resolves scoped Memory services only for enabled invocations.</param>
     internal AgentExecutionRuntime(IEnumerable<Agent> agents, AgentExecutorResolver executorResolver,
-        AgentToolInvoker toolInvoker, ILogger<AgentExecutionRuntime> logger)
+        AgentToolInvoker toolInvoker, ILogger<AgentExecutionRuntime> logger,
+        Func<MemoryRuntimeServices>? resolveMemoryServices = null)
     {
         this.agents = agents ?? throw new ArgumentNullException(nameof(agents));
         this.executorResolver = executorResolver ?? throw new ArgumentNullException(nameof(executorResolver));
         this.toolInvoker = toolInvoker ?? throw new ArgumentNullException(nameof(toolInvoker));
         this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        this.resolveMemoryServices = resolveMemoryServices;
     }
 
     /// <summary>
@@ -276,6 +285,21 @@ public sealed class AgentExecutionRuntime
                         initialFailure = AgentExecutionEvent.Failed(
                             $"Agent '{agent.Id}' selects {agent.Executor.Kind}, but no implementation is registered for this executor.",
                             "AgentExecutorNotSupported");
+                    else if (MemoryExecutorCompatibility.ValidateInvocation(agent, query, executor) is { } memoryFailure)
+                        initialFailure = AgentExecutionEvent.Failed(memoryFailure.ErrorMessage!, memoryFailure.ErrorCode);
+                }
+            }
+            MemoryContext? memoryContext = null;
+            if (initialFailure is null && agent!.Memory is not null)
+            {
+                try
+                {
+                    (memoryContext, initialFailure) = await AuthorizeMemoryAsync(agent, query, run, cancellationToken);
+                }
+                catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
+                {
+                    run.Finish(AgentRunStatus.Cancelled);
+                    throw new AgentRunCanceledException(run, cancellationToken, exception);
                 }
             }
             if (initialFailure is not null)
@@ -286,7 +310,7 @@ public sealed class AgentExecutionRuntime
                 yield break;
             }
 
-            var request = new AgentExecutionRequest(agent!, query);
+            var request = new AgentExecutionRequest(agent!, query, memoryContext);
             while (true)
             {
                 AgentExecutionEvent current;
@@ -369,6 +393,48 @@ public sealed class AgentExecutionRuntime
         }
     }
 
+    private async ValueTask<(MemoryContext? Context, AgentExecutionEvent? Failure)> AuthorizeMemoryAsync(
+        Agent agent, AgentQuery query, AgentRunContext run, CancellationToken cancellationToken)
+    {
+        MemoryRuntimeServices? services;
+        try { services = resolveMemoryServices?.Invoke(); }
+        catch (Exception exception)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            logger.LogError(exception, "Memory preflight failed at {MemoryPreflightStage} for run {RunId} and agent {AgentId}.",
+                "ServiceResolution", run.RunId, run.AgentId);
+            // Do not expose dependency errors that may contain host identity or storage configuration.
+            return (null, AgentExecutionEvent.Failed("Required Memory services are unavailable.", "MemoryServicesMissing"));
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        if (services?.IdentityResolver is null || services.Authorization is null)
+            return (null, AgentExecutionEvent.Failed("Required Memory services are unavailable.", "MemoryServicesMissing"));
+        var stage = "IdentityResolution";
+        try
+        {
+            var identity = await services.IdentityResolver.ResolveAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (identity is null)
+                return (null, AgentExecutionEvent.Failed("A verified Memory identity is required.", "MemoryIdentityRequired"));
+            if (query.Memory is null)
+                return (null, AgentExecutionEvent.Failed("An explicit Memory resource reference is required.", "MemoryReferenceRequired"));
+            stage = "Authorization";
+            var context = await services.Authorization.AuthorizeAsync(identity, query.Memory, agent.Id, agent.Memory!, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            return context is null
+                ? (null, AgentExecutionEvent.Failed("Memory access was denied.", "MemoryAccessDenied"))
+                : (context, null);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            logger.LogError(exception, "Memory preflight failed at {MemoryPreflightStage} for run {RunId} and agent {AgentId}.",
+                stage, run.RunId, run.AgentId);
+            return (null, AgentExecutionEvent.Failed("Memory preflight failed.", "MemoryPreflightFailed"));
+        }
+    }
+
     private static AgentExecutionEvent Stamp(AgentExecutionEvent executionEvent, AgentRunContext run) =>
         executionEvent with
         {
@@ -414,3 +480,5 @@ public sealed class AgentExecutionRuntime
 
 
 }
+
+internal sealed record MemoryRuntimeServices(IMemoryIdentityResolver? IdentityResolver, MemoryAuthorizationService? Authorization);

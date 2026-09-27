@@ -290,3 +290,13 @@ and cover invocation, dashboard events, errors, scope isolation, resume, limits,
 cancellation, timeout and abandoned-stream cleanup. A separate
 `LocalCli_InvokesRuniqToolAndResumes` test is enabled with
 `RUNIQ_CLAUDE_INTEGRATION=1` and requires an authenticated installed CLI.
+
+## Framework Memory boundary
+
+Claude native `ProviderSessionId` continuation is independent of framework `ThreadId`,
+`ResourceId`, and invocation `RunId`. With Memory disabled, native continuation keeps
+its existing behavior and the host remains responsible for authorizing the session.
+Calling `UseMemory()` on a Claude agent is rejected before tool bridging or process
+launch. The first Memory foundation supports only model executors; history persistence
+and replay remain #200/#201. See the
+[executor matrix](../src/Runiq.AI.Agents/README.md#executor-compatibility-and-failures).
