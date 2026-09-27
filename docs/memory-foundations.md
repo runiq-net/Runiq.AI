@@ -1,6 +1,6 @@
 # Memory foundation delivery (#199)
 
-This change delivers configuration, identity and authorization foundations. It does
+This section records the #199 foundation delivery. It does
 not deliver durable or multi-turn recall. No publication, deployment, release, commit,
 or push is implied by implementing these issues.
 
@@ -8,7 +8,7 @@ or push is implied by implementing these issues.
 graph LR
   Agents --> Memory
   Memory --> Core
-  MemoryPostgreSql["Memory.PostgreSql — planned #200"] --> Memory
+  MemoryPostgreSql["Memory.PostgreSql — #200"] --> Memory
   MemoryRag["Memory.Rag — optional, planned #207"] --> Memory
   MemoryRag --> Rag
 ```
@@ -23,7 +23,7 @@ activating it. PostgreSQL provider installation and selection remain explicit.
 | PBI | Memory / provider responsibility | Agents / host / Dashboard responsibility |
 | --- | --- | --- |
 | #199 Configuration and ownership | Memory contracts, options, identity and authorization policies | Agent opt-in, authenticated HTTP adapter, executor checks, runtime preflight |
-| #200 Conversation/message store (planned) | In-memory provider in Memory; SQL storage and migrations in Memory.PostgreSql; atomic ownership binding | Explicit provider composition by application |
+| #200 Conversation/message store | In-memory provider in Memory; SQL storage and migrations in Memory.PostgreSql; atomic ownership binding | Explicit provider composition by application |
 | #201 Multi-turn model conversations (planned) | Existing ownership/storage contracts | Agents loads history only after successful authorization; model context and persistence orchestration |
 | #202 Shared context budget (planned) | Neutral memory selection policies | Agents combines Memory and RAG context within model budget |
 | #203 Hosted conversation continuation (planned) | Existing authorized storage contracts | Agents HTTP conversation adapters; Dashboard.Client conversation UI |
@@ -126,3 +126,7 @@ execution APIs, dependency faults, correlation, cancellation and denial. Updated
 documentation examples compiled successfully, and the diff whitespace check passed.
 The full solution test totals above describe the original implementation run; this
 review correction reran the affected Memory and Agents suites. No commit or push was made.
+
+## Persistence delivery (#200)
+
+Conversation contracts, in-memory persistence, and the separately selected PostgreSQL provider are now implemented. See [Memory persistence](memory-persistence.md) for current API examples, migration lifecycle, provider parity evidence, and validation results. The #199 results above remain historical. Host identity and resource/sharing policy stay host-owned; the selected provider supplies authoritative ownership lookup. Runtime history replay remains in #201 and retention/deletion in #204.

@@ -4,16 +4,16 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>true</IsPackable>
-    <PackageId>Runiq.AI.Memory</PackageId>
+    <PackageId>Runiq.AI.Memory.PostgreSql</PackageId>
     <Version>1.0.0</Version>
-    <Title>Runiq Memory</Title>
-    <Description>Provider-independent Memory identity, authorization, conversation contracts, and volatile persistence for Runiq AI.</Description>
-    <PackageTags>ai;memory;agents;dotnet;runiq</PackageTags>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Description>Durable PostgreSQL conversation and message persistence for Runiq Memory.</Description>
+    <PackageTags>ai;memory;postgresql;runiq</PackageTags>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../Runiq.AI.Memory/Runiq.AI.Memory.csproj" />
+    <PackageReference Include="Npgsql" Version="10.0.3" />
     <None Update="README.md" Pack="true" PackagePath="\" />
     <None Include="../../assets/nuget/runiq-icon.png" Pack="true" PackagePath="\" />
-    <ProjectReference Include="../Runiq.AI.Core/Runiq.AI.Core.csproj" />
+    <EmbeddedResource Include="Migrations/*.sql" />
   </ItemGroup>
 </Project>

@@ -46,7 +46,7 @@ public sealed class MemoryAuthorizationService
         MemoryThreadOwnership ownership;
         if (reference.ThreadId is null)
         {
-            // A generated proposal is not persistence. #200 must atomically create and bind it.
+            // A generated proposal is not persistence. The selected store atomically creates and binds it.
             ownership = new MemoryThreadOwnership(Guid.NewGuid().ToString("N"), requested);
         }
         else
@@ -59,18 +59,30 @@ public sealed class MemoryAuthorizationService
             ownership = existing;
         }
 
+        if (!await CanAccessOwnershipAsync(accessPolicy, identity, requested, ownership, cancellationToken, resourceAlreadyChecked: true)) return null;
+        return new MemoryContext(identity, ownership, requested, options.Scope, reference.ThreadId is null);
+    }
+
+    internal static async ValueTask<bool> CanAccessOwnershipAsync(IMemoryAccessPolicy accessPolicy, MemoryIdentity identity, MemoryAccessScope requested,
+        MemoryThreadOwnership ownership, CancellationToken cancellationToken, bool resourceAlreadyChecked = false)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         var owner = ownership.Scope;
-        if (owner.SharingGroup != requested.SharingGroup) return null;
+        if (identity.BoundaryId != requested.BoundaryId || owner.BoundaryId != requested.BoundaryId ||
+            owner.ResourceId != requested.ResourceId || owner.SharingGroup != requested.SharingGroup) return false;
+        var resourceAllowed = resourceAlreadyChecked || await accessPolicy.CanAccessResourceAsync(identity, requested.ResourceId, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!resourceAllowed) return false;
         if (requested.SharingGroup is null)
         {
-            if (owner.AgentId != requested.AgentId) return null;
+            if (owner.AgentId != requested.AgentId) return false;
         }
         else
         {
             var sharingAllowed = await accessPolicy.CanShareAsync(identity, owner, requested, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
-            if (!sharingAllowed) return null;
+            if (!sharingAllowed) return false;
         }
-        return new MemoryContext(identity, ownership, requested, options.Scope, reference.ThreadId is null);
+        return true;
     }
 }

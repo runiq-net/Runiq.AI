@@ -6,12 +6,14 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="../Shared/Memory/ConversationStoreScenarios.cs" Link="Persistence/ConversationStoreScenarios.cs" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <Using Include="Xunit" />
-    <ProjectReference Include="../../src/Runiq.AI.Memory/Runiq.AI.Memory.csproj" />
+    <ProjectReference Include="../../src/Runiq.AI.Memory.PostgreSql/Runiq.AI.Memory.PostgreSql.csproj" />
+    <ProjectReference Include="../../src/Runiq.AI.Rag.PostgreSql/Runiq.AI.Rag.PostgreSql.csproj" />
+    <ProjectReference Include="../Hosts/Runiq.AI.Memory.PostgreSql.TestHost/Runiq.AI.Memory.PostgreSql.TestHost.csproj" ReferenceOutputAssembly="false" />
+    <Compile Include="../Shared/Memory/ConversationStoreScenarios.cs" Link="Persistence/ConversationStoreScenarios.cs" />
   </ItemGroup>
 </Project>
