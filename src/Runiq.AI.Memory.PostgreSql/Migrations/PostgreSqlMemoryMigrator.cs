@@ -18,9 +18,13 @@ public sealed class PostgreSqlMemoryMigrator
     public async Task MigrateAsync(CancellationToken cancellationToken = default)
     {
         var assembly = typeof(PostgreSqlMemoryMigrator).Assembly;
-        var resource = assembly.GetManifestResourceNames().Single(n => n.EndsWith(".001_initial.sql", StringComparison.Ordinal));
-        using var reader = new StreamReader(assembly.GetManifestResourceStream(resource)!);
-        await ApplyAsync([await reader.ReadToEndAsync(cancellationToken)], cancellationToken);
+        var migrations = new List<string>();
+        foreach (var resource in assembly.GetManifestResourceNames().Where(n => n.EndsWith(".sql", StringComparison.Ordinal)).Order(StringComparer.Ordinal))
+        {
+            using var reader = new StreamReader(assembly.GetManifestResourceStream(resource)!);
+            migrations.Add(await reader.ReadToEndAsync(cancellationToken));
+        }
+        await ApplyAsync(migrations, cancellationToken);
     }
 
     // Test fixtures may append a migration to exercise upgrades and rollback without inventing a shipped version.

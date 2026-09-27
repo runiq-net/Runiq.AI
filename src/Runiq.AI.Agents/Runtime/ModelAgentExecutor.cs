@@ -319,6 +319,7 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
             }
         }
 
+        messages.AddRange(request.History);
         messages.Add(new ChatMessage(ChatRole.User, query.Message));
         string? previousResponseId = null;
         var assistantResponse = new StringBuilder();
@@ -346,6 +347,7 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
             cancellationToken.ThrowIfCancellationRequested();
             var client = chatClientResolver.Resolve(chatRequest);
             var toolCalls = new List<ChatToolCall>();
+            var roundResponse = new StringBuilder();
 
             cancellationToken.ThrowIfCancellationRequested();
             await foreach (var update in client.CompleteStreamingAsync(chatRequest, cancellationToken))
@@ -355,6 +357,7 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
                 if (update.Kind == ChatStreamingUpdateKind.ContentDelta && !string.IsNullOrEmpty(update.ContentDelta))
                 {
                     assistantResponse.Append(update.ContentDelta);
+                    roundResponse.Append(update.ContentDelta);
                     yield return AgentExecutionEvent.AssistantDelta(update.ContentDelta);
                 }
                 else if (update.Kind == ChatStreamingUpdateKind.ToolCallDelta && update.ToolCall is not null)
@@ -376,7 +379,9 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
                 yield break;
             }
 
-            messages.Add(new ChatMessage(ChatRole.Assistant, string.Empty, ToolCalls: toolCalls));
+            if (request.Turn is not null)
+                await request.Turn.AppendToolCallsAsync(toolCalls, cancellationToken);
+            messages.Add(new ChatMessage(ChatRole.Assistant, roundResponse.ToString(), ToolCalls: toolCalls));
             foreach (var toolCall in toolCalls)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -388,7 +393,6 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
                 if (result.IsSuccess)
                 {
                     output = string.IsNullOrWhiteSpace(result.OutputJson) ? "{}" : result.OutputJson;
-                    yield return AgentExecutionEvent.ToolCallCompleted(toolCall.Id, toolCall.Name, output);
                 }
                 else
                 {
@@ -398,12 +402,14 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
                         errorCode = result.ErrorCode ?? "ToolExecutionFailed",
                         errorMessage = result.ErrorMessage ?? "Tool execution failed."
                     });
-                    yield return AgentExecutionEvent.ToolCallFailed(
-                        toolCall.Id,
-                        toolCall.Name,
-                        result.ErrorMessage ?? "Tool execution failed.",
-                        result.ErrorCode);
                 }
+                if (request.Turn is not null)
+                    await request.Turn.AppendToolResultAsync(toolCall.Id, output, cancellationToken);
+                if (result.IsSuccess)
+                    yield return AgentExecutionEvent.ToolCallCompleted(toolCall.Id, toolCall.Name, output);
+                else
+                    yield return AgentExecutionEvent.ToolCallFailed(toolCall.Id, toolCall.Name,
+                        result.ErrorMessage ?? "Tool execution failed.", result.ErrorCode);
                 messages.Add(new ChatMessage(ChatRole.Tool, output, toolCall.Id));
             }
         }

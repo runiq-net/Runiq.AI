@@ -24,6 +24,217 @@ public abstract class ConversationStoreScenarios : IAsyncLifetime
         new(new("caller", tenant), new(thread, new(tenant, resource, agent, group)), new(tenant, resource, agent, group), scope, true);
 
     [Fact]
+    // A captured but authoritatively denied reservation must not invent a turn or attempt an unauthorized terminal write.
+    public async Task ConversationService_InitialAppendRejectionNeedsNoFinalizationWrite()
+    {
+        using var scope = Host.CreateScope();
+        var store = scope.ServiceProvider.GetRequiredService<IMemoryConversationStore>();
+        var service = scope.ServiceProvider.GetRequiredService<MemoryConversationService>();
+        var context = Proposal();
+        await service.CreateAsync(context);
+        MemoryTurnSession? captured = null;
+        await Error(MemoryStoreError.AccessDenied, () => service.BeginAsync(context, "turn", "run", "question", DateTimeOffset.UtcNow,
+            session => { captured = session; Policy.Allow = false; }, CancellationToken.None).AsTask());
+        Assert.NotNull(captured);
+        using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await captured.FinishAsync(MemoryTurnStatus.Failed, cleanup.Token);
+        Policy.Allow = true;
+        Assert.Empty(await store.ReadTurnsAsync(context));
+        Assert.Empty(await store.ReadMessagesAsync(context));
+        Assert.Equal(0, (await store.ReadAsync(context)).Version);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    // Both providers reconcile the original startup request after commit cancellation or two lost acknowledgements, then release the reservation.
+    public async Task ConversationService_InitialAppendRecoveryRetainsSession(bool cancelAfterCommit)
+    {
+        using var scope = Host.CreateScope();
+        var store = scope.ServiceProvider.GetRequiredService<IMemoryConversationStore>();
+        var uncertain = new UncertainStore(store);
+        using var caller = new CancellationTokenSource();
+        var tokens = new List<CancellationToken>();
+        uncertain.AfterAppend = (_, token) =>
+        {
+            tokens.Add(token);
+            if (cancelAfterCommit && tokens.Count == 1)
+            {
+                caller.Cancel();
+                throw new OperationCanceledException(caller.Token);
+            }
+            if (!cancelAfterCommit && tokens.Count <= 2) throw new MemoryStoreException(MemoryStoreError.StorageFailure);
+            return ValueTask.CompletedTask;
+        };
+        var service = new MemoryConversationService(uncertain);
+        var context = Proposal();
+        await service.CreateAsync(context);
+        MemoryTurnSession? captured = null;
+        var beginning = service.BeginAsync(context, "turn", "run", "question", DateTimeOffset.UtcNow,
+            session => { Assert.Empty(uncertain.Attempts); captured = session; }, caller.Token).AsTask();
+        if (cancelAfterCommit)
+            Assert.Equal(caller.Token, (await Assert.ThrowsAnyAsync<OperationCanceledException>(() => beginning)).CancellationToken);
+        else
+            Assert.Equal(MemoryStoreError.StorageFailure, (await Assert.ThrowsAsync<MemoryStoreException>(() => beginning)).Error);
+        Assert.NotNull(captured);
+        Assert.Equal(MemoryTurnStatus.Running, Assert.Single(await store.ReadTurnsAsync(context)).Status);
+        using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var outcome = cancelAfterCommit ? MemoryTurnStatus.Cancelled : MemoryTurnStatus.Failed;
+        await captured.FinishAsync(outcome, cleanup.Token);
+        Assert.Equal(cancelAfterCommit ? 3 : 4, uncertain.Attempts.Count);
+        var original = uncertain.Attempts[0];
+        Assert.All(uncertain.Attempts.Take(uncertain.Attempts.Count - 1), request => Assert.Same(original, request));
+        Assert.Equal(cleanup.Token, tokens[^2]);
+        Assert.Equal(cleanup.Token, tokens[^1]);
+        Assert.NotEqual(caller.Token, tokens[^2]);
+        Assert.Equal(outcome, Assert.Single(await store.ReadTurnsAsync(context)).Status);
+        Assert.Equal(original.Messages[0], Assert.Single(await store.ReadMessagesAsync(context)).Content);
+        Assert.Equal(1, (await store.ReadAsync(context)).Version);
+        var next = await service.BeginAsync(context, "next-turn", "next-run", "next input", DateTimeOffset.UtcNow);
+        await next.FinishAsync(MemoryTurnStatus.Completed);
+        Assert.Equal(2, (await store.ReadMessagesAsync(context)).Count);
+        Assert.Equal(2, (await store.ReadAsync(context)).Version);
+        Assert.DoesNotContain(await store.ReadTurnsAsync(context), t => t.Status == MemoryTurnStatus.Running);
+    }
+
+    [Fact]
+    // An uncertain commit retries the very same immutable append rather than regenerating its key, time, or payload.
+    public async Task ConversationService_RetriesUncertainCommitWithoutDuplicateMessages()
+    {
+        using var scope = Host.CreateScope();
+        var store = scope.ServiceProvider.GetRequiredService<IMemoryConversationStore>();
+        var uncertain = new UncertainStore(store);
+        var service = new MemoryConversationService(uncertain);
+        var context = Proposal();
+        await service.CreateAsync(context);
+        var session = await service.BeginAsync(context, "turn", "run", "question", DateTimeOffset.UtcNow);
+        session.AppendDelta("answer");
+        await session.FinishAsync(MemoryTurnStatus.Completed);
+        Assert.Equal(4, uncertain.Attempts.Count);
+        Assert.Same(uncertain.Attempts[0], uncertain.Attempts[1]);
+        Assert.Same(uncertain.Attempts[2], uncertain.Attempts[3]);
+        Assert.Equal(2, (await store.ReadMessagesAsync(context)).Count);
+        Assert.Equal(MemoryTurnStatus.Completed, Assert.Single(await store.ReadTurnsAsync(context)).Status);
+        var original = uncertain.Attempts[0];
+        await Error(MemoryStoreError.IdempotencyConflict, () => store.AppendAsync(context,
+            new(original.IdempotencyKey, original.ExpectedVersion, [Message("changed")], original.Turn)).AsTask());
+    }
+
+    private sealed class UncertainStore(IMemoryConversationStore inner) : IMemoryConversationStore
+    {
+        internal List<MemoryAppendRequest> Attempts = [];
+        internal Func<MemoryAppendRequest, CancellationToken, ValueTask>? AfterAppend;
+        private readonly HashSet<string> committed = [];
+        public ValueTask<MemoryConversation> CreateAsync(MemoryContext c, CancellationToken t = default) => inner.CreateAsync(c, t);
+        public ValueTask<MemoryConversation> ReadAsync(MemoryContext c, CancellationToken t = default) => inner.ReadAsync(c, t);
+        public ValueTask<IReadOnlyList<MemoryConversation>> ListAsync(MemoryContext c, string? afterThreadId = null, int limit = 100, CancellationToken cancellationToken = default) => inner.ListAsync(c, afterThreadId, limit, cancellationToken);
+        public ValueTask<IReadOnlyList<StoredMemoryMessage>> ReadMessagesAsync(MemoryContext c, long afterSequence = 0, int limit = 100, CancellationToken cancellationToken = default) => inner.ReadMessagesAsync(c, afterSequence, limit, cancellationToken);
+        public ValueTask<IReadOnlyList<MemoryTurn>> ReadTurnsAsync(MemoryContext c, CancellationToken t = default) => inner.ReadTurnsAsync(c, t);
+        public async ValueTask<MemoryAppendResult> AppendAsync(MemoryContext c, MemoryAppendRequest r, CancellationToken t = default)
+        {
+            Attempts.Add(r);
+            var result = await inner.AppendAsync(c, r, t);
+            if (AfterAppend is not null) await AfterAppend(r, t);
+            else if (committed.Add(r.IdempotencyKey)) throw new MemoryStoreException(MemoryStoreError.StorageFailure);
+            return result;
+        }
+    }
+
+    [Fact]
+    // Neutral orchestration pages completed history, excludes partial turns, and never re-adds current input.
+    public async Task ConversationService_LoadsOnlyCompletedHistoryAcrossPages()
+    {
+        using var scope = Host.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<MemoryConversationService>();
+        var context = Proposal();
+        await service.CreateAsync(context);
+        for (var i = 0; i < 51; i++)
+        {
+            var session = await service.BeginAsync(context, $"turn-{i}", $"run-{i}", $"user-{i}", DateTimeOffset.UtcNow);
+            session.AppendDelta($"answer-{i}");
+            await session.FinishAsync(MemoryTurnStatus.Completed);
+        }
+        var failed = await service.BeginAsync(context, "failed", "failed", "failed input", DateTimeOffset.UtcNow);
+        failed.AppendDelta("incomplete");
+        await failed.FinishAsync(MemoryTurnStatus.Failed);
+        var current = await service.BeginAsync(context, "current", "current", "current", DateTimeOffset.UtcNow);
+        var history = await current.LoadHistoryAsync();
+        Assert.Equal(102, history.Count);
+        Assert.Equal("user-0", history[0].Content);
+        Assert.Equal("answer-50", history[^1].Content);
+        Assert.DoesNotContain(history, m => m.Content is "incomplete" or "current" or "failed input");
+    }
+
+    [Theory]
+    [InlineData(MemoryTurnStatus.Completed)]
+    [InlineData(MemoryTurnStatus.Failed)]
+    [InlineData(MemoryTurnStatus.Cancelled)]
+    // Lifecycle writes are atomic, exact retries retain receipts, and terminal states remain distinct.
+    public async Task TurnLifecycle_PreservesAtomicWritesAndRetries(MemoryTurnStatus status)
+    {
+        using var scope = Host.CreateScope();
+        var store = scope.ServiceProvider.GetRequiredService<IMemoryConversationStore>();
+        var context = Proposal();
+        await store.CreateAsync(context);
+        var turn = new MemoryTurn("turn", "run", 0, Message("u").Timestamp);
+        var start = new MemoryAppendRequest("start", 0, [Message("u")], turn);
+        var first = await store.AppendAsync(context, start);
+        Assert.Equal(turn, Assert.Single(await store.ReadTurnsAsync(context)));
+        var end = new MemoryTurn(turn.TurnId, turn.RunId, 0, turn.StartedAt, status, turn.StartedAt.AddSeconds(1));
+        var terminal = new MemoryAppendRequest("end", 1, [Message("a", chat: new(ChatRole.Assistant, "answer"))], end);
+        var receipt = await store.AppendAsync(context, terminal);
+        Assert.Equal(receipt, await store.AppendAsync(context, terminal));
+        Assert.Equal(first, await store.AppendAsync(context, start));
+        Assert.Equal(end, Assert.Single(await store.ReadTurnsAsync(context)));
+        Assert.Equal(2, (await store.ReadMessagesAsync(context)).Count);
+        await Error(MemoryStoreError.TurnConflict, () => store.AppendAsync(context,
+            new("late", 2, [Message("late", chat: new(ChatRole.Assistant, "late"))], turn)).AsTask());
+    }
+
+    [Fact]
+    // Durable reservations reject overlaps and untracked writes; cancellation before commit leaves the turn running.
+    public async Task RunningTurn_RejectsOverlapAndSupportsEmptyFinalization()
+    {
+        using var scope = Host.CreateScope();
+        var store = scope.ServiceProvider.GetRequiredService<IMemoryConversationStore>();
+        var context = Proposal();
+        await store.CreateAsync(context);
+        var turn = new MemoryTurn("turn", "run", 0, Message("u").Timestamp);
+        await store.AppendAsync(context, new("start", 0, [Message("u")], turn));
+        using var other = Host.CreateScope();
+        var competing = other.ServiceProvider.GetRequiredService<IMemoryConversationStore>();
+        await Error(MemoryStoreError.TurnConflict, () => competing.AppendAsync(context,
+            new("overlap", 1, [Message("other", "other")], new("other", "other", 1, turn.StartedAt))).AsTask());
+        await Error(MemoryStoreError.TurnConflict, () => competing.AppendAsync(context, new("legacy", 1, [Message("legacy", "legacy")])).AsTask());
+        var finish = new MemoryAppendRequest("cancel", 1, [], new("turn", "run", 0, turn.StartedAt, MemoryTurnStatus.Cancelled, turn.StartedAt.AddSeconds(1)));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => store.AppendAsync(context, finish, cancellation.Token).AsTask());
+        Assert.Equal(MemoryTurnStatus.Running, Assert.Single(await store.ReadTurnsAsync(context)).Status);
+        var receipt = await store.AppendAsync(context, finish);
+        Assert.Equal(new MemoryAppendResult(2, 1), receipt);
+        Assert.Equal(receipt, await store.AppendAsync(context, finish));
+        await Error(MemoryStoreError.AccessDenied, () => store.ReadTurnsAsync(Proposal(resource: "denied")).AsTask());
+    }
+
+    [Fact]
+    // Pending tools cannot be marked complete but remain available for diagnosing failed runs.
+    public async Task TurnCompletion_RejectsIncompleteToolInteractions()
+    {
+        using var scope = Host.CreateScope();
+        var store = scope.ServiceProvider.GetRequiredService<IMemoryConversationStore>();
+        var context = Proposal();
+        await store.CreateAsync(context);
+        var turn = new MemoryTurn("turn", "run", 0, Message("u").Timestamp);
+        await store.AppendAsync(context, new("start", 0, [Message("u")], turn));
+        await store.AppendAsync(context, new("tool", 1, [Message("pending", chat: new(ChatRole.Assistant, "working", ToolCalls: [new("call", "tool", "{}")]))], turn));
+        await Error(MemoryStoreError.ToolRelationshipConflict, () => store.AppendAsync(context,
+            new("done", 2, [], new("turn", "run", 0, turn.StartedAt, MemoryTurnStatus.Completed, turn.StartedAt.AddSeconds(1)))).AsTask());
+        Assert.Equal(MemoryTurnStatus.Running, Assert.Single(await store.ReadTurnsAsync(context)).Status);
+        await store.AppendAsync(context, new("failed", 2, [], new("turn", "run", 0, turn.StartedAt, MemoryTurnStatus.Failed, turn.StartedAt.AddSeconds(1))));
+    }
+
+    [Fact]
     // The same contract creates, binds, reads, and pages ordered messages without losing timestamps or tool links.
     public async Task CreateAppendRead_PreservesMetadataAndPagination()
     {

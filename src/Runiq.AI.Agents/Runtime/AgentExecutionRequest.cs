@@ -14,6 +14,9 @@ public sealed class AgentExecutionRequest
         Memory = memory;
     }
 
+    internal Runiq.AI.Memory.Services.MemoryTurnSession? Turn { get; init; }
+    internal IReadOnlyList<Runiq.AI.Core.AI.Chat.ChatMessage> History { get; init; } = [];
+
     /// <summary>Gets the configured agent definition.</summary>
     public Agent Agent { get; }
 

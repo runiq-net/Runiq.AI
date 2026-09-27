@@ -7,7 +7,7 @@ using Runiq.AI.Memory.Services;
 
 namespace Runiq.AI.Memory.PostgreSql.TestHost;
 
-internal sealed class PersistenceProbe(IMemoryConversationStore store, MemoryAuthorizationService authorization)
+internal sealed class PersistenceProbe(IMemoryConversationStore store, MemoryAuthorizationService authorization, MemoryConversationService conversations)
 {
     internal async Task RunAsync(string[] args)
     {
@@ -27,6 +27,21 @@ internal sealed class PersistenceProbe(IMemoryConversationStore store, MemoryAut
                 Console.WriteLine(JsonSerializer.Serialize(new { Success = true, result.Version }));
             }
             catch (MemoryStoreException exception) when (exception.Error == MemoryStoreError.VersionConflict)
+            {
+                Console.WriteLine(JsonSerializer.Serialize(new { Success = false, Error = exception.Error.ToString() }));
+            }
+            return;
+        }
+        if (mode == "turn-race")
+        {
+            Console.WriteLine("READY");
+            if (await Console.In.ReadLineAsync() != "GO") throw new InvalidOperationException("Missing race barrier.");
+            try
+            {
+                await conversations.BeginAsync(context, args[3], args[3], args[3], DateTimeOffset.UtcNow);
+                Console.WriteLine(JsonSerializer.Serialize(new { Success = true }));
+            }
+            catch (MemoryStoreException exception) when (exception.Error is MemoryStoreError.VersionConflict or MemoryStoreError.TurnConflict)
             {
                 Console.WriteLine(JsonSerializer.Serialize(new { Success = false, Error = exception.Error.ToString() }));
             }

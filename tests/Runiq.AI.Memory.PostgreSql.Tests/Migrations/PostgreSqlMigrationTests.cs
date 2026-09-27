@@ -15,6 +15,41 @@ namespace Runiq.AI.Memory.PostgreSql.Tests.Migrations;
 public sealed class PostgreSqlMigrationTests
 {
     [Fact]
+    // Upgrading the shipped v1 schema preserves exact message payloads and retry receipts while introducing empty turn state.
+    public async Task InitialSchemaUpgrade_PreservesLegacyConversationAndReceipt()
+    {
+        await using var fixture = new PostgreSqlTestDatabase();
+        await fixture.Migrator.ApplyAsync([await PostgreSqlTestDatabase.InitialSqlAsync()]);
+        using var host = new ServiceCollection().AddScoped<IMemoryAccessPolicy, MigrationAccessPolicy>()
+            .AddRuniqMemoryPostgreSql(o => { o.ConnectionString = PostgreSqlTestDatabase.ConnectionString; o.Schema = fixture.Schema; })
+            .BuildServiceProvider();
+        using var scope = host.CreateScope();
+        var context = (await scope.ServiceProvider.GetRequiredService<MemoryAuthorizationService>().AuthorizeAsync(
+            new("caller", "tenant"), new("resource"), "agent", new()))!;
+        var store = scope.ServiceProvider.GetRequiredService<IMemoryConversationStore>();
+        await store.CreateAsync(context);
+        var message = new MemoryMessage("legacy", "legacy-run", DateTimeOffset.UnixEpoch, new(ChatRole.User, "legacy input"));
+        var request = new MemoryAppendRequest("legacy-request", 0, [message]);
+        await using (var connection = await fixture.Database.DataSource.OpenConnectionAsync())
+        await using (var command = fixture.Database.Command(connection, null,
+            "INSERT INTO __SCHEMA__.messages VALUES (@boundary,@thread,@id,@run,1,1,@payload); " +
+            "INSERT INTO __SCHEMA__.append_receipts VALUES (@boundary,@thread,'legacy-request',@receipt,1,1); " +
+            "UPDATE __SCHEMA__.conversations SET version=1 WHERE boundary_id=@boundary AND thread_id=@thread;",
+            ("boundary", "tenant"), ("thread", context.Ownership.ThreadId), ("id", message.MessageId), ("run", message.RunId),
+            ("payload", MemoryMessageSerializer.Serialize(message)), ("receipt", MemoryMessageSerializer.RequestPayload(request))))
+            await command.ExecuteNonQueryAsync();
+        await fixture.Migrator.MigrateAsync();
+        Assert.Equal(new MemoryAppendResult(1, 1), await store.AppendAsync(context, request));
+        Assert.Equal(MemoryMessageSerializer.Serialize(message), MemoryMessageSerializer.Serialize(Assert.Single(await store.ReadMessagesAsync(context)).Content));
+        Assert.Empty(await store.ReadTurnsAsync(context));
+        var session = await scope.ServiceProvider.GetRequiredService<MemoryConversationService>().BeginAsync(context, "new", "new", "new input", DateTimeOffset.UtcNow);
+        Assert.Empty(await session.LoadHistoryAsync());
+        session.AppendDelta("new answer");
+        await session.FinishAsync(MemoryTurnStatus.Completed);
+        Assert.Equal(3, (await store.ReadAsync(context)).Version);
+    }
+
+    [Fact]
     // Independent pools serialize fresh migrations in PostgreSQL and repeated invocation preserves one history entry.
     public async Task FreshRepeatedConcurrentInitialization_IsSafe()
     {
@@ -22,7 +57,7 @@ public sealed class PostgreSqlMigrationTests
         await using var other = new MemoryDatabase(fixture.Options);
         await Task.WhenAll(fixture.Migrator.MigrateAsync(), new PostgreSqlMemoryMigrator(other).MigrateAsync());
         await fixture.Migrator.MigrateAsync();
-        Assert.Equal(1L, await fixture.ExecuteAsync("SELECT count(*) FROM __SCHEMA__.migration_history"));
+        Assert.Equal(2L, await fixture.ExecuteAsync("SELECT count(*) FROM __SCHEMA__.migration_history"));
         Assert.Equal(0L, await fixture.ExecuteAsync("SELECT count(*) FROM __SCHEMA__.messages"));
     }
 
@@ -36,7 +71,7 @@ public sealed class PostgreSqlMigrationTests
         Assert.Equal(MemoryStoreError.StorageFailure, error.Error);
         Assert.Equal(false, await fixture.ExecuteAsync($"SELECT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname='{fixture.Schema}')"));
         await fixture.Migrator.MigrateAsync();
-        Assert.Equal(1L, await fixture.ExecuteAsync("SELECT count(*) FROM __SCHEMA__.migration_history"));
+        Assert.Equal(2L, await fixture.ExecuteAsync("SELECT count(*) FROM __SCHEMA__.migration_history"));
     }
 
     [Fact]
@@ -45,6 +80,10 @@ public sealed class PostgreSqlMigrationTests
     {
         await using var fixture = new PostgreSqlTestDatabase();
         var initial = await PostgreSqlTestDatabase.InitialSqlAsync();
+        var assembly = typeof(PostgreSqlMemoryMigrator).Assembly;
+        using var turnReader = new StreamReader(assembly.GetManifestResourceStream(
+            assembly.GetManifestResourceNames().Single(n => n.EndsWith(".002_turns.sql")))!);
+        var turns = await turnReader.ReadToEndAsync();
         await fixture.Migrator.MigrateAsync();
         ServiceProvider CreateHost() => new ServiceCollection()
             .AddScoped<IMemoryAccessPolicy, MigrationAccessPolicy>()
@@ -74,10 +113,10 @@ public sealed class PostgreSqlMigrationTests
             originalReceipt = await store.AppendAsync(context, request);
             before = await store.ReadAsync(context);
         }
-        await Assert.ThrowsAsync<MemoryStoreException>(() => fixture.Migrator.ApplyAsync([initial,
+        await Assert.ThrowsAsync<MemoryStoreException>(() => fixture.Migrator.ApplyAsync([initial, turns,
             "CREATE TABLE __SCHEMA__.partial(id integer); SELECT missing_function();"]));
-        Assert.Equal(1L, await fixture.ExecuteAsync("SELECT count(*) FROM __SCHEMA__.migration_history"));
-        await fixture.Migrator.ApplyAsync([initial, "CREATE TABLE __SCHEMA__.upgrade_fixture(id integer);"]);
+        Assert.Equal(2L, await fixture.ExecuteAsync("SELECT count(*) FROM __SCHEMA__.migration_history"));
+        await fixture.Migrator.ApplyAsync([initial, turns, "CREATE TABLE __SCHEMA__.upgrade_fixture(id integer);"]);
         // A new container owns a new pool and store; reads cannot be satisfied by pre-upgrade process state.
         await using (var host = CreateHost())
         {
@@ -122,7 +161,7 @@ public sealed class PostgreSqlMigrationTests
         }
         var error = await Assert.ThrowsAsync<MemoryStoreException>(() => fixture.Migrator.MigrateAsync());
         Assert.Equal(MemoryStoreError.IncompatibleSchema, error.Error);
-        Assert.Equal(2L, await fixture.ExecuteAsync("SELECT count(*) FROM __SCHEMA__.migration_history"));
+        Assert.Equal(3L, await fixture.ExecuteAsync("SELECT count(*) FROM __SCHEMA__.migration_history"));
     }
 
     [Fact]

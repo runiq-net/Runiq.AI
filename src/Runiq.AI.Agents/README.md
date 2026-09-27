@@ -809,8 +809,10 @@ runs; aggregate a stream with `AgentExecutionResultBuilder` to obtain its own re
 ## Memory foundations
 
 Memory is available transitively through Agents but disabled by default. The #199
-foundation validates identity and ownership before executor dispatch. It does not
-store/replay messages or provide multi-turn recall (#200/#201).
+foundation validates identity and ownership before executor dispatch. With an explicit provider,
+the built-in model executor now persists turns and replays completed conversation history (#201).
+See [programmatic multi-turn usage](../../docs/memory-conversations.md) and the
+[runnable console example](../../samples/Runiq.AI.MemoryConversation/README.md).
 
 ```csharp
 using Runiq.AI.Agents;
@@ -932,7 +934,7 @@ applications must not map all anonymous visitors to a universal owner.
 
 | Executor | Framework Memory foundation | Native ProviderSessionId continuation |
 | --- | --- | --- |
-| Built-in model | Supported; history replay is deferred to #201 | Not synthesized from Memory IDs; mixed inputs rejected |
+| Built-in model | Supported with explicit provider; completed history and tool interactions are replayed | Not synthesized from Memory IDs; mixed inputs rejected |
 | Codex | Rejected at registration and direct execution | Existing behavior retained with Memory disabled; host authorizes the native session |
 | Claude | Rejected at registration and direct execution | Existing behavior retained with Memory disabled; host authorizes the native session |
 | Custom model executor | Denied unless `SupportsMemoryFoundation` explicitly returns true | Framework Memory cannot be combined with provider-session input |

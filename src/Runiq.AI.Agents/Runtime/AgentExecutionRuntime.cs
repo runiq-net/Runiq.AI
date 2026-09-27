@@ -28,7 +28,10 @@ namespace Runiq.AI.Agents.Runtime;
 /// and empty responses are reported as failed events or results. Disposing an unfinished
 /// stream cancels its run and releases the executor.
 /// Enabled Memory requires scoped host services and successful identity/ownership preflight before dispatch.
-/// Disabled Memory resolves no Memory services; foundation failures use safe failed-event/result codes.
+/// Disabled Memory resolves no Memory services; failures use safe failed-event/result codes.
+/// Enabled model execution publishes a persisted ThreadId before reserving a turn, loads completed history,
+/// and confirms transcript/terminal writes before publishing completion. Abandoned/cancelled turns use
+/// a five-second independent finalization token; cleanup failures are logged without replacing cancellation.
 /// </remarks>
 public sealed class AgentExecutionRuntime
 {
@@ -264,6 +267,8 @@ public sealed class AgentExecutionRuntime
         IAsyncEnumerator<AgentExecutionEvent>? enumerator = null;
         var disposed = false;
         var message = new StringBuilder();
+        MemoryTurnSession? memoryTurn = null;
+        MemoryConversationService? memoryService = null;
         try
         {
             ThrowIfCancelled(run, cancellationToken);
@@ -294,7 +299,7 @@ public sealed class AgentExecutionRuntime
             {
                 try
                 {
-                    (memoryContext, initialFailure) = await AuthorizeMemoryAsync(agent, query, run, cancellationToken);
+                    (memoryContext, initialFailure, memoryService) = await AuthorizeMemoryAsync(agent, query, run, cancellationToken);
                 }
                 catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
                 {
@@ -310,7 +315,48 @@ public sealed class AgentExecutionRuntime
                 yield break;
             }
 
-            var request = new AgentExecutionRequest(agent!, query, memoryContext);
+            IReadOnlyList<ChatMessage> history = [];
+            if (memoryContext is not null)
+            {
+                AgentExecutionEvent? memoryFailure = null;
+                try
+                {
+                    await memoryService!.CreateAsync(memoryContext, cancellationToken);
+                    run.ThreadId = memoryContext.Ownership.ThreadId;
+                    ThrowIfCancelled(run, cancellationToken);
+                }
+                catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
+                {
+                    run.Finish(AgentRunStatus.Cancelled);
+                    throw new AgentRunCanceledException(run, cancellationToken, exception);
+                }
+                catch (Exception exception) { memoryFailure = MemoryFailure(exception, run); }
+                if (memoryFailure is null)
+                {
+                    yield return Stamp(AgentExecutionEvent.ConversationStarted(), run);
+                    try
+                    {
+                        // Retain recovery state before the first append can commit and then lose its acknowledgement.
+                        await memoryService!.BeginAsync(memoryContext, query.MemoryTurnId ?? run.RunId, run.RunId,
+                            query.Message, run.StartedAt, session => memoryTurn = session, cancellationToken);
+                        history = await memoryTurn!.LoadHistoryAsync(cancellationToken);
+                    }
+                    catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
+                    {
+                        run.Finish(AgentRunStatus.Cancelled);
+                        throw new AgentRunCanceledException(run, cancellationToken, exception);
+                    }
+                    catch (Exception exception) { memoryFailure = MemoryFailure(exception, run); }
+                }
+                if (memoryFailure is not null)
+                {
+                    ThrowIfCancelled(run, cancellationToken);
+                    run.Finish(AgentRunStatus.Failed);
+                    yield return Stamp(memoryFailure, run);
+                    yield break;
+                }
+            }
+            var request = new AgentExecutionRequest(agent!, query, memoryContext) { Turn = memoryTurn, History = history };
             while (true)
             {
                 AgentExecutionEvent current;
@@ -330,12 +376,19 @@ public sealed class AgentExecutionRuntime
                 }
                 catch (Exception exception)
                 {
-                    logger.LogError(exception, "Agent execution failed for run {RunId} and agent {AgentId}.",
-                        run.RunId, run.AgentId);
-                    current = AgentExecutionEvent.Failed("Agent execution failed.", "AgentExecutionFailed");
+                    if (exception is MemoryStoreException) current = MemoryFailure(exception, run);
+                    else
+                    {
+                        logger.LogError(exception, "Agent execution failed for run {RunId} and agent {AgentId}.", run.RunId, run.AgentId);
+                        current = AgentExecutionEvent.Failed("Agent execution failed.", "AgentExecutionFailed");
+                    }
                 }
                 ThrowIfCancelled(run, cancellationToken);
-                if (current.Kind == AgentExecutionEventKind.AssistantDelta) message.Append(current.Content);
+                if (current.Kind == AgentExecutionEventKind.AssistantDelta)
+                {
+                    message.Append(current.Content);
+                    memoryTurn?.AppendDelta(current.Content ?? string.Empty);
+                }
                 if (current.Kind == AgentExecutionEventKind.Completed && current.StructuredOutput is null &&
                     string.IsNullOrWhiteSpace(message.ToString()))
                     current = AgentExecutionEvent.Failed("Agent execution completed without producing a message.",
@@ -369,6 +422,21 @@ public sealed class AgentExecutionRuntime
                         current = AgentExecutionEvent.Failed(
                             current.ErrorMessage ?? current.Content ?? "Agent execution failed.",
                             "AgentExecutionFailed", current.Rag);
+                    if (memoryTurn is not null)
+                    {
+                        try
+                        {
+                            await memoryTurn.FinishAsync(current.Status == AgentRunStatus.Completed
+                                ? MemoryTurnStatus.Completed : MemoryTurnStatus.Failed, cancellationToken);
+                        }
+                        catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
+                        {
+                            run.Finish(AgentRunStatus.Cancelled);
+                            throw new AgentRunCanceledException(run, cancellationToken, exception);
+                        }
+                        catch (Exception exception) { current = MemoryFailure(exception, run); }
+                    }
+                    ThrowIfCancelled(run, cancellationToken);
                     run.Finish(current.Status);
                     yield return Stamp(current, run);
                     yield break;
@@ -390,10 +458,24 @@ public sealed class AgentExecutionRuntime
                         run.RunId, run.AgentId);
                 }
             }
+            if (memoryTurn?.Turn.Status == MemoryTurnStatus.Running)
+            {
+                using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                try
+                {
+                    await memoryTurn.FinishAsync(run.Status == AgentRunStatus.Failed
+                        ? MemoryTurnStatus.Failed : MemoryTurnStatus.Cancelled, cleanup.Token);
+                }
+                catch (Exception exception)
+                {
+                    logger.LogError(exception, "Memory finalization failed for run {RunId} and agent {AgentId}; durable state may remain unfinished.",
+                        run.RunId, run.AgentId);
+                }
+            }
         }
     }
 
-    private async ValueTask<(MemoryContext? Context, AgentExecutionEvent? Failure)> AuthorizeMemoryAsync(
+    private async ValueTask<(MemoryContext? Context, AgentExecutionEvent? Failure, MemoryConversationService? Service)> AuthorizeMemoryAsync(
         Agent agent, AgentQuery query, AgentRunContext run, CancellationToken cancellationToken)
     {
         MemoryRuntimeServices? services;
@@ -404,26 +486,30 @@ public sealed class AgentExecutionRuntime
             logger.LogError(exception, "Memory preflight failed at {MemoryPreflightStage} for run {RunId} and agent {AgentId}.",
                 "ServiceResolution", run.RunId, run.AgentId);
             // Do not expose dependency errors that may contain host identity or storage configuration.
-            return (null, AgentExecutionEvent.Failed("Required Memory services are unavailable.", "MemoryServicesMissing"));
+            return (null, AgentExecutionEvent.Failed("Required Memory services are unavailable.", "MemoryServicesMissing"), null);
         }
         cancellationToken.ThrowIfCancellationRequested();
         if (services?.IdentityResolver is null || services.Authorization is null)
-            return (null, AgentExecutionEvent.Failed("Required Memory services are unavailable.", "MemoryServicesMissing"));
+            return (null, AgentExecutionEvent.Failed("Required Memory services are unavailable.", "MemoryServicesMissing"), null);
         var stage = "IdentityResolution";
         try
         {
             var identity = await services.IdentityResolver.ResolveAsync(cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             if (identity is null)
-                return (null, AgentExecutionEvent.Failed("A verified Memory identity is required.", "MemoryIdentityRequired"));
+                return (null, AgentExecutionEvent.Failed("A verified Memory identity is required.", "MemoryIdentityRequired"), null);
             if (query.Memory is null)
-                return (null, AgentExecutionEvent.Failed("An explicit Memory resource reference is required.", "MemoryReferenceRequired"));
+                return (null, AgentExecutionEvent.Failed("An explicit Memory resource reference is required.", "MemoryReferenceRequired"), null);
             stage = "Authorization";
             var context = await services.Authorization.AuthorizeAsync(identity, query.Memory, agent.Id, agent.Memory!, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
-            return context is null
-                ? (null, AgentExecutionEvent.Failed("Memory access was denied.", "MemoryAccessDenied"))
-                : (context, null);
+            if (context is null)
+                return (null, AgentExecutionEvent.Failed("Memory access was denied.", "MemoryAccessDenied"), null);
+            stage = "ConversationServices";
+            var conversation = services.ResolveConversation?.Invoke();
+            return conversation is null
+                ? (null, AgentExecutionEvent.Failed("Required Memory persistence services are unavailable.", "MemoryServicesMissing"), null)
+                : (context, null, conversation);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception exception)
@@ -431,8 +517,15 @@ public sealed class AgentExecutionRuntime
             cancellationToken.ThrowIfCancellationRequested();
             logger.LogError(exception, "Memory preflight failed at {MemoryPreflightStage} for run {RunId} and agent {AgentId}.",
                 stage, run.RunId, run.AgentId);
-            return (null, AgentExecutionEvent.Failed("Memory preflight failed.", "MemoryPreflightFailed"));
+            return (null, AgentExecutionEvent.Failed("Memory preflight failed.", "MemoryPreflightFailed"), null);
         }
+    }
+
+    private AgentExecutionEvent MemoryFailure(Exception exception, AgentRunContext run)
+    {
+        logger.LogError(exception, "Memory operation failed for run {RunId} and agent {AgentId}.", run.RunId, run.AgentId);
+        var code = exception is MemoryStoreException storeException ? $"Memory{storeException.Error}" : "MemoryPersistenceFailed";
+        return AgentExecutionEvent.Failed("Memory conversation operation failed.", code);
     }
 
     private static AgentExecutionEvent Stamp(AgentExecutionEvent executionEvent, AgentRunContext run) =>
@@ -441,6 +534,7 @@ public sealed class AgentExecutionRuntime
             RunId = run.RunId,
             AgentId = run.AgentId,
             ProviderSessionId = run.ProviderSessionId,
+            ThreadId = run.ThreadId,
             StartedAt = run.StartedAt,
             EndedAt = run.EndedAt,
             SequenceNumber = run.NextEventSequence(),
@@ -481,4 +575,5 @@ public sealed class AgentExecutionRuntime
 
 }
 
-internal sealed record MemoryRuntimeServices(IMemoryIdentityResolver? IdentityResolver, MemoryAuthorizationService? Authorization);
+internal sealed record MemoryRuntimeServices(IMemoryIdentityResolver? IdentityResolver, MemoryAuthorizationService? Authorization,
+    Func<MemoryConversationService?>? ResolveConversation = null);

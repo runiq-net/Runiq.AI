@@ -7,6 +7,7 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../../../src/Runiq.AI.Agents/Runiq.AI.Agents.csproj" />
     <ProjectReference Include="../../../src/Runiq.AI.Memory.PostgreSql/Runiq.AI.Memory.PostgreSql.csproj" />
   </ItemGroup>
 </Project>

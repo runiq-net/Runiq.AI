@@ -24,7 +24,7 @@ activating it. PostgreSQL provider installation and selection remain explicit.
 | --- | --- | --- |
 | #199 Configuration and ownership | Memory contracts, options, identity and authorization policies | Agent opt-in, authenticated HTTP adapter, executor checks, runtime preflight |
 | #200 Conversation/message store | In-memory provider in Memory; SQL storage and migrations in Memory.PostgreSql; atomic ownership binding | Explicit provider composition by application |
-| #201 Multi-turn model conversations (planned) | Existing ownership/storage contracts | Agents loads history only after successful authorization; model context and persistence orchestration |
+| #201 Multi-turn model conversations | Neutral turn lifecycle, history and append services; provider persistence | Authorized runtime orchestration and model/tool message mapping; see [usage](memory-conversations.md) |
 | #202 Shared context budget (planned) | Neutral memory selection policies | Agents combines Memory and RAG context within model budget |
 | #203 Hosted conversation continuation (planned) | Existing authorized storage contracts | Agents HTTP conversation adapters; Dashboard.Client conversation UI |
 | #204 Deletion and retention (planned) | Memory lifecycle contracts/policies; selected stores enforce deletion | Agents host adapters; Dashboard.Client lifecycle controls |
