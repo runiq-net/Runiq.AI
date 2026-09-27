@@ -1,12 +1,12 @@
 # Runiq.AI.Memory
 
-Memory foundations: identity, opt-in configuration, and ownership authorization.
-This package does not yet persist or replay conversations (#200/#201).
+Memory identity, opt-in configuration, ownership authorization, and conversation persistence.
+Includes explicit volatile in-memory persistence (#200). Model history replay remains in #201.
 
 Dependency direction: `Agents -> Memory -> Core`. Memory has no Agents, HTTP request,
 RAG, or SQL contracts. Existing Core hosting dependencies remain unchanged.
-The in-memory provider belongs here in #200; PostgreSQL and migrations belong in
-the future, explicitly installed `Memory.PostgreSql -> Memory` package.
+The in-memory provider lives here; PostgreSQL and migrations live in
+the separately installed `Memory.PostgreSql -> Memory` package.
 The optional `Memory.Rag -> Memory + Rag` adapter belongs to #207.
 
 `ThreadId` identifies a conversation, `ResourceId` its user/project/domain owner,
@@ -18,8 +18,8 @@ case-insensitive agent registry (canonical uppercase). Scope components remain s
 
 Thread ownership binds a conversation to a tenant/application, resource, and agent.
 Sharing must be explicit and cannot cross a tenant boundary. Resource ownership is
-distinct from caller identity. Host adapters supply authoritative metadata; a missing
-existing thread fails closed. Future stores must atomically bind new ownership and
+distinct from caller identity. The selected provider supplies authoritative metadata; a missing
+existing thread fails closed. Stores atomically bind new ownership and
 recheck it on every operation so stale decisions cannot rebind a conversation.
 
 ## Registration and authorization
@@ -35,15 +35,15 @@ using Runiq.AI.Memory.DependencyInjection;
 // Host implementations: no framework store or identity is registered implicitly.
 services.AddRuniqMemory();
 services.AddScoped<IMemoryIdentityResolver, HostIdentityResolver>();
-services.AddScoped<IMemoryOwnershipLookup, HostOwnershipLookup>();
+services.AddRuniqMemoryInMemory(); // Volatile; explicitly selects store and ownership lookup together.
 services.AddScoped<IMemoryAccessPolicy, HostResourcePolicy>();
 ```
 
-The three `Host*` types above are application implementations, not shipped providers.
+The two `Host*` types above are application implementations, not shipped providers.
 `IMemoryIdentityResolver.ResolveAsync` reads verified host state each run;
 `IMemoryAccessPolicy.CanAccessResourceAsync` authorizes the caller's domain membership;
 `IMemoryOwnershipLookup.FindAsync` reads authoritative metadata without transcript content.
-Register all three as scoped (singleton adapters are appropriate only when stateless and
+Register host adapters as scoped (singleton adapters are appropriate only when stateless and
 safe for concurrent callers). `AddRuniqMemory` registers scoped authorization, is
 idempotent, and does no network, database, model, or migration work.
 
@@ -69,8 +69,8 @@ No message content is read by this operation.
 ## Scopes and explicit sharing
 
 `new MemoryOptions()` selects thread scope. `new MemoryOptions(MemoryScope.Resource)`
-declares future recall across threads in the same authorized resource and agent scope;
-it does not enable resource-wide recall in this foundation. Both require an explicit
+permits scoped conversation listing across threads in the same authorized resource and agent scope;
+it does not implement model history replay. Both require an explicit
 `MemoryReference`. A null `ThreadId` requests a new conversation; an existing ID must
 already have authoritative metadata. Never treat an unknown ID as a create request.
 
@@ -111,6 +111,8 @@ background-host examples and executor support. See the repository's
 
 `Runiq.AI.Memory.Tests` references Memory without Agents and tests identifiers,
 configuration, policies, cancellation, and project dependency boundaries. Agent runtime
-and HTTP behavior belong in `Runiq.AI.Agents.Tests`. Future providers own separate
-test projects. #199 supplies no PostgreSQL migrations, conversation CRUD, transcript
-storage/replay, context budgeting, vector recall, or Dashboard conversation navigation.
+and HTTP behavior belong in `Runiq.AI.Agents.Tests`. The PostgreSQL provider owns a separate test project. History replay, context budgeting, vector recall, and Dashboard conversation navigation remain outside #200.
+
+## Conversation persistence (#200)
+
+See [the persistence guide](../../docs/memory-persistence.md) for the complete registration/create/append/read example, strict serialization format, idempotency and concurrency semantics, and PostgreSQL migration instructions. New code is organized under Models, Abstractions, Persistence/InMemory, Serialization, Validation and DependencyInjection with matching namespaces. AddRuniqMemory alone does not select a provider. Provider selection never enables an agent.

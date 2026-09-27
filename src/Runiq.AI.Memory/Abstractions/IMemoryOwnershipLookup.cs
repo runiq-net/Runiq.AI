@@ -3,7 +3,7 @@ using Runiq.AI.Memory.Models;
 namespace Runiq.AI.Memory.Abstractions;
 
 /// <summary>Reads authoritative ownership metadata without reading conversation content.</summary>
-/// <remarks>Hosts supply this adapter until providers arrive in #200. Missing metadata never authorizes creation or rebinding.</remarks>
+/// <remarks>The explicitly selected store supplies this metadata adapter. Missing metadata never authorizes creation or rebinding.</remarks>
 public interface IMemoryOwnershipLookup
 {
     /// <summary>Finds an existing thread within a verified tenant/application boundary.</summary>

@@ -44,5 +44,7 @@ public sealed class MemoryContractTests
         Assert.Equal(["../Runiq.AI.Core/Runiq.AI.Core.csproj"], References("Runiq.AI.Memory"));
         Assert.DoesNotContain(References("Runiq.AI.Core"), x => x.Contains("Memory") || x.Contains("Agents"));
         Assert.Contains("../Runiq.AI.Memory/Runiq.AI.Memory.csproj", References("Runiq.AI.Agents"));
+        Assert.DoesNotContain(References("Runiq.AI.Agents"), x => x.Contains("Memory.PostgreSql"));
+        Assert.Equal(["../Runiq.AI.Memory/Runiq.AI.Memory.csproj"], References("Runiq.AI.Memory.PostgreSql"));
     }
 }
