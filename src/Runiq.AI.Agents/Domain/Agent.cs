@@ -3,6 +3,7 @@ using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Core.Configuration;
 using Runiq.AI.Core.Models;
 using Runiq.AI.Agents.Tools;
+using Runiq.AI.Memory.Configuration;
 
 namespace Runiq.AI.Agents;
 
@@ -13,6 +14,25 @@ public class Agent
 {
     private readonly List<AgentToolRegistration> tools = [];
     private AgentExecutorConfiguration? executor;
+    private MemoryOptions? memory;
+
+    /// <summary>Gets immutable Memory settings, or null when Memory is disabled (the default).</summary>
+    public MemoryOptions? Memory => Volatile.Read(ref memory);
+
+    /// <summary>Opts into Memory foundations with an identity-free configuration snapshot.</summary>
+    /// <param name="options">Immutable settings, or null to use isolated thread scope.</param>
+    /// <returns>The same agent for fluent configuration.</returns>
+    /// <remarks>Configure before registration. Hosts must separately register Memory services and ownership adapters.</remarks>
+    /// <exception cref="ArgumentException">The Memory settings are invalid.</exception>
+    /// <exception cref="InvalidOperationException">Memory has already been configured.</exception>
+    public Agent UseMemory(MemoryOptions? options = null)
+    {
+        options ??= new MemoryOptions();
+        options.Validate();
+        if (Interlocked.CompareExchange(ref memory, options, null) is not null)
+            throw new InvalidOperationException("Memory has already been configured for this agent.");
+        return this;
+    }
 
     /// <summary>Gets the selected executor, or null until a Use method selects one.</summary>
     public AgentExecutorConfiguration? Executor => Volatile.Read(ref executor);

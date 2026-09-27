@@ -325,3 +325,12 @@ Observed on Windows, 2026-09-24:
 - Test badge script: all 12 checks passed. `git diff --check` passed.
 - Existing OrderSupport, solution and AGENTS.md working-tree changes were preserved;
   no commit, remote update or package publication was performed.
+
+## Framework Memory boundary
+
+Codex native `ProviderSessionId` continuation is independent of framework `ThreadId`,
+`ResourceId`, and invocation `RunId`. With Memory disabled, native continuation keeps
+its existing behavior and the host remains responsible for authorizing the session.
+Calling `UseMemory()` on a Codex agent is rejected before process launch. The first
+Memory foundation supports only model executors, and does not persist/replay history.
+See the [executor matrix](../src/Runiq.AI.Agents/README.md#executor-compatibility-and-failures).

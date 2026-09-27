@@ -31,7 +31,7 @@ public sealed class AgentRunContext
         StartedAt = DateTimeOffset.UtcNow;
     }
 
-    /// <summary>Gets the opaque run identifier, which is never a session-resumption key.</summary>
+    /// <summary>Gets the opaque identifier of one invocation, never a Memory ThreadId or provider session-resumption key.</summary>
     public string RunId { get; }
 
     /// <summary>Gets the reusable agent definition identifier.</summary>
@@ -48,6 +48,7 @@ public sealed class AgentRunContext
     }
 
     /// <summary>Gets the actual provider session identifier once confirmed by the executor; otherwise null.</summary>
+    /// <remarks>Native continuation is independent of Memory ownership and never derived from a Memory ThreadId.</remarks>
     public string? ProviderSessionId
     {
         get { lock (lifecycleLock) return providerSessionId; }

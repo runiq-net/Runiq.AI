@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
+    <PackageId>Runiq.AI.Memory</PackageId>
+    <Version>1.0.0</Version>
+    <Title>Runiq Memory</Title>
+    <Description>Provider-independent Memory identity, configuration, and ownership foundations for Runiq AI.</Description>
+    <PackageTags>ai;memory;agents;dotnet;runiq</PackageTags>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Update="README.md" Pack="true" PackagePath="\" />
+    <None Include="../../assets/nuget/runiq-icon.png" Pack="true" PackagePath="\" />
+    <ProjectReference Include="../Runiq.AI.Core/Runiq.AI.Core.csproj" />
+  </ItemGroup>
+</Project>

@@ -37,7 +37,7 @@ dotnet user-secrets init
 dotnet user-secrets set "OpenAI:ApiKey" "YOUR_OPENAI_API_KEY"
 ```
 
-`Runiq.AI.Agents` includes the agent registration API and references `Runiq.AI.Core` and `Runiq.AI.Rag`. You do not need to install those dependencies separately for this example.
+`Runiq.AI.Agents` includes the agent registration API and references `Runiq.AI.Core`, `Runiq.AI.Rag`, and `Runiq.AI.Memory`. You do not need to install those dependencies separately for this example. Memory remains disabled until explicitly configured; its foundation does not yet persist or replay conversations.
 
 ### 2. Replace `Program.cs`
 
@@ -100,11 +100,17 @@ Choose packages by capability. Package guides include configuration and API exam
 | --- | --- | --- |
 | `Runiq.AI.Agents` | Agent definitions, typed tools, providers, streaming, and execution results | [Agents](src/Runiq.AI.Agents/README.md) |
 | `Runiq.AI.Core` | Shared contracts, ASP.NET Core hosting, runtime endpoints, and embedded dashboard | [Core](src/Runiq.AI.Core/README.md) |
+| `Runiq.AI.Memory` | Opt-in Memory identity, configuration, and ownership foundations; no transcript persistence/replay yet | [Memory](src/Runiq.AI.Memory/README.md) |
 | `Runiq.AI.Rag` | Document ingestion, chunking, embeddings, vector storage, and retrieval | [RAG](src/Runiq.AI.Rag/README.md) |
 | `Runiq.AI.Rag.PostgreSql` | PostgreSQL persistence and pgvector search | [PostgreSQL](src/Runiq.AI.Rag.PostgreSql/README.md) |
 | `Runiq.AI.Workflows` | Code-first workflow definitions and execution | [Workflows](src/Runiq.AI.Workflows/README.md) |
 | `Runiq.AI.Mcp` | MCP server integration and application tools | [MCP](src/Runiq.AI.Mcp/README.md) |
 | `Runiq.AI.Cli` | .NET tool for scaffolding applications | [CLI](src/Runiq.AI.Cli/README.md) |
+
+Memory dependencies follow `Agents -> Memory -> Core`. The planned
+`Memory.PostgreSql -> Memory` provider (#200) is an explicit install, and the optional
+`Memory.Rag -> Memory + Rag` adapter (#207) is separate. Neither is shipped by #199.
+See the [Memory responsibility and acceptance map](docs/memory-foundations.md).
 
 ## Ground answers in your documents
 

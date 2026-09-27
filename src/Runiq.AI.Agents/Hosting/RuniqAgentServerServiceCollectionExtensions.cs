@@ -21,6 +21,8 @@ using Runiq.AI.Rag.Configuration;
 using Runiq.AI.Rag.Abstractions.Retrieval;
 using Runiq.AI.Rag.Runtime;
 using Runiq.AI.Rag.DependencyInjection;
+using Runiq.AI.Memory.Abstractions;
+using Runiq.AI.Memory.Services;
 
 namespace Runiq.AI.Core;
 
@@ -149,7 +151,9 @@ public static class RuniqAgentServerServiceCollectionExtensions
             provider.GetServices<Agent>(),
             provider.GetRequiredService<AgentExecutorResolver>(),
             provider.GetRequiredService<AgentToolInvoker>(),
-            provider.GetRequiredService<ILogger<AgentExecutionRuntime>>()));
+            provider.GetRequiredService<ILogger<AgentExecutionRuntime>>(),
+            () => new MemoryRuntimeServices(provider.GetService<IMemoryIdentityResolver>(),
+                provider.GetService<MemoryAuthorizationService>())));
         services.AddScoped<AgentChatApiHandler>();
 
         return services;

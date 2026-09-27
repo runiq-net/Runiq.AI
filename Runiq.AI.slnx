@@ -13,6 +13,7 @@
     <Project Path="src/Runiq.AI.Cli/Runiq.AI.Cli.csproj" />
     <Project Path="src/Runiq.AI.Core/Runiq.AI.Core.csproj" />
     <Project Path="src/Runiq.AI.Mcp/Runiq.AI.Mcp.csproj" />
+    <Project Path="src/Runiq.AI.Memory/Runiq.AI.Memory.csproj" />
     <Project Path="src/Runiq.AI.Rag/Runiq.AI.Rag.csproj" />
     <Project Path="src/Runiq.AI.Rag.PostgreSql/Runiq.AI.Rag.PostgreSql.csproj" />
     <Project Path="src/Runiq.AI.Workflows/Runiq.AI.Workflows.csproj" />
@@ -21,6 +22,7 @@
     <Project Path="tests/Runiq.AI.Agents.Tests/Runiq.AI.Agents.Tests.csproj" />
     <Project Path="tests/Runiq.AI.Cli.Tests/Runiq.AI.Cli.Tests.csproj" />
     <Project Path="tests/Runiq.AI.Core.Tests/Runiq.AI.Core.Tests.csproj" />
+    <Project Path="tests/Runiq.AI.Memory.Tests/Runiq.AI.Memory.Tests.csproj" />
     <Project Path="tests/Runiq.AI.Rag.Tests/Runiq.AI.Rag.Tests.csproj" />
     <Project Path="tests/Runiq.AI.Rag.PostgreSql.Tests/Runiq.AI.Rag.PostgreSql.Tests.csproj" />
     <Project Path="tests/Runiq.AI.OrderSupport.Tests/Runiq.AI.OrderSupport.Tests.csproj" />

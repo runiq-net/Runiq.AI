@@ -55,6 +55,11 @@ namespace Runiq.AI.Agents.Validation
 
         internal static AgentExecutionResult? ValidateExecutor(Agent agent)
         {
+            try { agent.Memory?.Validate(); }
+            catch (ArgumentException)
+            {
+                return AgentExecutionResult.Failure("MemoryConfigurationInvalid", "Memory configuration is invalid.");
+            }
             var executor = agent.Executor;
             if (executor is null)
             {
@@ -62,7 +67,7 @@ namespace Runiq.AI.Agents.Validation
                     $"Agent '{agent.Id}' has no executor. Call UseModel, UseCodex, or UseClaude.");
             }
 
-            return null;
+            return MemoryExecutorCompatibility.ValidateConfiguration(agent);
         }
 
         private static void ValidateProviderUrl(Agent agent)

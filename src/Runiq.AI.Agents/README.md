@@ -805,3 +805,173 @@ Cancellation produces neither a terminal frame nor `[DONE]`. The lifecycle docum
 describes field omission, JSON-only output and transport behavior. Clients with strict
 schemas should allow these additive fields. Separate API invocations create distinct
 runs; aggregate a stream with `AgentExecutionResultBuilder` to obtain its own result.
+
+## Memory foundations
+
+Memory is available transitively through Agents but disabled by default. The #199
+foundation validates identity and ownership before executor dispatch. It does not
+store/replay messages or provide multi-turn recall (#200/#201).
+
+```csharp
+using Runiq.AI.Agents;
+using Runiq.AI.Memory.Configuration;
+
+var agent = new Agent("support", "Support", "Help with project questions.",
+    "openai/model", apiKey).UseMemory();
+// Optional resource scope and explicit host-managed sharing:
+var sharedAgent = new Agent("triage", "Triage", "Triage project questions.",
+    "openai/model", apiKey)
+    .UseMemory(new MemoryOptions(MemoryScope.Resource, sharingGroup: "support-team"));
+```
+
+`UseMemory` retains immutable, identity-free settings and rejects duplicate opt-in.
+Configure before registering the singleton definition. Register neutral services and
+host adapters separately as described in the [Memory guide](../Runiq.AI.Memory/README.md).
+`AddRuniqMemory` never chooses a working store. Both isolated and shared agents need
+verified identity, authoritative ownership lookup, and host resource authorization.
+A shared group also requires `IMemoryAccessPolicy.CanShareAsync` to authorize both
+agents; declaring a group is not sufficient. Tenant boundaries always apply.
+
+### Authenticated HTTP hosts
+
+```csharp
+using Runiq.AI.Agents.Hosting.Memory;
+using Runiq.AI.Core;
+using Runiq.AI.Memory.Abstractions;
+using Runiq.AI.Memory.DependencyInjection;
+
+builder.Services.AddRuniqMemory();
+// Single tenant: choose a boundary unique to this application.
+builder.Services.AddRuniqHttpMemoryIdentity(
+    new HttpMemoryIdentityOptions(applicationBoundary: "project-support-production"));
+// For multi-tenancy, use this registration INSTEAD of the one above:
+// builder.Services.AddRuniqHttpMemoryIdentity(
+//     new HttpMemoryIdentityOptions(tenantClaimType: "tenant_id", callerClaimType: "sub"));
+
+// Application implementations; #199 ships no authoritative metadata store.
+builder.Services.AddScoped<IMemoryOwnershipLookup, HostOwnershipLookup>();
+builder.Services.AddScoped<IMemoryAccessPolicy, HostResourcePolicy>();
+builder.Services.AddRuniqServer(options => options.AddAgent(agent));
+```
+
+Run the application's authentication middleware before its endpoints. The scoped
+adapter reads exactly one authenticated identity from `HttpContext.User`. It requires
+one caller claim and, in multi-tenant mode, one tenant claim. Missing, duplicate,
+invalid or ambiguous claims deny access. Arbitrary headers, body fields and
+unauthenticated identities are ignored. Claim names are host-configurable; more
+specialized hosts may register their own `IMemoryIdentityResolver`.
+
+A host controller/application service can inject `AgentExecutionRuntime` and submit:
+
+```csharp
+using Runiq.AI.Agents.Runtime;
+using Runiq.AI.Memory.Models;
+
+var result = await runtime.ExecuteAsync("support", new AgentQuery("Explain this project")
+{
+    Memory = new MemoryReference(resourceId: "project-42", threadId: "existing-thread")
+}, cancellationToken);
+```
+
+`project-42` is a domain
+resource, not a user ID. HostResourcePolicy must verify the authenticated caller's
+membership using authoritative application data. The thread lookup must match that
+same tenant/resource. Supplying either identifier grants no access by itself.
+For a new conversation use `new MemoryReference("project-42")`. Runtime proposes a
+new ID, but #200 must persist its ownership atomically before it can be resumed.
+
+The existing Dashboard chat DTO intentionally gains no conversation or trusted
+identity fields in #199. Enabling Memory on an agent used by that endpoint yields
+`MemoryReferenceRequired` after successful identity resolution; conversation request
+fields and UI belong to #203. A Dashboard login or role merely grants Dashboard access,
+not ownership of any conversation. The HTTP adapter is usable by host-owned controller
+flows now without changing the Dashboard transport contract.
+
+### Trusted non-HTTP hosts
+
+Register a scoped implementation of the same neutral `IMemoryIdentityResolver`, backed
+by a verified job/service context. No HttpContext is required. For example, a worker
+can create one DI scope per verified job and use a resolver with these semantics:
+
+```csharp
+using Runiq.AI.Memory.Abstractions;
+using Runiq.AI.Memory.Models;
+
+/// <summary>Resolves the verified caller attached to one background job scope.</summary>
+public sealed class JobMemoryIdentityResolver : IMemoryIdentityResolver
+{
+    private readonly MemoryIdentity identity;
+
+    /// <summary>Creates a resolver using trusted job infrastructure, never an unverified payload.</summary>
+    /// <param name="callerId">The host-verified job caller.</param>
+    /// <param name="tenantId">The verified tenant or explicit single-application boundary.</param>
+    public JobMemoryIdentityResolver(string callerId, string tenantId)
+        => identity = new MemoryIdentity(callerId, tenantId);
+
+    /// <inheritdoc />
+    public ValueTask<MemoryIdentity?> ResolveAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<MemoryIdentity?>(identity);
+    }
+}
+```
+
+Construct/register the resolver through a scoped factory that reads the host's verified
+job context. For single-tenant jobs supply the explicit application boundary instead
+of a tenant ID. Register AddRuniqMemory, ownership lookup, and resource policy as above,
+then resolve AgentExecutionRuntime in that job scope. Never retain a caller on an Agent
+or share mutable job identity between scopes. Public manual runtime constructors have
+no Memory service factory and safely fail enabled execution with MemoryServicesMissing;
+use the scoped DI runtime for enabled Memory.
+
+Anonymous access is denied by the HTTP adapter. No anonymous-demo bypass is provided;
+applications must not map all anonymous visitors to a universal owner.
+
+### Executor compatibility and failures
+
+| Executor | Framework Memory foundation | Native ProviderSessionId continuation |
+| --- | --- | --- |
+| Built-in model | Supported; history replay is deferred to #201 | Not synthesized from Memory IDs; mixed inputs rejected |
+| Codex | Rejected at registration and direct execution | Existing behavior retained with Memory disabled; host authorizes the native session |
+| Claude | Rejected at registration and direct execution | Existing behavior retained with Memory disabled; host authorizes the native session |
+| Custom model executor | Denied unless `SupportsMemoryFoundation` explicitly returns true | Framework Memory cannot be combined with provider-session input |
+| Custom Codex/Claude executor | Rejected even if it advertises foundation support | Existing disabled-Memory behavior retained |
+
+A custom executor's kind alone proves nothing about Memory handling. Implementations
+opting in must consume `AgentExecutionRequest.Memory`, honor its boundary, and preserve
+runtime cancellation/disposal conventions. Replace the corresponding IAgentExecutor
+registration explicitly; the existing resolver rejects duplicate implementations.
+Foundation support does not advertise storage or history replay.
+
+Every existing runtime overload shares lazy preflight: configuration/executor checks,
+scoped service resolution, trusted identity, explicit reference, ownership authorization,
+then executor dispatch. Denial prevents model, RAG, tool and CLI work. Disabled agents
+resolve no Memory services. Runtime passes the immutable MemoryContext on the execution
+request; RunId is fresh per call and ProviderSessionId remains independent.
+
+| Error code | Meaning |
+| --- | --- |
+| `MemoryConfigurationInvalid` | Invalid neutral Memory settings at the execution boundary |
+| `MemoryNotEnabled` | A Memory reference was supplied to a disabled agent |
+| `MemoryServicesMissing` | Foundation registration or required host adapters are unavailable |
+| `MemoryIdentityRequired` | No verified, unambiguous caller/tenant context |
+| `MemoryReferenceRequired` | No explicit requested resource reference |
+| `MemoryAccessDenied` | Membership/ownership/sharing denied or existing metadata absent/inconsistent |
+| `MemoryExecutorNotSupported` | Executor kind or implementation does not support the foundation |
+| `MemoryContinuationConflict` | ProviderSessionId supplied alongside enabled framework Memory |
+| `MemoryPreflightFailed` | A host identity/metadata/policy adapter failed; details are not exposed |
+
+Registration/configuration errors throw before I/O; runtime failures use the existing
+failed result/event conventions (including existing HTTP/SSE projection). Cancellation
+throws AgentRunCanceledException rather than returning a failed terminal event. Stream
+creation remains lazy, and disposing an unfinished stream cancels the run and releases
+its executor. See the [delivery/evidence map](../../docs/memory-foundations.md).
+
+Unexpected preflight exceptions are passed to the existing runtime logger with
+`RunId`, `AgentId`, and `MemoryPreflightStage` (`ServiceResolution`,
+`IdentityResolution`, or `Authorization`). Log fields never include caller/tenant
+identity, claims, credentials, references, or message content. Expected access denials
+and caller cancellation do not produce error diagnostics. Adapter implementations
+must also keep sensitive data out of exception text; the original exception is retained
+for diagnosis while client error codes and messages remain unchanged.

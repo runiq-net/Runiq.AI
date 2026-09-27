@@ -27,6 +27,8 @@ namespace Runiq.AI.Agents.Runtime;
 /// <summary>Executes the existing model, RAG and tool pipeline through Core chat contracts.</summary>
 internal sealed class ModelAgentExecutor : IAgentExecutor
 {
+    /// <inheritdoc />
+    public bool SupportsMemoryFoundation => true;
     private const string NoContextMessage = "No relevant information was found in the configured documents.";
 
     private readonly IChatClientResolver chatClientResolver;
