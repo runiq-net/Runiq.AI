@@ -73,13 +73,41 @@ public sealed class AgentCitationProcessorTests
         Assert.Empty(AgentCitationProcessor.Validate("Unsupported [1].", new AgentRuntimeContext()));
     }
 
+    [Fact]
+    // A later source cannot validate an earlier invented marker, while valid surviving citations retain their counts.
+    public void Continuations_ValidateMarkersAgainstTheRoundThatProducedThem()
+    {
+        var first = CreateContext();
+        var previous = AgentCitationProcessor.Validate("supported [1], invented [2]", first);
+        var added = new RagSearchResult
+        {
+            Chunk = new RagChunk { Id = "added", DocumentId = "added", Content = "new evidence" }
+        };
+        var later = new AgentRuntimeContext(first.RetrievedRagContext.Append(added).ToArray())
+        {
+            RetrievalCorrelationId = "retrieval-1"
+        };
+        var valid = AgentCitationProcessor.Validate("supported again [1]", later, previous);
+        Assert.Equal(2, Assert.Single(valid).MarkerCount);
+        var removed = new AgentRuntimeContext([added])
+        {
+            RetrievalCorrelationId = "retrieval-1",
+            CitationNumbers = new Dictionary<(string, string), int> { [("added", "added")] = 2 }
+        };
+        Assert.Empty(AgentCitationProcessor.Validate("no markers", removed, valid));
+        var retained = Assert.Single(AgentCitationProcessor.Validate("new support [2]", removed, valid));
+        Assert.Equal(2, retained.Number);
+        Assert.Equal(0, retained.ContextOrder);
+    }
+
     // Verifies AgentCitation rejects invalid numbering, identifiers, scores, relevance, and metric combinations.
     [Fact]
     public void AgentCitation_ShouldEnforcePublicInvariants()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => CreateCitation(number: 0));
         Assert.Throws<ArgumentOutOfRangeException>(() => CreateCitation(contextOrder: -1));
-        Assert.Throws<ArgumentException>(() => CreateCitation(number: 2));
+        // Stable citation numbers may have gaps after budget-driven source exclusions.
+        Assert.Equal(2, CreateCitation(number: 2).Number);
         Assert.Throws<ArgumentOutOfRangeException>(() => CreateCitation(markerCount: 0));
         Assert.Throws<ArgumentException>(() => CreateCitation(documentId: " "));
         Assert.Throws<ArgumentException>(() => CreateCitation(chunkId: " "));

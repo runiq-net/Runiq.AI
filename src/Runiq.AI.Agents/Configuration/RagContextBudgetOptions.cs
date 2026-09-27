@@ -7,11 +7,13 @@ public sealed class RagContextBudgetOptions
 {
     /// <summary>
     /// Gets or sets the maximum combined prompt and response token count. The default is 32,768 tokens.
+    /// An explicit Agent.UseContextBudget configuration overrides this window for the entire prompt.
     /// </summary>
     public int MaximumContextTokens { get; set; } = 32_768;
 
     /// <summary>
     /// Gets or sets the token capacity reserved for the model response. The default is 4,096 tokens.
+    /// An explicit Agent.UseContextBudget configuration overrides this reserve together with the window.
     /// </summary>
     public int ResponseTokenReserve { get; set; } = 4_096;
 

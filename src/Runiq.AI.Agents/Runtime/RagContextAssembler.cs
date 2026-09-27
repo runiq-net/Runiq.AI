@@ -1,4 +1,3 @@
-using System.Text;
 using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Rag.Models.Search;
 
@@ -14,20 +13,22 @@ internal static class RagContextAssembler
         int instructionsTokens,
         int conversationHistoryTokens,
         int userQueryTokens,
-        int otherRequiredPromptTokens)
+        int otherRequiredPromptTokens,
+        IReadOnlyDictionary<(string Document, string Chunk), int>? citationNumbers = null)
     {
-        var mandatoryTokens = checked(instructionsTokens + conversationHistoryTokens + userQueryTokens +
-            responseTokenReserve + otherRequiredPromptTokens);
-        var available = maximumContextTokens - mandatoryTokens;
-        if (available < 0)
+        var mandatoryTokens = (long)instructionsTokens + conversationHistoryTokens + userQueryTokens +
+            responseTokenReserve + otherRequiredPromptTokens;
+        if (mandatoryTokens > maximumContextTokens)
         {
             var overflowBudget = new RagContextBudgetMetadata(
                 maximumContextTokens, responseTokenReserve, instructionsTokens, conversationHistoryTokens,
                 userQueryTokens, otherRequiredPromptTokens, 0, 0);
             return new RagContextAssembly([], acceptedResults.Select(result =>
                 new RagContextExcludedResult(result, RagContextSelectionExclusionReason.TokenBudgetExceeded,
-                    EstimateTokens(result.Chunk.Content))).ToArray(), overflowBudget, MandatoryPromptOverflow: true);
+                    ContextTokenEstimator.EstimateText(result.Chunk.Content))).ToArray(), overflowBudget, MandatoryPromptOverflow: true);
         }
+
+        var available = (int)(maximumContextTokens - mandatoryTokens);
 
         var selected = new List<RagSearchResult>();
         var excluded = new List<RagContextExcludedResult>();
@@ -35,7 +36,7 @@ internal static class RagContextAssembler
 
         foreach (var result in OrderForSelection(acceptedResults, options.PreferSourceDiversity))
         {
-            var chunkTokens = EstimateTokens(result.Chunk.Content);
+            var chunkTokens = ContextTokenEstimator.EstimateText(result.Chunk.Content);
             if (IsMaterialOverlap(result, selected))
             {
                 excluded.Add(new(result, RagContextSelectionExclusionReason.OverlappingContent, chunkTokens));
@@ -50,8 +51,8 @@ internal static class RagContextAssembler
             }
 
             var prospective = selected.Append(result).ToArray();
-            var assembled = AgentInstructionsBuilder.BuildExternalContext(prospective);
-            var assembledTokens = EstimateTokens(assembled);
+            var assembled = AgentInstructionsBuilder.BuildExternalContext(prospective, citationNumbers);
+            var assembledTokens = ContextTokenEstimator.EstimateEvidence(assembled);
             if (assembledTokens > available)
             {
                 excluded.Add(new(result, RagContextSelectionExclusionReason.TokenBudgetExceeded, chunkTokens));
@@ -62,35 +63,12 @@ internal static class RagContextAssembler
             sourceCounts[result.Chunk.DocumentId] = sourceCount + 1;
         }
 
-        var finalContext = AgentInstructionsBuilder.BuildExternalContext(selected);
-        var selectedTokens = EstimateTokens(finalContext);
+        var finalContext = AgentInstructionsBuilder.BuildExternalContext(selected, citationNumbers);
+        var selectedTokens = ContextTokenEstimator.EstimateEvidence(finalContext);
         var metadata = new RagContextBudgetMetadata(
             maximumContextTokens, responseTokenReserve, instructionsTokens, conversationHistoryTokens,
             userQueryTokens, otherRequiredPromptTokens, available, selectedTokens);
         return new RagContextAssembly(selected.ToArray(), excluded.ToArray(), metadata, MandatoryPromptOverflow: false);
-    }
-
-    // This deterministic fallback counts contiguous Unicode letter/digit runs and individual punctuation marks.
-    // It intentionally makes no claim of provider-tokenizer exactness and never invokes a model.
-    internal static int EstimateTokens(string? value)
-    {
-        if (string.IsNullOrEmpty(value)) return 0;
-        var count = 0;
-        var inWord = false;
-        foreach (var character in value)
-        {
-            if (char.IsLetterOrDigit(character))
-            {
-                if (!inWord) count++;
-                inWord = true;
-            }
-            else
-            {
-                inWord = false;
-                if (!char.IsWhiteSpace(character)) count++;
-            }
-        }
-        return count;
     }
 
     private static IEnumerable<RagSearchResult> OrderForSelection(

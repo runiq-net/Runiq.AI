@@ -7,6 +7,9 @@ namespace Runiq.AI.Agents;
 /// </summary>
 public sealed record AgentExecutionEvent
 {
+    /// <summary>Gets safe accounting for the latest attempted model invocation, including Memory-only execution.</summary>
+    public AgentContextBudgetMetadata? ContextBudget { get; internal init; }
+
     /// <summary>Gets optional executor failure context, separate from the user-facing message.</summary>
     public AgentExecutionErrorDetails? ErrorDetails { get; internal init; }
 

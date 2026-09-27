@@ -57,10 +57,11 @@ internal static class AgentInstructionsBuilder
     {
         ArgumentNullException.ThrowIfNull(runtimeContext);
 
-        return BuildExternalContext(runtimeContext.RetrievedRagContext);
+        return BuildExternalContext(runtimeContext.RetrievedRagContext, runtimeContext.CitationNumbers);
     }
 
-    internal static string? BuildExternalContext(IReadOnlyList<Runiq.AI.Rag.Models.Search.RagSearchResult> results)
+    internal static string? BuildExternalContext(IReadOnlyList<Runiq.AI.Rag.Models.Search.RagSearchResult> results,
+        IReadOnlyDictionary<(string Document, string Chunk), int>? citationNumbers = null)
     {
         if (results.Count == 0)
         {
@@ -75,7 +76,7 @@ internal static class AgentInstructionsBuilder
             var result = item.Result;
             builder.AppendLine(JsonSerializer.Serialize(new
             {
-                citation = $"[{item.Number}]",
+                citation = $"[{(citationNumbers is null ? item.Number : citationNumbers[(result.Chunk.DocumentId, result.Chunk.Id)])}]",
                 source = result.Chunk.DocumentId,
                 chunk = result.Chunk.Id,
                 rawScore = result.RawScore,

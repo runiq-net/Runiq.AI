@@ -2,7 +2,7 @@
 
 Memory identity, opt-in configuration, ownership authorization, and conversation persistence.
 Includes explicit volatile in-memory persistence (#200), neutral turn lifecycle, paged history loading,
-and append services (#201). See [programmatic conversations](../../docs/memory-conversations.md).
+append services (#201), and bounded history projection (#202). See [programmatic conversations](../../docs/memory-conversations.md).
 
 Dependency direction: `Agents -> Memory -> Core`. Memory has no Agents, HTTP request,
 RAG, or SQL contracts. Existing Core hosting dependencies remain unchanged.
@@ -117,3 +117,18 @@ and HTTP behavior belong in `Runiq.AI.Agents.Tests`. The PostgreSQL provider own
 ## Conversation persistence (#200)
 
 See [the persistence guide](../../docs/memory-persistence.md) for the complete registration/create/append/read example, strict serialization format, idempotency and concurrency semantics, and PostgreSQL migration instructions. New code is organized under Models, Abstractions, Persistence/InMemory, Serialization, Validation and DependencyInjection with matching namespaces. AddRuniqMemory alone does not select a provider. Provider selection never enables an agent.
+
+## Bounded history projection
+
+`MemoryOptions(history: new MemoryHistoryOptions(maximumMessages: 40, maximumTokens: 8000))`
+limits the model projection, not storage. Both limits default to null (no additional limit);
+zero excludes history and negative values are rejected. The caller's remaining allocation
+always applies. `MemoryHistorySelector` takes costs from the caller's accounting policy;
+Memory introduces no independent tokenizer, RAG models, or provider dependency.
+
+Selection considers newest complete groups first, skips oversized groups, and returns
+original chronological order. An assistant tool-call message and all its contiguous results
+are indivisible. Orphan results and unresolved/malformed call groups are excluded. Content,
+roles, IDs, tool names, arguments and result JSON are never truncated or rewritten.
+Only completed-turn history through the reserved version is eligible. Projection performs
+no persistence operations; excluded messages remain available to authorized store reads.

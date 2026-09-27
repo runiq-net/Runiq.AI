@@ -6,7 +6,7 @@ namespace Runiq.AI.Agents;
 public sealed record AgentCitation
 {
     /// <summary>Initializes validated, content-free citation metadata.</summary>
-    /// <param name="number">The one-based citation number used in the assistant response.</param>
+    /// <param name="number">The positive citation number fixed across model continuations; it need not equal context order plus one.</param>
     /// <param name="documentId">The selected document identifier.</param>
     /// <param name="chunkId">The selected chunk identifier.</param>
     /// <param name="retrievalCorrelationId">The retrieval execution that selected the source.</param>
@@ -30,7 +30,6 @@ public sealed record AgentCitation
     {
         if (number <= 0) throw new ArgumentOutOfRangeException(nameof(number), "Citation number must be positive.");
         if (contextOrder < 0) throw new ArgumentOutOfRangeException(nameof(contextOrder), "Context order cannot be negative.");
-        if (number != contextOrder + 1) throw new ArgumentException("Citation number must equal context order plus one.", nameof(number));
         if (markerCount <= 0) throw new ArgumentOutOfRangeException(nameof(markerCount), "Marker count must be positive.");
         ArgumentException.ThrowIfNullOrWhiteSpace(documentId);
         ArgumentException.ThrowIfNullOrWhiteSpace(chunkId);
@@ -54,7 +53,7 @@ public sealed record AgentCitation
         HigherIsBetter = higherIsBetter;
     }
 
-    /// <summary>Gets the one-based citation number used in the assistant response.</summary>
+    /// <summary>Gets the stable positive citation number; gaps are retained when earlier sources are excluded.</summary>
     public int Number { get; }
     /// <summary>Gets the selected document identifier.</summary>
     public string DocumentId { get; }

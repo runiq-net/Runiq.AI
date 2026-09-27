@@ -7,6 +7,9 @@ namespace Runiq.AI.Agents
     /// </summary>
     public sealed class AgentExecutionResult
     {
+        /// <summary>Gets safe accounting for the final attempted model invocation, or null when assembly was not reached.</summary>
+        public AgentContextBudgetMetadata? ContextBudget { get; private init; }
+
         /// <summary>Gets optional executor failure context retained from the terminal event.</summary>
         public AgentExecutionErrorDetails? ErrorDetails { get; private init; }
 
@@ -37,10 +40,11 @@ namespace Runiq.AI.Agents
 
         internal AgentExecutionResult WithIdentity(string? runId, string? agentId,
             DateTimeOffset? startedAt = null, DateTimeOffset? endedAt = null, string? providerSessionId = null,
-            AgentExecutionErrorDetails? errorDetails = null, string? threadId = null) =>
+            AgentExecutionErrorDetails? errorDetails = null, string? threadId = null,
+            AgentContextBudgetMetadata? contextBudget = null) =>
             new(Status, Message, ErrorCode, ErrorMessage, Steps, Rag, Citations, RagReadiness, StructuredOutput)
             { RunId = runId, AgentId = agentId, ThreadId = threadId, StartedAt = startedAt, EndedAt = endedAt, ProviderSessionId = providerSessionId,
-                ErrorDetails = errorDetails ?? ErrorDetails };
+                ErrorDetails = errorDetails ?? ErrorDetails, ContextBudget = contextBudget ?? ContextBudget };
 
         private AgentExecutionResult(
             Runtime.AgentRunStatus status,

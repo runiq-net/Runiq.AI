@@ -10,7 +10,7 @@ public sealed record MemoryMessage
     /// <param name="messageId">The identifier unique within the tenant/thread.</param>
     /// <param name="runId">The invocation identifier; never an authorization capability.</param>
     /// <param name="timestamp">The original message time, preserved including offset and ticks.</param>
-    /// <param name="message">The Core message, including tool relationships.</param>
+    /// <param name="message">The Core message, including tool relationships but excluding invocation-local continuation state.</param>
     /// <exception cref="ArgumentException">Identifiers or message fields are invalid.</exception>
     /// <exception cref="ArgumentNullException">The message is null.</exception>
     public MemoryMessage(string messageId, string runId, DateTimeOffset timestamp, ChatMessage message)
@@ -20,7 +20,8 @@ public sealed record MemoryMessage
         ArgumentNullException.ThrowIfNull(message);
         MessageValidation.Validate(message);
         Timestamp = timestamp;
-        Message = message with { ToolCalls = message.ToolCalls is null ? null : Array.AsReadOnly(message.ToolCalls.ToArray()) };
+        // Durable snapshots must not retain provider state, including in stores that keep objects in memory.
+        Message = message with { Continuation = null, ToolCalls = message.ToolCalls is null ? null : Array.AsReadOnly(message.ToolCalls.ToArray()) };
     }
 
     /// <summary>Gets the stable message identifier.</summary>

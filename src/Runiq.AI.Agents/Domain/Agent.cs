@@ -15,6 +15,23 @@ public class Agent
     private readonly List<AgentToolRegistration> tools = [];
     private AgentExecutorConfiguration? executor;
     private MemoryOptions? memory;
+    private AgentContextBudgetOptions? contextBudget;
+
+    /// <summary>Gets the explicit shared window, or null to use enabled RAG settings and then framework defaults.</summary>
+    public AgentContextBudgetOptions? ContextBudget => Volatile.Read(ref contextBudget);
+
+    /// <summary>Sets the shared model window without enabling Memory or RAG.</summary>
+    /// <param name="options">Immutable window settings that override the total and reserve in RAG settings.</param>
+    /// <returns>The same agent for fluent configuration.</returns>
+    /// <exception cref="ArgumentNullException">The options are null.</exception>
+    /// <exception cref="InvalidOperationException">A shared window was already configured.</exception>
+    public Agent UseContextBudget(AgentContextBudgetOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (Interlocked.CompareExchange(ref contextBudget, options, null) is not null)
+            throw new InvalidOperationException("A context budget has already been configured for this agent.");
+        return this;
+    }
 
     /// <summary>Gets immutable Memory settings, or null when Memory is disabled (the default).</summary>
     public MemoryOptions? Memory => Volatile.Read(ref memory);

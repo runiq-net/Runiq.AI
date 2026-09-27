@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Runiq.AI.Core.AI.Chat;
 using Runiq.AI.Memory.Models;
 using Runiq.AI.Memory.Serialization;
@@ -6,6 +7,28 @@ namespace Runiq.AI.Memory.Tests.Persistence;
 
 public sealed class MemorySerializationTests
 {
+    [Fact]
+    // Runtime reasoning stays available to the provider while durable snapshots and append identity retain the exact v1 shape.
+    public void Continuation_IsExcludedFromDurableMessagesAndRequestIdentity()
+    {
+        const string legacy = """{"MessageId":"m","RunId":"r","Timestamp":"1970-01-01T00:00:00+00:00","Message":{"Role":2,"Content":"answer","ToolCallId":null,"ToolCalls":null}}""";
+        var continuation = new ChatContinuation("openai.responses.output",
+            JsonSerializer.SerializeToElement(new[] { new { type = "reasoning", encrypted_content = "secret" } }), 100);
+        var runtime = new ChatMessage(ChatRole.Assistant, "answer") { Continuation = continuation };
+        var message = new MemoryMessage("m", "r", DateTimeOffset.UnixEpoch, runtime);
+        Assert.Same(continuation, runtime.Continuation);
+        Assert.Null(message.Message.Continuation);
+        Assert.Equal(legacy, MemoryMessageSerializer.Serialize(message));
+        Assert.Equal("{\"ExpectedVersion\":0,\"Messages\":[" + legacy + "]}",
+            MemoryMessageSerializer.RequestPayload(new("key", 0, [message])));
+        Assert.Null(MemoryMessageSerializer.Deserialize(legacy, 1).Message.Continuation);
+        Assert.Equal(JsonSerializer.Serialize(runtime with { Continuation = null }), JsonSerializer.Serialize(runtime));
+        Assert.DoesNotContain("Continuation", JsonSerializer.Serialize(runtime));
+        var update = new ChatStreamingUpdate(ChatStreamingUpdateKind.Completed) { Continuation = continuation };
+        Assert.DoesNotContain("Continuation", JsonSerializer.Serialize(update));
+        Assert.Same(continuation, update.Continuation);
+    }
+
     [Theory]
     [InlineData("{}", 1)]
     [InlineData("null", 1)]
