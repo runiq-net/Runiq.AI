@@ -83,6 +83,7 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
         }
 
         var runtimeContext = new AgentRuntimeContext();
+        Func<AgentRuntimeContext, RagSearchCompleted>? completeRetrieval = null;
 
         AgentExecutionEvent? ragConfigurationFailure = null;
         if (agent.Rag is { Enabled: true } ragOptions)
@@ -154,7 +155,6 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
 
             var retrievalStopwatch = Stopwatch.StartNew();
             Exception? retrievalFailure = null;
-            var mandatoryPromptOverflow = false;
             var rerankingBlocksExecution = false;
             try
             {
@@ -189,15 +189,9 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
                             rerankingBlocksExecution
                                 ? RagContextSelectionExclusionReason.RerankingFailed
                                 : RagContextSelectionExclusionReason.NotAnswerable,
-                            RagContextAssembler.EstimateTokens(result.Chunk.Content))).ToArray()
+                            ContextTokenEstimator.EstimateText(result.Chunk.Content))).ToArray()
                         : null,
                     reranking: reranking.Metadata);
-                if (!rerankingBlocksExecution && !answerabilityBlocksContext)
-                {
-                    var assembly = AssembleRagContext(agent, query, activeRag, runtimeContext);
-                    runtimeContext = assembly.Context;
-                    mandatoryPromptOverflow = assembly.MandatoryPromptOverflow;
-                }
                 runtimeContext = runtimeContext with { RetrievalCorrelationId = correlationId };
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
@@ -220,18 +214,6 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
                 yield break;
             }
 
-            if (mandatoryPromptOverflow)
-            {
-                yield return AgentExecutionEvent.FromRagSearch(CreateRagSearchCompleted(
-                    correlationId, run.RunId, agent, activeRag, indexName, safeQueries, runtimeContext,
-                    retrievalStopwatch.Elapsed, readinessStatus));
-                yield return AgentExecutionEvent.Failed(
-                    $"The mandatory prompt and response reserve exceed the configured context budget for agent '{agent.Id}'; the model was not invoked.",
-                    "RagContextBudgetExceeded",
-                    CreateRagMetadata(activeRag, runtimeContext, modelInvocationSkipped: true, noContextBehaviorApplied: false));
-                yield break;
-            }
-
             if (rerankingBlocksExecution)
             {
                 yield return AgentExecutionEvent.FromRagSearch(CreateRagSearchCompleted(
@@ -244,53 +226,9 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
                 yield break;
             }
 
-            yield return AgentExecutionEvent.FromRagSearch(CreateRagSearchCompleted(
-                correlationId, run.RunId, agent, activeRag, indexName, safeQueries, runtimeContext,
-                retrievalStopwatch.Elapsed, readinessStatus));
-        }
-
-        if (agent.Rag is { Enabled: true } policy && !runtimeContext.HasContext)
-        {
-            switch (policy.NoContextBehavior)
-            {
-                case RagNoContextBehavior.ReturnNotFound:
-                    yield return AgentExecutionEvent.AssistantDelta(NoContextMessage);
-                    yield return AgentExecutionEvent.Completed(
-                        CreateRagMetadata(policy, runtimeContext, modelInvocationSkipped: true, noContextBehaviorApplied: true));
-                    yield break;
-
-                case RagNoContextBehavior.FailExecution:
-                    yield return AgentExecutionEvent.Failed(
-                        NoContextMessage,
-                        "RagContextUnavailable",
-                        CreateRagMetadata(policy, runtimeContext, modelInvocationSkipped: true, noContextBehaviorApplied: true));
-                    yield break;
-
-                case RagNoContextBehavior.AnswerNormally:
-                    break;
-
-                default:
-                    yield return AgentExecutionEvent.Failed(
-                        $"RAG configuration is invalid for agent '{agent.Id}'; the model was not invoked.",
-                        "RagConfigurationInvalid");
-                    yield break;
-            }
-        }
-
-        var validationFailure = ValidateProviderRuntime(agent);
-
-        if (validationFailure is not null)
-        {
-            yield return AgentExecutionEvent.Failed(
-                validationFailure.ErrorMessage ?? "Agent stream request failed.",
-                validationFailure.ErrorCode,
-                CreateRagMetadata(
-                    agent.Rag,
-                    runtimeContext,
-                    modelInvocationSkipped: true,
-                    noContextBehaviorApplied: agent.Rag?.Enabled == true && !runtimeContext.HasContext));
-
-            yield break;
+            completeRetrieval = context => CreateRagSearchCompleted(
+                correlationId, run.RunId, agent, activeRag, indexName, safeQueries, context,
+                retrievalStopwatch.Elapsed, readinessStatus);
         }
 
         // Resolve the configured named-model override once so every request, including tool continuations,
@@ -301,64 +239,94 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
             agent.ProviderName,
             agent.Id,
             agent.Provider?.Url);
-        var messages = new List<ChatMessage>
-        {
-            new(ChatRole.System, agent.Instructions),
-        };
-
-        if (agent.Rag is { Enabled: true } ragPolicy)
-        {
-            messages.Add(new ChatMessage(
-                ChatRole.System,
-                AgentInstructionsBuilder.BuildPolicy(ragPolicy.Mode, runtimeContext.HasContext)));
-
-            var externalContext = AgentInstructionsBuilder.BuildExternalContext(runtimeContext);
-            if (externalContext is not null)
-            {
-                messages.Add(new ChatMessage(ChatRole.User, externalContext));
-            }
-        }
-
-        messages.AddRange(request.History);
-        messages.Add(new ChatMessage(ChatRole.User, query.Message));
-        string? previousResponseId = null;
-        var assistantResponse = new StringBuilder();
+        var activeTurn = new List<ChatMessage> { new(ChatRole.User, query.Message) };
+        var tools = agent.Tools.Select(MapToolDefinition).ToArray();
+        var retrievalContext = runtimeContext;
+        Dictionary<(string Document, string Chunk), int>? citationNumbers = null;
+        var invocation = 0;
+        IReadOnlyList<AgentCitation> citations = [];
 
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var assembly = AgentContextAssembler.Assemble(agent, request.History, activeTurn, tools,
+                retrievalContext, ++invocation, citationNumbers);
+            runtimeContext = assembly.Context;
+            var budget = assembly.Budget;
+            logger.LogInformation("Context assembly for run {RunId}, invocation {Invocation}: {AccountingMode}, window {Window}, reserve {Reserve}, mandatory {Mandatory}, evidence {Evidence}, history {History}, excluded history {ExcludedHistory}, excluded evidence {ExcludedEvidence}, overflow {Overflow}.",
+                run.RunId, invocation, budget.AccountingMode, budget.MaximumContextTokens, budget.ResponseTokenReserve,
+                budget.MandatoryPromptTokens, budget.SelectedEvidenceTokens, budget.SelectedHistoryTokens,
+                budget.ExcludedHistoryMessages, budget.ExcludedEvidenceChunks, budget.MandatoryPromptOverflow);
+            if (invocation == 1 && completeRetrieval is not null)
+                yield return AgentExecutionEvent.FromRagSearch(completeRetrieval(runtimeContext)) with { ContextBudget = budget };
+            if (budget.MandatoryPromptOverflow)
+            {
+                yield return AgentExecutionEvent.Failed(
+                    $"Estimated mandatory prompt ({budget.MandatoryPromptTokens}) plus response reserve ({budget.ResponseTokenReserve}) exceeds context window ({budget.MaximumContextTokens}); model invocation {invocation} was not performed.",
+                    agent.Rag?.Enabled == true ? "RagContextBudgetExceeded" : "ContextBudgetExceeded",
+                    CreateRagMetadata(agent.Rag, runtimeContext, true, false)) with { ContextBudget = budget };
+                yield break;
+            }
+            if (agent.Rag is { Enabled: true } policy && !runtimeContext.HasContext)
+            {
+                if (policy.NoContextBehavior == RagNoContextBehavior.ReturnNotFound)
+                {
+                    yield return AgentExecutionEvent.AssistantDelta(NoContextMessage) with { ContextBudget = budget };
+                    yield return AgentExecutionEvent.Completed(CreateRagMetadata(policy, runtimeContext, true, true)) with { ContextBudget = budget };
+                    yield break;
+                }
+                if (policy.NoContextBehavior == RagNoContextBehavior.FailExecution)
+                {
+                    yield return AgentExecutionEvent.Failed(NoContextMessage, "RagContextUnavailable",
+                        CreateRagMetadata(policy, runtimeContext, true, true)) with { ContextBudget = budget };
+                    yield break;
+                }
+            }
+            if (ValidateProviderRuntime(agent) is { } validationFailure)
+            {
+                yield return AgentExecutionEvent.Failed(validationFailure.ErrorMessage!, validationFailure.ErrorCode,
+                    CreateRagMetadata(agent.Rag, runtimeContext, true, agent.Rag?.Enabled == true && !runtimeContext.HasContext))
+                    with { ContextBudget = budget };
+                yield break;
+            }
+            // Freeze source identities after the first selection. Excluded sources never inherit another source's number.
+            if (citationNumbers is null)
+            {
+                citationNumbers = new();
+                foreach (var source in runtimeContext.RetrievedRagContext.Concat(retrievalContext.RetrievedRagContext))
+                    citationNumbers.TryAdd((source.Chunk.DocumentId, source.Chunk.Id), citationNumbers.Count + 1);
+                runtimeContext = runtimeContext with { CitationNumbers = citationNumbers };
+            }
             var options = new ChatRequestOptions
             {
                 ReasoningEffort = agent.ReasoningEffort,
                 Verbosity = agent.Verbosity
             };
-            if (!string.IsNullOrWhiteSpace(previousResponseId))
-            {
-                options.Extensions["previous_response_id"] = previousResponseId;
-            }
+            // Send only this explicitly budgeted projection; a server-side response chain would restore excluded content.
 
             var chatRequest = new ChatRequest(
                 effectiveModel,
-                messages,
+                assembly.Messages,
                 endpoint,
                 agent.ApiKey,
-                agent.Tools.Select(MapToolDefinition).ToArray(),
+                tools,
                 Options: options);
             cancellationToken.ThrowIfCancellationRequested();
             var client = chatClientResolver.Resolve(chatRequest);
             var toolCalls = new List<ChatToolCall>();
             var roundResponse = new StringBuilder();
+            ChatContinuation? continuation = null;
 
             cancellationToken.ThrowIfCancellationRequested();
+            run.ContextBudget = budget;
             await foreach (var update in client.CompleteStreamingAsync(chatRequest, cancellationToken))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                previousResponseId = update.ProviderResponseId ?? previousResponseId;
+                continuation = update.Continuation ?? continuation;
                 if (update.Kind == ChatStreamingUpdateKind.ContentDelta && !string.IsNullOrEmpty(update.ContentDelta))
                 {
-                    assistantResponse.Append(update.ContentDelta);
                     roundResponse.Append(update.ContentDelta);
-                    yield return AgentExecutionEvent.AssistantDelta(update.ContentDelta);
+                    yield return AgentExecutionEvent.AssistantDelta(update.ContentDelta) with { ContextBudget = budget };
                 }
                 else if (update.Kind == ChatStreamingUpdateKind.ToolCallDelta && update.ToolCall is not null)
                 {
@@ -367,6 +335,7 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
             }
 
             cancellationToken.ThrowIfCancellationRequested();
+            citations = AgentCitationProcessor.Validate(roundResponse.ToString(), runtimeContext, citations);
             if (toolCalls.Count == 0)
             {
                 yield return AgentExecutionEvent.Completed(
@@ -375,17 +344,20 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
                         runtimeContext,
                         modelInvocationSkipped: false,
                         noContextBehaviorApplied: agent.Rag?.Enabled == true && !runtimeContext.HasContext),
-                    AgentCitationProcessor.Validate(assistantResponse.ToString(), runtimeContext));
+                    citations) with { ContextBudget = budget };
                 yield break;
             }
 
             if (request.Turn is not null)
                 await request.Turn.AppendToolCallsAsync(toolCalls, cancellationToken);
-            messages.Add(new ChatMessage(ChatRole.Assistant, roundResponse.ToString(), ToolCalls: toolCalls));
+            activeTurn.Add(new ChatMessage(ChatRole.Assistant, roundResponse.ToString(), ToolCalls: toolCalls)
+            {
+                Continuation = continuation
+            });
             foreach (var toolCall in toolCalls)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                yield return AgentExecutionEvent.ToolCallStarted(toolCall.Id, toolCall.Name, toolCall.ArgumentsJson);
+                yield return AgentExecutionEvent.ToolCallStarted(toolCall.Id, toolCall.Name, toolCall.ArgumentsJson) with { ContextBudget = budget };
                 cancellationToken.ThrowIfCancellationRequested();
                 var result = await toolInvoker!.InvokeAsync(agent, toolCall.Name, toolCall.ArgumentsJson, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
@@ -410,7 +382,7 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
                 else
                     yield return AgentExecutionEvent.ToolCallFailed(toolCall.Id, toolCall.Name,
                         result.ErrorMessage ?? "Tool execution failed.", result.ErrorCode);
-                messages.Add(new ChatMessage(ChatRole.Tool, output, toolCall.Id));
+                activeTurn.Add(new ChatMessage(ChatRole.Tool, output, toolCall.Id));
             }
         }
     }
@@ -515,40 +487,6 @@ internal sealed class ModelAgentExecutor : IAgentExecutor
             evaluation.RejectedResults,
             noContextReason,
             retrieval.Statistics);
-    }
-
-    private static (AgentRuntimeContext Context, bool MandatoryPromptOverflow) AssembleRagContext(
-        Agent agent,
-        AgentQuery query,
-        AgentRagOptions options,
-        AgentRuntimeContext retrievalContext)
-    {
-        var policy = AgentInstructionsBuilder.BuildPolicy(options.Mode, retrievalContext.AcceptedRagResults.Count > 0);
-        var toolDefinitions = JsonSerializer.Serialize(agent.Tools.Select(MapToolDefinition).ToArray());
-        var assembly = RagContextAssembler.Assemble(
-            retrievalContext.AcceptedRagResults,
-            options.ContextBudget,
-            options.ContextBudget.MaximumContextTokens,
-            options.ContextBudget.ResponseTokenReserve,
-            RagContextAssembler.EstimateTokens(agent.Instructions),
-            conversationHistoryTokens: 0,
-            RagContextAssembler.EstimateTokens(query.Message),
-            RagContextAssembler.EstimateTokens(policy) + RagContextAssembler.EstimateTokens(toolDefinitions));
-
-        var noContextReason = assembly.SelectedResults.Count == 0 && retrievalContext.AcceptedRagResults.Count > 0
-            ? RagNoContextReason.ContextBudgetExhausted
-            : retrievalContext.NoContextReason;
-        var context = new AgentRuntimeContext(
-            assembly.SelectedResults,
-            retrievalContext.RetrievedRagCandidates,
-            retrievalContext.RejectedRagCandidates,
-            noContextReason,
-            retrievalContext.RetrievalStatistics,
-            retrievalContext.AcceptedRagResults,
-            assembly.ExcludedResults,
-            assembly.Budget,
-            retrievalContext.Reranking);
-        return (context, assembly.MandatoryPromptOverflow);
     }
 
     private static RetrievalErrorCode ClassifyRetrievalFailure(Exception exception) =>

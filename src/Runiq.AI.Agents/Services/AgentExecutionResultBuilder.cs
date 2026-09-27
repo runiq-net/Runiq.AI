@@ -18,6 +18,7 @@ public sealed class AgentExecutionResultBuilder
     private string? failureMessage;
     private AgentExecutionErrorDetails? errorDetails;
     private AgentRagExecutionMetadata? rag;
+    private AgentContextBudgetMetadata? contextBudget;
     private IReadOnlyList<AgentCitation> citations = [];
     private RagSearchBlocked? ragReadiness;
     private string? runId;
@@ -61,6 +62,7 @@ public sealed class AgentExecutionResultBuilder
         }
         hasEvents = true;
         rag = executionEvent.Rag ?? rag;
+        contextBudget = executionEvent.ContextBudget ?? contextBudget;
         ragReadiness = executionEvent.RagSearch as RagSearchBlocked ?? ragReadiness;
         if (executionEvent.Kind == AgentExecutionEventKind.Completed)
         {
@@ -125,7 +127,7 @@ public sealed class AgentExecutionResultBuilder
                 steps,
                 rag,
                 ragReadiness);
-        return result.WithIdentity(runId, agentId, startedAt, endedAt, providerSessionId, errorDetails, threadId);
+        return result.WithIdentity(runId, agentId, startedAt, endedAt, providerSessionId, errorDetails, threadId, contextBudget);
     }
 
     private void AppendAssistantDelta(AgentExecutionEvent executionEvent)

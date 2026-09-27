@@ -58,6 +58,9 @@ public sealed record AgentRuntimeContext(
     /// </summary>
     internal string? RetrievalCorrelationId { get; init; }
 
+    // Numbers belong to this invocation's retrieval lifecycle and are never reassigned between model rounds.
+    internal IReadOnlyDictionary<(string Document, string Chunk), int>? CitationNumbers { get; init; }
+
     /// <summary>
     /// Calistirma icin herhangi bir context bilgisinin cozulup cozulmedigini belirtir.
     /// </summary>

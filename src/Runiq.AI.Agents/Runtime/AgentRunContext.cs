@@ -22,6 +22,9 @@ public sealed class AgentRunContext
     private long eventSequence;
     private string? providerSessionId;
 
+    // Assigned immediately before a model call, including calls that fail before their first update.
+    internal AgentContextBudgetMetadata? ContextBudget { get; set; }
+
     internal long NextEventSequence() => Interlocked.Increment(ref eventSequence);
 
     internal AgentRunContext(string agentId)

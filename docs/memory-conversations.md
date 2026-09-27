@@ -1,4 +1,4 @@
-# Programmatic multi-turn Memory (#201)
+# Programmatic multi-turn Memory and shared context budgets (#201–#202)
 
 The built-in model executor now continues an authorized conversation across separate calls.
 Enable the agent with `.UseMemory()`, explicitly register `AddRuniqMemory` and either
@@ -77,7 +77,8 @@ conversation: retaining a turn ID alone cannot deduplicate two newly created thr
 2. A `Running` turn and exactly one user message commit together at the observed version.
    That version becomes the stable history boundary. The store rejects overlapping turns
    or stale versions before any model/tool execution.
-3. Memory loads **all** message pages through that boundary, selecting only completed turns.
+3. Memory loads **all** message pages through that boundary, admitting only completed turns.
+   Before each model invocation, the shared assembler selects bounded, complete history groups.
    The current user input is added once at the model boundary. Instructions and transient
    RAG evidence are separate and never copied into the persisted transcript.
 4. Streaming text is accumulated per model round. Before invoking tools, the assistant
@@ -157,6 +158,105 @@ consumer cannot receive a new failure event; the server log records cleanup fail
 In-memory data is volatile for the DI-container lifetime. PostgreSQL data survives host
 and process restarts; tests start separate executables to verify both continuation APIs.
 
+## Shared bounded model context
+
+Configure one window on the agent independently of RAG:
+
+```csharp
+using Runiq.AI.Agents;
+using Runiq.AI.Agents.Configuration;
+using Runiq.AI.Memory.Configuration;
+
+var agent = new Agent("support", "Support", "Help the user.", "openai/gpt-4o", apiKey)
+    .UseMemory(new MemoryOptions(history: new MemoryHistoryOptions(
+        maximumMessages: 40, maximumTokens: 8_000)))
+    .UseContextBudget(new AgentContextBudgetOptions(
+        maximumContextTokens: 32_768, responseTokenReserve: 4_096));
+```
+
+`apiKey` comes from host configuration. Register this agent with the same explicit Memory
+provider and trusted adapters described above. `UseContextBudget` enables neither Memory
+nor RAG and resolves no Memory services for disabled agents. It applies to the built-in
+model executor; native CLI continuation is unchanged.
+
+Effective total/reserve precedence is **explicit `UseContextBudget` > enabled
+`Rag.ContextBudget` > defaults (32,768 / 4,096)**. The explicit pair overrides both RAG
+values, never creates another window. RAG source-diversity and per-source limits remain
+effective. A positive total and a nonnegative reserve strictly smaller than that total
+are required. Invalid RAG settings remain configuration errors even when the shared
+window overrides them. History message/token limits both default to null (no additional
+limit beyond the shared allocation); zero excludes all history, negatives are rejected.
+
+Every model request, including every tool continuation, uses this deterministic priority:
+
+1. Agent and framework instructions, tool names/descriptions/schemas, the current user
+   input, all active-turn assistant/tool messages, and the response reserve are mandatory.
+2. Accepted RAG evidence uses the existing acceptance/rerank order, deterministic source
+   rounds when enabled, overlap removal and maximum-chunks-per-source rules. Complete
+   formatted chunks that do not fit are skipped, retaining explicit exclusion reasons.
+3. Newest eligible history groups use the remainder under **both** configured history
+   limits. Oversized groups are skipped and older fitting groups may still be selected.
+   Output retains original chronological order. A historical assistant call and all its
+   contiguous results are indivisible; orphan, duplicate or incomplete relationships are
+   excluded. Content and JSON are never truncated or rewritten. Selecting no history is valid.
+
+Memory history is never RAG evidence or a citation source. Only currently selected RAG
+chunks can satisfy Required grounding. Source numbers stay fixed across model rounds;
+removing source `[1]` can leave `[2]` as the first remaining source. `AgentCitation.Number`
+is therefore independent of its zero-based `ContextOrder`. Citation markers are validated
+in the round that produced them; earlier invented markers cannot become valid later.
+Terminal citation metadata excludes sources absent from the final context. Earlier
+streamed text remains unchanged. Source mapping and RAG metadata describe the final
+attempted assembly, while the retrieval-completed event describes the initial assembly.
+
+### Accounting and errors
+
+Accounting is **estimated**, not tokenizer-based: `EstimatedUnicodeRuns` counts contiguous
+Unicode letters/digits as one unit and individual punctuation marks as one unit. Message
+framing plus role costs five units; tool-result framing costs two plus its call ID; each
+assistant call adds four plus ID/name/argument costs. Tool definitions use their serialized
+Core JSON representation. Evidence includes the actual escaped JSON, delimiters, citation
+labels and user-message framing. All contributors use this one policy; Memory receives
+per-message costs and its remaining allocation rather than inventing an estimator.
+
+OpenAI reasoning tool continuations retain the complete ordered provider output, including
+encrypted reasoning, as an invocation-local opaque snapshot. This replaces that assistant
+message's wire representation without duplicating its calls or text. Its cost is message
+framing plus the greater of the serialized snapshot estimate and reported output tokens
+(when available), so hidden reasoning also contributes to the mandatory budget. Overflow
+stops the next call; no response-ID chain restores excluded history. The snapshot is not
+added to the durable Memory transcript.
+
+For each successful assembly, estimated prompt cost plus reserve is at most the window.
+This is not a guarantee against a provider's actual tokenizer limit: long words, some
+languages, provider-specific framing and tokenization can differ substantially. Choose
+headroom accordingly. There is no tokenizer integration or automatic model-window discovery.
+The reserve allocates capacity; it does not configure a provider output-token cap.
+
+Exact fits are accepted. Mandatory overflow returns `ContextBudgetExceeded` (or the existing
+`RagContextBudgetExceeded` when RAG is enabled), with safe estimated counts and limits,
+before that model call. Initial overflow makes zero calls; overflow after tools makes no
+further calls. If evidence alone cannot fit, `ContextBudgetExhausted` and the existing
+no-context policy apply, including Required behavior. History cannot replace evidence.
+Grounded fallback instructions are recounted when no evidence remains.
+
+`AgentExecutionEvent.ContextBudget` and aggregated `AgentExecutionResult.ContextBudget`
+report the relevant/latest attempted invocation number, accounting mode, effective window,
+reserve, mandatory/evidence/history costs and exclusion counts, including Memory-only
+execution. Structured `ModelAgentExecutor` logs record each assembly using counts and run
+identity only; they do not log transcript, tool arguments/results or evidence text. Existing
+RAG observability policies remain separate. Requests send the complete selected projection
+without a provider `previous_response_id` chain, which could otherwise restore excluded text.
+Empty completions and provider failures before the first delta retain the latest model
+call's budget diagnostics. Runs that never reach model assembly or invocation do not
+inherit diagnostics from an earlier run.
+
+Selection performs no store writes or deletions. The full active transcript is persisted
+as before, even if a later budget check fails. Budget overflow finalizes a Failed turn;
+cancellation/disposal preserves the existing Cancelled semantics. Neither scenario
+fabricates successful completion. History is loaded once using the already authorized
+reserved boundary, never reloaded under a different thread while recomposing context.
+
 ## Ownership and future handoffs
 
 - `Memory/Models`, `Services`, `Validation`, and existing stores own neutral turn state,
@@ -165,8 +265,10 @@ and process restarts; tests start separate executables to verify both continuati
   The built-in model executor owns exact tool transcript capture. Foundation support on a
   custom executor does not by itself implement that executor's history/tool integration.
 - PostgreSQL owns SQL, turn format version, migration and transaction implementation.
-- #202 supplies shared bounded Memory/RAG context selection and token budgeting. This release
-  loads complete eligible history; it does not claim bounded-context integration.
+- #202 supplies neutral bounded history selection in Memory and one shared model-window
+  assembler in Agents, extending the existing RAG selector. Core gains no Memory dependency.
+- Future #205 working-memory, #207 recall and #208 summaries must join this same allocation
+  path. No contributor registry, new provider or future-feature contracts are introduced here.
 - #203 owns hosted API/DTOs, thread/turn identity and conflict transport mapping, Dashboard UX,
   and the hosted sample. Programmatic fields/events here do not add those HTTP contracts.
 - #204 retention/deletion must account for turn state, messages, retry receipts, and unfinished

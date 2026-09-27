@@ -14,6 +14,7 @@ namespace Runiq.AI.Agents.Providers.OpenAI;
 /// </summary>
 public sealed class OpenAIResponsesClient : IChatClient
 {
+    private const string ContinuationFormat = "openai.responses.output";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
@@ -61,7 +62,10 @@ public sealed class OpenAIResponsesClient : IChatClient
             }
 
             return new ChatResponse(
-                new ChatMessage(ChatRole.Assistant, content, ToolCalls: toolCalls.Count == 0 ? null : toolCalls),
+                new ChatMessage(ChatRole.Assistant, content, ToolCalls: toolCalls.Count == 0 ? null : toolCalls)
+                {
+                    Continuation = root.TryGetProperty("output", out var output) ? CreateContinuation(output, ReadUsage(root)) : null
+                },
                 toolCalls.Count == 0 ? ChatFinishReason.Stop : ChatFinishReason.ToolCalls,
                 ReadUsage(root),
                 ReadString(root, "id"));
@@ -103,6 +107,8 @@ public sealed class OpenAIResponsesClient : IChatClient
         ChatUsage? usage = null;
         var finishReason = ChatFinishReason.Stop;
         var pendingToolCalls = new Dictionary<string, PendingToolCall>(StringComparer.Ordinal);
+        var outputItems = new SortedDictionary<int, JsonElement>();
+        JsonElement? completedOutput = null;
 
         while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
         {
@@ -137,6 +143,14 @@ public sealed class OpenAIResponsesClient : IChatClient
                 var type = ReadString(root, "type");
                 responseId ??= ReadResponseId(root);
 
+                // Done items own their JSON beyond this SSE document. The final output is authoritative
+                // when supplied, including encrypted reasoning fields only present at completion.
+                if (type == "response.output_item.done" && root.TryGetProperty("item", out var doneItem))
+                {
+                    var index = root.TryGetProperty("output_index", out var outputIndex) ? outputIndex.GetInt32() : outputItems.Count;
+                    outputItems[index] = doneItem.Clone();
+                }
+
                 if (type == "response.output_text.delta" && ReadString(root, "delta") is { Length: > 0 } delta)
                 {
                     yield return new ChatStreamingUpdate(ChatStreamingUpdateKind.ContentDelta, ContentDelta: delta, ProviderResponseId: responseId);
@@ -167,6 +181,8 @@ public sealed class OpenAIResponsesClient : IChatClient
                 }
                 else if (type == "response.completed" && root.TryGetProperty("response", out var completed))
                 {
+                    if (completed.TryGetProperty("output", out var output) && output.ValueKind == JsonValueKind.Array)
+                        completedOutput = output.Clone();
                     usage = ReadUsage(completed);
                     if (usage is not null)
                     {
@@ -187,8 +203,16 @@ public sealed class OpenAIResponsesClient : IChatClient
             ChatStreamingUpdateKind.Completed,
             FinishReason: finishReason,
             Usage: usage,
-            ProviderResponseId: responseId);
+            ProviderResponseId: responseId)
+        {
+            Continuation = CreateContinuation(completedOutput ?? JsonSerializer.SerializeToElement(outputItems.Values), usage)
+        };
     }
+
+    private static ChatContinuation? CreateContinuation(JsonElement output, ChatUsage? usage) =>
+        output.ValueKind == JsonValueKind.Array && output.EnumerateArray().Any(item => ReadString(item, "type") == "reasoning")
+            ? new(ContinuationFormat, output, usage?.OutputTokens)
+            : null;
 
     private static HttpRequestMessage CreateRequest(ChatRequest request, bool stream)
     {
@@ -215,7 +239,8 @@ public sealed class OpenAIResponsesClient : IChatClient
                 CreateReasoningOptions(request),
                 CreateTextOptions(request),
                 request.Tools?.Select(MapTool).ToArray(),
-                previousResponseId),
+                previousResponseId,
+                ["reasoning.encrypted_content"]),
             options: JsonOptions);
         return httpRequest;
     }
@@ -228,9 +253,30 @@ public sealed class OpenAIResponsesClient : IChatClient
             return nonSystemMessages[0].Content;
         }
 
-        return nonSystemMessages.Select(message => message.Role == ChatRole.Tool
-            ? (object)new FunctionOutput("function_call_output", message.ToolCallId ?? string.Empty, message.Content)
-            : new InputMessage(MapRole(message.Role), message.Content)).ToArray();
+        var input = new List<object>();
+        foreach (var message in nonSystemMessages)
+        {
+            if (message.Continuation is { Format: ContinuationFormat } continuation)
+            {
+                // Replay the entire reasoning round in provider order, exactly once, instead of
+                // rebuilding its assistant text and function calls and losing interleaved reasoning.
+                input.AddRange(continuation.Payload.EnumerateArray().Select(item => (object)item));
+                continue;
+            }
+            if (message.Role == ChatRole.Tool)
+            {
+                input.Add(new FunctionOutput("function_call_output", message.ToolCallId ?? string.Empty, message.Content));
+                continue;
+            }
+
+            // A bounded projection is self-contained: the Responses protocol needs explicit call items,
+            // not only their results or an implicit server-side previous-response history.
+            if (message.ToolCalls is not { Count: > 0 } || message.Content.Length > 0)
+                input.Add(new InputMessage(MapRole(message.Role), message.Content));
+            foreach (var call in message.ToolCalls ?? [])
+                input.Add(new FunctionCall("function_call", call.Id, call.Name, call.ArgumentsJson));
+        }
+        return input.ToArray();
     }
 
     private static TextOptions? CreateTextOptions(ChatRequest request)
@@ -352,7 +398,7 @@ public sealed class OpenAIResponsesClient : IChatClient
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
     private static int? ReadInt(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var value) && value.TryGetInt32(out var number) ? number : null;
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number) ? number : null;
 
     private static string ReadProviderError(JsonElement root)
     {
@@ -400,12 +446,14 @@ public sealed class OpenAIResponsesClient : IChatClient
         ReasoningOptions? Reasoning,
         TextOptions? Text,
         IReadOnlyList<ToolDefinition>? Tools,
-        [property: JsonPropertyName("previous_response_id")] string? PreviousResponseId);
+        [property: JsonPropertyName("previous_response_id")] string? PreviousResponseId,
+        IReadOnlyList<string> Include);
     private sealed record ReasoningOptions(string Effort);
     private sealed record TextOptions(string? Verbosity, ResponseFormat? Format);
     private sealed record ResponseFormat(string Type, string Name, JsonElement Schema, bool Strict);
     private sealed record ToolDefinition(string Type, string Name, string Description, JsonElement Parameters);
     private sealed record FunctionOutput(string Type, [property: JsonPropertyName("call_id")] string CallId, string Output);
+    private sealed record FunctionCall(string Type, [property: JsonPropertyName("call_id")] string CallId, string Name, string Arguments);
     private sealed class PendingToolCall(string id, string name)
     {
         public string Id { get; } = id;

@@ -388,13 +388,30 @@ operational target fails, reduce candidates, select a lower-latency model, or im
 release; do not hide the regression with a longer timeout.
 
 Context selection is a separate stage after acceptance. The runtime calculates
-`MaximumContextTokens - instructions - conversation history - user query - response reserve - other required prompt`
+`MaximumContextTokens - instructions - current user/active turn - response reserve - tools/framework policy`
 and selects only complete chunks whose final serialized external-context message fits. The deterministic fallback
 estimator counts contiguous Unicode letter/digit runs and individual punctuation marks; it does not call a model
 and is explicitly an estimate rather than an exact provider token count. The defaults are 32,768 maximum context
 tokens and a 4,096-token response reserve. `MaximumChunksPerSource` defaults to `int.MaxValue` for compatibility;
 set a bounded value to prevent one document from monopolizing context. `PreferSourceDiversity` performs stable
 source rounds while retaining retrieval order within each source. Chunks are never silently truncated.
+
+The same assembly runs before every model call, including tool continuations. Evidence is selected before
+optional Memory history; newest complete historical groups use the remaining capacity under both message
+and token limits. `UseContextBudget(new AgentContextBudgetOptions(...))` configures the window even without
+RAG and overrides both total/reserve values in enabled `Rag.ContextBudget`; otherwise enabled RAG settings,
+then the defaults above apply. It enables neither Memory nor RAG. Accounting includes message framing,
+tool call arguments/results and the actual formatted evidence. All counts use the same explicit
+`EstimatedUnicodeRuns` estimate, not a provider tokenizer. Long words, languages and provider framing can
+make actual token usage substantially different, so leave headroom.
+
+Memory-only overflow uses `ContextBudgetExceeded`; enabled RAG retains `RagContextBudgetExceeded`.
+Events/results expose count-only `ContextBudget` metadata for the latest attempted call, and structured
+executor logs describe each assembly without raw content. Tool results are never truncated and excluded
+history stays in storage. Citation numbers remain stable across continuation rounds even when a source
+is excluded, so citation numbers can have gaps and need not equal context order plus one. See the
+[bounded conversation guide](../../docs/memory-conversations.md#shared-bounded-model-context) for the
+programmatic configuration, exact accounting policy, priorities, failure behavior and future handoffs.
 
 Accepted results omitted from model context remain available through `ContextExcludedResults` with
 `TokenBudgetExceeded`, `OverlappingContent`, or `SourceLimitExceeded`. Overlap reduction uses character boundaries

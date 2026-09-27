@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Runiq.AI.Core.Models;
 
 namespace Runiq.AI.Core.AI.Chat;
@@ -57,7 +58,13 @@ public sealed record ChatMessage(
     ChatRole Role,
     string Content,
     string? ToolCallId = null,
-    IReadOnlyList<ChatToolCall>? ToolCalls = null);
+    IReadOnlyList<ChatToolCall>? ToolCalls = null)
+{
+    /// <summary>Gets provider-owned current-turn continuation data, or null for ordinary messages.</summary>
+    /// <remarks>Invocation-local state is excluded from serialized messages and durable transcript identity.</remarks>
+    [JsonIgnore]
+    public ChatContinuation? Continuation { get; init; }
+}
 
 /// <summary>
 /// Identifies the role of a chat message.
@@ -113,7 +120,13 @@ public sealed record ChatStreamingUpdate(
     ChatToolCall? ToolCall = null,
     ChatFinishReason? FinishReason = null,
     ChatUsage? Usage = null,
-    string? ProviderResponseId = null);
+    string? ProviderResponseId = null)
+{
+    /// <summary>Gets the complete current-round continuation snapshot, normally supplied with the completion update.</summary>
+    /// <remarks>Invocation-local state is carried in memory only, not in serialized updates.</remarks>
+    [JsonIgnore]
+    public ChatContinuation? Continuation { get; init; }
+}
 
 /// <summary>
 /// Identifies the semantic kind of a streaming update.

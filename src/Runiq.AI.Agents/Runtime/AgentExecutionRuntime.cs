@@ -380,7 +380,8 @@ public sealed class AgentExecutionRuntime
                     else
                     {
                         logger.LogError(exception, "Agent execution failed for run {RunId} and agent {AgentId}.", run.RunId, run.AgentId);
-                        current = AgentExecutionEvent.Failed("Agent execution failed.", "AgentExecutionFailed");
+                        current = AgentExecutionEvent.Failed("Agent execution failed.", "AgentExecutionFailed")
+                            with { ContextBudget = run.ContextBudget };
                     }
                 }
                 ThrowIfCancelled(run, cancellationToken);
@@ -392,7 +393,7 @@ public sealed class AgentExecutionRuntime
                 if (current.Kind == AgentExecutionEventKind.Completed && current.StructuredOutput is null &&
                     string.IsNullOrWhiteSpace(message.ToString()))
                     current = AgentExecutionEvent.Failed("Agent execution completed without producing a message.",
-                        "AgentExecutionEmptyMessage", current.Rag);
+                        "AgentExecutionEmptyMessage", current.Rag) with { ContextBudget = current.ContextBudget };
 
                 if (current.Status != AgentRunStatus.Running)
                 {

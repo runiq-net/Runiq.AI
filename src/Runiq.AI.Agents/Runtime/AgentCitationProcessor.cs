@@ -4,19 +4,29 @@ internal static class AgentCitationProcessor
 {
     internal static IReadOnlyList<AgentCitation> Validate(
         string response,
-        AgentRuntimeContext context)
+        AgentRuntimeContext context,
+        IReadOnlyList<AgentCitation>? previousCitations = null)
     {
-        if (string.IsNullOrEmpty(response) || !context.HasContext)
+        if (!context.HasContext)
         {
             return [];
         }
 
-        var counts = Parse(response)
+        var counts = Parse(response ?? string.Empty)
             .GroupBy(number => number)
             .ToDictionary(group => group.Key, group => group.Count());
 
+        // Earlier rounds contribute only markers already validated while that source was present.
+        // Never legitimize an earlier invented marker just because a source appears in a later round.
+        foreach (var citation in previousCitations ?? [])
+        {
+            if (context.RetrievedRagContext.Any(source => source.Chunk.DocumentId == citation.DocumentId && source.Chunk.Id == citation.ChunkId))
+                counts[citation.Number] = counts.GetValueOrDefault(citation.Number) + citation.MarkerCount;
+        }
+
         return context.RetrievedRagContext
-            .Select((source, index) => new { Source = source, Index = index, Number = index + 1 })
+            .Select((source, index) => new { Source = source, Index = index,
+                Number = context.CitationNumbers is null ? index + 1 : context.CitationNumbers[(source.Chunk.DocumentId, source.Chunk.Id)] })
             .Where(item => counts.ContainsKey(item.Number))
             .Select(item => new AgentCitation(
                 item.Number,
