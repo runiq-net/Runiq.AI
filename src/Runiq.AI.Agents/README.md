@@ -166,7 +166,7 @@ permissions, outside the CLI sandbox. Active Runiq RAG bindings are unsupported 
 with `CodexCapabilityNotSupported` or `ClaudeCapabilityNotSupported`; use model execution
 for the RAG configuration below. CLI failures do not fall back to a model provider.
 
-For a runnable example with typed tools, see [Local CLI Agents](../../samples/Runiq.AI.LocalCliAgents/README.md).
+For a runnable example with typed tools, see [CLI Agents sample](../../samples/Runiq.AI.CLI.Agents/README.md).
 
 ## Add a Tool
 

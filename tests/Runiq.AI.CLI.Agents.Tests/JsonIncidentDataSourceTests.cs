@@ -1,6 +1,6 @@
-using Runiq.AI.IncidentTriageAssistant.Data;
+using Runiq.AI.CLI.Agents.Data;
 
-namespace Runiq.AI.IncidentTriageAssistant.Tests;
+namespace Runiq.AI.CLI.Agents.Tests;
 
 public sealed class JsonIncidentDataSourceTests
 {

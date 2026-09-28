@@ -1,4 +1,4 @@
-namespace Runiq.AI.IncidentTriageAssistant.Tests;
+namespace Runiq.AI.CLI.Agents.Tests;
 
 internal static class IncidentTriageTestPaths
 {

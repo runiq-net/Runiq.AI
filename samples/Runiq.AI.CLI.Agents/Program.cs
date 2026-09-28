@@ -1,6 +1,6 @@
 using Runiq.AI.Core;
-using Runiq.AI.IncidentTriageAssistant.Agents;
-using Runiq.AI.IncidentTriageAssistant.Data;
+using Runiq.AI.CLI.Agents.Agents;
+using Runiq.AI.CLI.Agents.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 

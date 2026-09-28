@@ -1,4 +1,4 @@
-namespace Runiq.AI.IncidentTriageAssistant.Data;
+namespace Runiq.AI.CLI.Agents.Data;
 
 /// <summary>
 /// Provides deterministic incident data for the local sample tools.

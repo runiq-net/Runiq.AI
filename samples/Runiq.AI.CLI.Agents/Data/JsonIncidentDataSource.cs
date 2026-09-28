@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Runiq.AI.IncidentTriageAssistant.Data;
+namespace Runiq.AI.CLI.Agents.Data;
 
 /// <summary>
 /// Loads deterministic incident data from local JSON fixture files.

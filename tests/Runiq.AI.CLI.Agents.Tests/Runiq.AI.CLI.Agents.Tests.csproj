@@ -23,11 +23,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\samples\Runiq.AI.IncidentTriageAssistant\Runiq.AI.IncidentTriageAssistant.csproj" />
+    <ProjectReference Include="..\..\samples\Runiq.AI.CLI.Agents\Runiq.AI.CLI.Agents.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="..\..\samples\Runiq.AI.IncidentTriageAssistant\Fixtures\*.json"
+    <Content Include="..\..\samples\Runiq.AI.CLI.Agents\Fixtures\*.json"
              Link="Fixtures\%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

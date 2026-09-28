@@ -1,9 +1,9 @@
 using Runiq.AI.Agents;
 using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Agents.Tools;
-using Runiq.AI.LocalCliAgents.Tools;
+using Runiq.AI.Agents.Tests.Fixtures.LocalCliSamples.Tools;
 
-namespace Runiq.AI.LocalCliAgents.Agents;
+namespace Runiq.AI.Agents.Tests.Fixtures.LocalCliSamples.Agents;
 
 /// <summary>Defines a Claude CLI assistant with a deterministic change-summary tool.</summary>
 public static class ClaudeProjectAssistant

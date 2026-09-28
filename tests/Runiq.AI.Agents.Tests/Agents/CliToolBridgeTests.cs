@@ -12,7 +12,7 @@ using Runiq.AI.Agents.Runtime.Codex;
 using Runiq.AI.Agents.Tools;
 using Runiq.AI.Core;
 using Runiq.AI.Core.Agents;
-using Runiq.AI.LocalCliAgents.Agents;
+using Runiq.AI.Agents.Tests.Fixtures.LocalCliSamples.Agents;
 
 namespace Runiq.AI.Agents.Tests.Agents;
 
@@ -38,7 +38,7 @@ public abstract class CliToolBridgeTests
             Assert.False(result.IsError);
             return Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         });
-        await using var provider = Services(factory, agent: Claude ? new Agent("quick-project-assistant", "Quick", "Use tools").UseClaude(claude => claude.Model = "sonnet").AddTool<Runiq.AI.LocalCliAgents.Tools.ChangeSummaryTool>() : QuickProjectAssistant.Create());
+        await using var provider = Services(factory, agent: Claude ? new Agent("quick-project-assistant", "Quick", "Use tools").UseClaude(claude => claude.Model = "sonnet").AddTool<Runiq.AI.Agents.Tests.Fixtures.LocalCliSamples.Tools.ChangeSummaryTool>() : QuickProjectAssistant.Create());
         await using var scope = provider.CreateAsyncScope();
         var result = await scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>().ExecuteAsync("quick-project-assistant", "Summarize these changes");
         Assert.Null(factory.Failure);

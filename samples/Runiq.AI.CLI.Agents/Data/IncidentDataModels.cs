@@ -1,4 +1,4 @@
-namespace Runiq.AI.IncidentTriageAssistant.Data;
+namespace Runiq.AI.CLI.Agents.Data;
 
 /// <summary>
 /// Represents the metrics returned for a service window.

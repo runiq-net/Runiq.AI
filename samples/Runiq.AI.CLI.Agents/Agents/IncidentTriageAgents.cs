@@ -1,9 +1,10 @@
+
 using Runiq.AI.Agents;
 using Runiq.AI.Agents.Configuration;
 using Runiq.AI.Agents.Tools;
-using Runiq.AI.IncidentTriageAssistant.Tools;
+using Runiq.AI.CLI.Agents.Tools;
 
-namespace Runiq.AI.IncidentTriageAssistant.Agents;
+namespace Runiq.AI.CLI.Agents.Agents;
 
 /// <summary>
 /// Creates the Codex and Claude incident triage agents used by the sample.
@@ -24,11 +25,11 @@ public static class IncidentTriageAgents
 
         Start the final answer directly with the first heading. Do not include a preamble, planning note, or status update.
         Format the final answer with these exact headings:
-        - Tespit edilen anormallikler
-        - Deployment ile zamansal ilişki
-        - Olası nedenler
-        - İlk kontrol adımları
-        - Kullanılan kaynaklar
+        - Detected anomalies
+        - Temporal relationship with deployment
+        - Possible causes
+        - Initial investigation steps
+        - Sources used
         """;
 
     /// <summary>

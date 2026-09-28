@@ -1,7 +1,7 @@
 using Runiq.AI.Agents;
 using Runiq.AI.Agents.Configuration;
 
-namespace Runiq.AI.LocalCliAgents.Agents;
+namespace Runiq.AI.Agents.Tests.Fixtures.LocalCliSamples.Agents;
 
 /// <summary>Defines the read-only repository assistant backed by the local Codex CLI.</summary>
 public static class CodexAgent

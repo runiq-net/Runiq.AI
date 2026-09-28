@@ -43,7 +43,7 @@ claude --version
 From the repository root:
 
 ```powershell
-dotnet run --project samples/Runiq.AI.IncidentTriageAssistant --launch-profile http
+dotnet run --project samples/Runiq.AI.CLI.Agents --launch-profile http
 ```
 
 Open the Dashboard:
@@ -89,7 +89,7 @@ Record a verified transcript only after the specific CLI run has completed succe
 ## Run tests
 
 ```powershell
-dotnet test tests/Runiq.AI.IncidentTriageAssistant.Tests
+dotnet test tests/Runiq.AI.CLI.Agents.Tests
 ```
 
 The tests validate JSON fixture parsing, unknown service behavior, metric and deployment filtering, tool input/output behavior, agent executor selection, shared tool registration, and fixture accessibility without starting Codex or Claude.

@@ -1,7 +1,7 @@
-using Runiq.AI.IncidentTriageAssistant.Data;
-using Runiq.AI.IncidentTriageAssistant.Tools;
+using Runiq.AI.CLI.Agents.Data;
+using Runiq.AI.CLI.Agents.Tools;
 
-namespace Runiq.AI.IncidentTriageAssistant.Tests;
+namespace Runiq.AI.CLI.Agents.Tests;
 
 public sealed class IncidentToolsTests
 {

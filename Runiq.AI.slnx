@@ -1,8 +1,7 @@
 <Solution>
   <Folder Name="/samples/">
     <Project Path="samples/Runiq.AI.MemoryConversation/Runiq.AI.MemoryConversation.csproj" />
-    <Project Path="samples/Runiq.AI.LocalCliAgents/Runiq.AI.LocalCliAgents.csproj" />
-    <Project Path="samples/Runiq.AI.IncidentTriageAssistant/Runiq.AI.IncidentTriageAssistant.csproj" />
+    <Project Path="samples/Runiq.AI.CLI.Agents/Runiq.AI.CLI.Agents.csproj" />
     <Project Path="samples/Runiq.AI.Expense/Runiq.AI.Expense.csproj" />
     <Project Path="samples/Runiq.AI.OrderSupport/Runiq.AI.OrderSupport.csproj" />
     <Project Path="samples/Runiq.AI.DashboardSecurityRole/Runiq.AI.DashboardSecurityRole.csproj" />
@@ -29,7 +28,7 @@
     <Project Path="tests/Runiq.AI.Memory.Tests/Runiq.AI.Memory.Tests.csproj" />
     <Project Path="tests/Runiq.AI.Rag.Tests/Runiq.AI.Rag.Tests.csproj" />
     <Project Path="tests/Runiq.AI.Rag.PostgreSql.Tests/Runiq.AI.Rag.PostgreSql.Tests.csproj" />
-    <Project Path="tests/Runiq.AI.IncidentTriageAssistant.Tests/Runiq.AI.IncidentTriageAssistant.Tests.csproj" />
+    <Project Path="tests/Runiq.AI.CLI.Agents.Tests/Runiq.AI.CLI.Agents.Tests.csproj" />
     <Project Path="tests/Runiq.AI.OrderSupport.Tests/Runiq.AI.OrderSupport.Tests.csproj" />
     <Project Path="tests/Runiq.AI.Workflows.Tests/Runiq.AI.Workflows.Tests.csproj" />
   </Folder>

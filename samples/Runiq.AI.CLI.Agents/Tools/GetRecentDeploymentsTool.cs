@@ -1,7 +1,7 @@
 using Runiq.AI.Agents.Tools;
-using Runiq.AI.IncidentTriageAssistant.Data;
+using Runiq.AI.CLI.Agents.Data;
 
-namespace Runiq.AI.IncidentTriageAssistant.Tools;
+namespace Runiq.AI.CLI.Agents.Tools;
 
 /// <summary>
 /// Returns deterministic recent deployment records for the incident triage sample.

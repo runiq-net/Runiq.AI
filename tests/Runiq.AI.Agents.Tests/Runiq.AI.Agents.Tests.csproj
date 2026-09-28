@@ -17,8 +17,6 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
-    <Compile Include="..\..\samples\Runiq.AI.LocalCliAgents\Tools\ChangeSummaryTool.cs" Link="Samples\ChangeSummaryTool.cs" />
-    <Compile Include="..\..\samples\Runiq.AI.LocalCliAgents\Agents\*.cs" Link="Samples\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>
