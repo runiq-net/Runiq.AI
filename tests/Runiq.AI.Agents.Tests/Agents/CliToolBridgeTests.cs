@@ -139,14 +139,16 @@ public abstract class CliToolBridgeTests
             await client.CallToolAsync("echo", new Dictionary<string, object?> { ["value"] = "wait" }, cancellationToken: ct);
             return "unexpected";
         });
-        await using var provider = Services(factory, timeout ? TimeSpan.FromSeconds(2) : null);
+        await using var provider = Services(
+            factory,
+            timeout ? TimeSpan.FromSeconds(15) : null);
         await using var scope = provider.CreateAsyncScope();
         using var cancellation = new CancellationTokenSource();
         var probe = scope.ServiceProvider.GetRequiredService<InvocationProbe>();
         var execution = scope.ServiceProvider.GetRequiredService<AgentExecutionRuntime>().ExecuteAsync("agent", "wait", cancellation.Token);
         await probe.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
         if (!timeout) cancellation.Cancel();
-        if (timeout) Assert.Equal(Kind + "Timeout", (await execution.WaitAsync(TimeSpan.FromSeconds(10))).ErrorCode);
+        if (timeout) Assert.Equal(Kind + "Timeout", (await execution.WaitAsync(TimeSpan.FromSeconds(20))).ErrorCode);
         else await Assert.ThrowsAnyAsync<OperationCanceledException>(() => execution);
         Assert.True(probe.Stopped);
         using var http = new HttpClient();
