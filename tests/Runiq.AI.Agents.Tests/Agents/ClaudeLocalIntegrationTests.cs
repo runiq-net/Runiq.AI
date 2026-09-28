@@ -14,7 +14,7 @@ public sealed class ClaudeLocalIntegrationTests
     {
         var services = new ServiceCollection().AddLogging();
         services.AddRuniqServer(o => o.AddAgent(new Agent("tools", "Tools", "Always use change_summary for change counts.")
-            .UseClaude(claude => claude.Model = "sonnet").AddTool<Runiq.AI.LocalCliAgents.Tools.ChangeSummaryTool>()));
+            .UseClaude(claude => claude.Model = "sonnet").AddTool<Runiq.AI.Agents.Tests.Fixtures.LocalCliSamples.Tools.ChangeSummaryTool>()));
         services.Configure<ClaudeExecutorOptions>(o =>
         {
             o.WorkingDirectory = Path.GetTempPath();

@@ -1,0 +1,34 @@
+{
+  "services": [
+    {
+      "serviceName": "order-api",
+      "deployments": [
+        {
+          "timestampUtc": "2026-09-28T10:04:00Z",
+          "version": "2026.09.28.3",
+          "commit": "demo-a18f4c2",
+          "owner": "checkout-platform",
+          "summary": "Changed inventory reservation retry behavior and increased downstream client timeout."
+        },
+        {
+          "timestampUtc": "2026-09-28T08:15:00Z",
+          "version": "2026.09.28.2",
+          "commit": "demo-8b7c219",
+          "owner": "checkout-platform",
+          "summary": "Updated order status response formatting for internal consumers."
+        },
+        {
+          "timestampUtc": "2026-09-27T21:40:00Z",
+          "version": "2026.09.27.5",
+          "commit": "demo-433ad91",
+          "owner": "payments-platform",
+          "summary": "Refreshed payment authorization dependency package."
+        }
+      ],
+      "sources": [
+        "demo fixture: deployments.json",
+        "demo source: synthetic deployment log"
+      ]
+    }
+  ]
+}

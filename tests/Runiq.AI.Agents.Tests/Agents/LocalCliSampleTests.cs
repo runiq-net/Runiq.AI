@@ -1,6 +1,6 @@
 using Runiq.AI.Agents.Configuration;
-using Runiq.AI.LocalCliAgents.Agents;
-using Runiq.AI.LocalCliAgents.Tools;
+using Runiq.AI.Agents.Tests.Fixtures.LocalCliSamples.Agents;
+using Runiq.AI.Agents.Tests.Fixtures.LocalCliSamples.Tools;
 using Runiq.AI.Core.Metadata;
 
 namespace Runiq.AI.Agents.Tests.Agents;
@@ -34,7 +34,7 @@ public sealed class LocalCliSampleTests
     public void Agents_HaveDistinctSettingsAndToolBindings()
     {
         var quick = QuickProjectAssistant.Create();
-        var reviewer = Runiq.AI.LocalCliAgents.Agents.CodexAgent.Create();
+        var reviewer = Runiq.AI.Agents.Tests.Fixtures.LocalCliSamples.Agents.CodexAgent.Create();
         Assert.NotEqual(quick.Executor!.Codex!.Model, reviewer.Executor!.Codex!.Model);
         Assert.Equal(CodexReasoningEffort.Medium, quick.Executor.Codex.ReasoningEffort);
         Assert.Equal(CodexServiceTier.Fast, quick.Executor.Codex.ServiceTier);

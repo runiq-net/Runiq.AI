@@ -1,0 +1,78 @@
+{
+  "services": [
+    {
+      "serviceName": "order-api",
+      "points": [
+        {
+          "timestampUtc": "2026-09-28T09:30:00Z",
+          "errorRatePercent": 0.7,
+          "p95LatencyMs": 185,
+          "requestsPerMinute": 1230,
+          "dependencyTimeouts": 1
+        },
+        {
+          "timestampUtc": "2026-09-28T09:45:00Z",
+          "errorRatePercent": 0.8,
+          "p95LatencyMs": 192,
+          "requestsPerMinute": 1265,
+          "dependencyTimeouts": 1
+        },
+        {
+          "timestampUtc": "2026-09-28T10:00:00Z",
+          "errorRatePercent": 0.9,
+          "p95LatencyMs": 205,
+          "requestsPerMinute": 1282,
+          "dependencyTimeouts": 2
+        },
+        {
+          "timestampUtc": "2026-09-28T10:10:00Z",
+          "errorRatePercent": 5.8,
+          "p95LatencyMs": 1180,
+          "requestsPerMinute": 1168,
+          "dependencyTimeouts": 31
+        },
+        {
+          "timestampUtc": "2026-09-28T10:20:00Z",
+          "errorRatePercent": 7.1,
+          "p95LatencyMs": 1460,
+          "requestsPerMinute": 1087,
+          "dependencyTimeouts": 44
+        },
+        {
+          "timestampUtc": "2026-09-28T10:30:00Z",
+          "errorRatePercent": 6.6,
+          "p95LatencyMs": 1395,
+          "requestsPerMinute": 1115,
+          "dependencyTimeouts": 39
+        }
+      ],
+      "anomalies": [
+        {
+          "code": "error_rate_above_baseline",
+          "summary": "Order API error rate rose from a sub-1% baseline to above 5% after 10:10 UTC.",
+          "startsAtUtc": "2026-09-28T10:10:00Z",
+          "baseline": "0.7%-0.9%",
+          "observed": "5.8%-7.1%"
+        },
+        {
+          "code": "p95_latency_above_baseline",
+          "summary": "P95 latency increased from about 200 ms to more than 1.1 seconds.",
+          "startsAtUtc": "2026-09-28T10:10:00Z",
+          "baseline": "185-205 ms",
+          "observed": "1180-1460 ms"
+        },
+        {
+          "code": "dependency_timeouts_increased",
+          "summary": "Dependency timeout counts increased at the same time as the latency spike.",
+          "startsAtUtc": "2026-09-28T10:10:00Z",
+          "baseline": "1-2 timeouts per interval",
+          "observed": "31-44 timeouts per interval"
+        }
+      ],
+      "sources": [
+        "demo fixture: service-metrics.json",
+        "demo source: synthetic order-api metrics"
+      ]
+    }
+  ]
+}

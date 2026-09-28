@@ -1,0 +1,24 @@
+{
+  "runbooks": [
+    {
+      "serviceName": "order-api",
+      "incidentType": "elevated-error-rate",
+      "title": "Order API elevated error rate first response",
+      "firstChecks": [
+        "Compare the first abnormal metric timestamp with the latest order-api deployment timestamp.",
+        "Inspect dependency timeout trends for inventory reservation and payment authorization calls.",
+        "Check whether connection pool saturation or retry amplification appears after the deployment.",
+        "Ask the owning team to review the retry and timeout change before considering mitigation.",
+        "Capture evidence from metrics, deployment history, and logs before recommending any production change."
+      ],
+      "escalationNotes": [
+        "This demo runbook does not authorize automatic rollback or live system changes.",
+        "Escalate to the checkout-platform owner if deployment timing and timeout growth remain correlated."
+      ],
+      "sources": [
+        "demo fixture: runbooks.json",
+        "demo runbook: order-api elevated-error-rate"
+      ]
+    }
+  ]
+}
